@@ -3717,6 +3717,28 @@ export class ProxyForwarder {
     session: ProxySession,
     excludeProviderIds: number[] // 改为数组，排除所有失败的供应商
   ): Promise<typeof session.provider | null> {
+    // 竞速时只选择优先级数字更大的供应商（单调不减），避免竞速回退到更高优先级的供应商。
+    // 例如初始供应商 priority=1，竞速仅从 priority>1 的供应商中选择。
+    const initialProvider = session.provider;
+    if (initialProvider && initialProvider.priority != null) {
+      const allProviders = await session.getProvidersSnapshot();
+      const excludedByPriority = allProviders
+        .filter(
+          (p) =>
+            p.priority != null &&
+            p.priority <= initialProvider.priority &&
+            !excludeProviderIds.includes(p.id)
+        )
+        .map((p) => p.id);
+      if (excludedByPriority.length > 0) {
+        logger.debug("ProxyForwarder: Hedge enforcing monotonic priority", {
+          initialPriority: initialProvider.priority,
+          excludedBelowPriority: excludedByPriority.length,
+        });
+        excludeProviderIds = [...excludeProviderIds, ...excludedByPriority];
+      }
+    }
+
     // 使用公开的选择方法，传入排除列表
     const alternativeProvider = await ProxyProviderResolver.pickRandomProviderWithExclusion(
       session,
