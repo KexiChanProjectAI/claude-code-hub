@@ -7,6 +7,8 @@ import { AsyncTaskManager } from "@/lib/async-task-manager";
 import { getEnvConfig } from "@/lib/config/env.schema";
 import { getCachedSystemSettings } from "@/lib/config/system-settings-cache";
 import { emitProxyLangfuseTrace } from "@/lib/langfuse/emit-proxy-trace";
+import type { StreamingFamily } from "@/lib/langfuse/stream-output-normalizer";
+import { normalizeStreamOutput } from "@/lib/langfuse/stream-output-normalizer";
 import { logger } from "@/lib/logger";
 import { requestCloudPriceTableSync } from "@/lib/price-sync/cloud-price-updater";
 import { ProxyStatusTracker } from "@/lib/proxy-status-tracker";
@@ -291,6 +293,37 @@ export class BoundedStreamTextAccumulator {
     return offset === totalBytes ? out : out.slice(0, offset);
   }
 }
+
+/**
+ * Maps a client request format (`session.originalFormat`) to the streaming
+ * family used by the Langfuse stream-output normalizer. Returns null when the
+ * format is unknown or unsupported, in which case the caller skips
+ * normalization and falls back to the existing raw-text trace behavior.
+ *
+ * - "response"      -> "responses-codex" (Codex / Responses API)
+ * - "openai"        -> "openai-chat"     (OpenAI Chat Completions)
+ * - "claude"        -> "anthropic"       (Anthropic Messages)
+ * - "gemini"        -> "gemini"
+ * - "gemini-cli"    -> "gemini"
+ * - other/unknown   -> null
+ */
+function streamFamilyFromFormat(format: string): StreamingFamily | null {
+  switch (format) {
+    case "response":
+      return "responses-codex";
+    case "openai":
+      return "openai-chat";
+    case "claude":
+      return "anthropic";
+    case "gemini":
+    case "gemini-cli":
+      return "gemini";
+    default:
+      return null;
+  }
+}
+
+export { streamFamilyFromFormat };
 
 /**
  * Idempotent helper to release the agent pool reference count attached to a session.
@@ -2323,6 +2356,7 @@ export class ProxyResponseHandler {
             emitProxyLangfuseTrace(session, {
               responseHeaders: response.headers,
               responseText: allContent,
+              responseOutput: normalizeStreamOutput(allContent, "gemini"),
               usageMetrics: finalizedUsage,
               costUsd: undefined,
               statusCode: finalized.effectiveStatusCode,
@@ -3001,9 +3035,13 @@ export class ProxyResponseHandler {
           specialSettings: session.getSpecialSettings() ?? undefined,
         });
 
+        const streamFamily = streamFamilyFromFormat(session.originalFormat);
         emitProxyLangfuseTrace(session, {
           responseHeaders: response.headers,
           responseText: allContent,
+          responseOutput: streamFamily
+            ? normalizeStreamOutput(allContent, streamFamily)
+            : undefined,
           usageMetrics: usageForCost,
           costUsd: rawCostUsdStr,
           costBreakdown,
