@@ -88,6 +88,7 @@ export interface TraceContext {
   durationMs: number;
   statusCode: number;
   responseText?: string;
+  responseOutput?: unknown;
   isStreaming: boolean;
   sseEventCount?: number;
   errorMessage?: string;
@@ -117,6 +118,10 @@ function isResponseMissing(ctx: TraceContext): boolean {
 }
 
 function buildResponseOutput(ctx: TraceContext): unknown {
+  if (ctx.responseOutput !== undefined) {
+    return ctx.responseOutput;
+  }
+
   if (ctx.responseText) {
     return tryParseJsonSafe(ctx.responseText);
   }

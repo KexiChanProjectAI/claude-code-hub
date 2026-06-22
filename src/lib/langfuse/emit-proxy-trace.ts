@@ -10,6 +10,7 @@ const LANGFUSE_TRUNCATED_MARKER = "\n\n[langfuse_response_truncated]\n\n";
 export interface EmitProxyLangfuseTraceData {
   responseHeaders: Headers;
   responseText: string;
+  responseOutput?: unknown;
   usageMetrics: UsageMetrics | null;
   costUsd: string | undefined;
   costBreakdown?: CostBreakdown;
@@ -114,6 +115,7 @@ export function emitProxyLangfuseTrace(
     durationMs,
     statusCode,
     isStreaming,
+    responseOutput,
     usageMetrics,
     costUsd,
     costBreakdown,
@@ -130,6 +132,7 @@ export function emitProxyLangfuseTrace(
         statusCode,
         isStreaming,
         responseText,
+        responseOutput,
         usageMetrics,
         costUsd,
         costBreakdown,
