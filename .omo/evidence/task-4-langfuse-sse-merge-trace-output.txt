@@ -1,0 +1,39 @@
+Task 4: Implement Anthropic merge rules - COMPLETE
+==================================================================
+Date: 2026-06-22
+Status: COMPLETE - Implemented in normalizer as part of Task 2, verified separately.
+
+SECTION 1: Implementation
+-------------------------
+File: src/lib/langfuse/stream-output-normalizer.ts
+Function: normalizeAnthropic() (lines 264-367)
+Helper: mergeAnthropicUsage() (lines 369-385)
+
+Merge rules implemented:
+1. Base message from message_start.message (line 278)
+2. Per-block assembly from content_block_start / content_block_delta /
+   content_block_stop (lines 279-306)
+3. Text deltas concatenate per block index (line 301)
+4. tool_use input from input_json_delta.partial_json assembled and parsed
+   (lines 336-341)
+5. message_delta provides stop_reason, stop_sequence, and usage override
+   (lines 307-317)
+6. message_stop check as terminal signal (lines 318-320, 323)
+7. Multiple content blocks preserved (lines 328-355)
+8. Usage merge: delta overrides base (lines 369-385)
+
+SECTION 2: Test Coverage
+-------------------------
+File: tests/unit/langfuse/stream-output-normalizer.test.ts
+Tests (all pass):
+- "reconstructs text-only message object from message_start..message_stop" (line 178)
+- "assembles tool_use input from input_json_delta partial_json" (line 254)
+- "refuses normalization for truncated stream without message_stop" (line 334)
+
+SECTION 3: Test Execution
+-------------------------
+Command: bunx vitest run tests/unit/langfuse/stream-output-normalizer.test.ts -t "Anthropic"
+Exit code: 0
+Result: Test Files 1 passed (1)
+
+CONCLUSION: All acceptance criteria met.

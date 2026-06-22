@@ -1,0 +1,71 @@
+
+ RUN  v4.1.9 /home/kexi/claude-code-hub
+      API started at http://127.0.0.1:51204/
+
+stdout | src/lib/utils/sse.test.ts
+
+Vitest 测试环境初始化...
+
+测试配置:
+   - 数据库: 未配置
+   - Redis: 未配置
+   - API Base: http://localhost:13500/api/actions
+
+
+stdout | tests/unit/langfuse/stream-output-normalizer.test.ts
+
+Vitest 测试环境初始化...
+
+测试配置:
+   - 数据库: 未配置
+   - Redis: 未配置
+   - API Base: http://localhost:13500/api/actions
+
+
+stdout | src/lib/utils/sse.test.ts
+
+Vitest 测试环境清理...
+
+Vitest 测试环境清理完成
+
+
+ ✓ |0| src/lib/utils/sse.test.ts > sse utils > isSSEText detects standard SSE by line prefixes 7ms
+ ✓ |0| src/lib/utils/sse.test.ts > sse utils > parseSSEDataForDisplay parses and drops [DONE] 7ms
+ ✓ |0| src/lib/utils/sse.test.ts > sse utils > parseSSEData strips the leading single space after data: 1ms
+ ✓ |0| src/lib/utils/sse.test.ts > sse utils > parseSSEData keeps data value when there is no space after data: 1ms
+ ✓ |0| src/lib/utils/sse.test.ts > sse utils > parseSSEData ignores unsupported SSE fields (e.g. id:) 1ms
+ ✓ |0| src/lib/utils/sse.test.ts > sse utils > parseSSEDataForDisplay supports data-only events and multi-line JSON 1ms
+ ✓ |0| src/lib/utils/sse.test.ts > sse utils > parseSSEDataForDisplay ignores comments and flushes on blank line 1ms
+ ✓ |0| src/lib/utils/sse.test.ts > sse utils > parseSSEData characterizes Responses/Codex SSE event stream 2ms
+ ✓ |0| src/lib/utils/sse.test.ts > sse utils > parseSSEData characterizes Anthropic message stream events 1ms
+ ✓ |0| src/lib/utils/sse.test.ts > sse utils > parseSSEData characterizes data-only NDJSON-shaped Gemini stream 1ms
+stdout | tests/unit/langfuse/stream-output-normalizer.test.ts
+
+Vitest 测试环境清理...
+
+Vitest 测试环境清理完成
+
+
+ ✓ |0| tests/unit/langfuse/stream-output-normalizer.test.ts > normalizeLangfuseStreamingOutput > Responses/Codex > returns response.completed.response verbatim when terminal object is present 8ms
+ ✓ |0| tests/unit/langfuse/stream-output-normalizer.test.ts > normalizeLangfuseStreamingOutput > Responses/Codex > synthesizes minimal ResponseObject from done + created events when terminal response lacks output 3ms
+ ✓ |0| tests/unit/langfuse/stream-output-normalizer.test.ts > normalizeLangfuseStreamingOutput > Responses/Codex > refuses normalization for incomplete stream with only output_text.delta 1ms
+ ✓ |0| tests/unit/langfuse/stream-output-normalizer.test.ts > normalizeLangfuseStreamingOutput > Responses/Codex > refuses normalization when terminal status is failed/incomplete 1ms
+ ✓ |0| tests/unit/langfuse/stream-output-normalizer.test.ts > normalizeLangfuseStreamingOutput > Anthropic > reconstructs text-only message object from message_start..message_stop 5ms
+ ✓ |0| tests/unit/langfuse/stream-output-normalizer.test.ts > normalizeLangfuseStreamingOutput > Anthropic > assembles tool_use input from input_json_delta partial_json 3ms
+ ✓ |0| tests/unit/langfuse/stream-output-normalizer.test.ts > normalizeLangfuseStreamingOutput > Anthropic > refuses normalization for truncated stream without message_stop 1ms
+ ✓ |0| tests/unit/langfuse/stream-output-normalizer.test.ts > normalizeLangfuseStreamingOutput > OpenAI Chat > synthesizes chat.completion from streamed chunks with merged content + finish_reason 2ms
+ ✓ |0| tests/unit/langfuse/stream-output-normalizer.test.ts > normalizeLangfuseStreamingOutput > OpenAI Chat > refuses normalization for chunk stream without any finish_reason 1ms
+ ✓ |0| tests/unit/langfuse/stream-output-normalizer.test.ts > normalizeLangfuseStreamingOutput > Gemini > returns latest complete object with candidates when terminal object present 2ms
+ ✓ |0| tests/unit/langfuse/stream-output-normalizer.test.ts > normalizeLangfuseStreamingOutput > Gemini > synthesizes GeminiResponse from text fragments + metadata when only fragments present 1ms
+ ✓ |0| tests/unit/langfuse/stream-output-normalizer.test.ts > normalizeLangfuseStreamingOutput > Gemini > refuses normalization for fragment stream without any candidates 0ms
+ ✓ |0| tests/unit/langfuse/stream-output-normalizer.test.ts > normalizeLangfuseStreamingOutput > unknown family / empty body > returns null for unknown family 0ms
+ ✓ |0| tests/unit/langfuse/stream-output-normalizer.test.ts > normalizeLangfuseStreamingOutput > unknown family / empty body > returns null for empty body 0ms
+ ✓ |0| tests/unit/langfuse/stream-output-normalizer.test.ts > normalizeLangfuseStreamingOutput > unknown family / empty body > returns null when family does not match the actual stream payload 0ms
+ ✓ |0| tests/unit/langfuse/stream-output-normalizer.test.ts > normalizeLangfuseStreamingOutput > normalizeStreamOutput (positional adapter) > maps responses-codex family to internal responses family and returns merged object 1ms
+ ✓ |0| tests/unit/langfuse/stream-output-normalizer.test.ts > normalizeLangfuseStreamingOutput > normalizeStreamOutput (positional adapter) > returns null for empty body via the positional adapter 0ms
+
+ Test Files  2 passed (2)
+      Tests  27 passed (27)
+   Start at  13:22:47
+   Duration  964ms (transform 268ms, setup 248ms, import 231ms, tests 85ms, environment 814ms)
+

@@ -1,0 +1,122 @@
+Task 1: Add Langfuse responseOutput precedence - TEST COVERAGE VERIFICATION
+==========================================================================
+Date: 2026-06-22
+Status: COMPLETE - No production code change required; all required tests already present and passing.
+
+SECTION 1: Production code verification (NO CHANGES NEEDED)
+-----------------------------------------------------------
+The plan's "Inherited Wisdom" is accurate. All three production-code facts
+verified by reading source directly:
+
+1. EmitProxyLangfuseTraceData.responseOutput?: unknown
+   File: src/lib/langfuse/emit-proxy-trace.ts
+   Line: 9
+   Confirms: field exists, typed as `unknown`, optional.
+
+2. responseOutput passthrough in emitProxyLangfuseTrace()
+   File: src/lib/langfuse/emit-proxy-trace.ts
+   Line: 40
+   Confirms: `responseOutput: data.responseOutput` is forwarded into traceProxyRequest().
+
+3. TraceContext.responseOutput?: unknown
+   File: src/lib/langfuse/trace-proxy-request.ts
+   Line: 77
+   Confirms: field exists on the context consumed by buildResponseOutput().
+
+4. buildResponseOutput() precedence: responseOutput FIRST
+   File: src/lib/langfuse/trace-proxy-request.ts
+   Lines: 106-132
+   Quote:
+     function buildResponseOutput(ctx: TraceContext): unknown {
+       if (ctx.responseOutput !== undefined) {     // line 107 - FIRST check
+         return ctx.responseOutput;                  // line 108 - direct return
+       }
+       if (ctx.responseText) {                       // line 111 - second
+         return tryParseJsonSafe(ctx.responseText);
+       }
+       // ...streaming fallback { streaming: true, sseEventCount }...
+     }
+
+   Precedence chain confirmed:
+     responseOutput  >  responseText(JSON.parse)  >  streaming placeholder
+
+   No bug found. No edit to emit-proxy-trace.ts or trace-proxy-request.ts
+   was required (consistent with task MUST NOT clause).
+
+SECTION 2: Test coverage verification
+-------------------------------------
+File: tests/unit/langfuse/langfuse-trace.test.ts
+
+All four required test scenarios (per plan EXPECTED OUTCOME) already exist
+in the test file and pass:
+
+[Required #1] responseOutput wins over responseText, structured object
+             appears in generation span output
+  Test: "responseOutput wins over responseText when both are provided"
+  Lines: 1080-1118
+  Assertions:
+    - llmCall[1].output === structuredOutput (toEqual)
+    - llmCall[1].output !== rawStreamText
+    - rootCall[1].output === structuredOutput
+    - mockSetTraceIO called with { input, output: structuredOutput }
+
+[Required #2] responseOutput is passed through to setTraceIO
+  Test: "responseOutput wins over responseText for non-stream traces too"
+  Lines: 1120-1143
+  Assertions:
+    - rootCall[1].output === structuredOutput
+    - rootCall[1].output !== JSON.parse(rawJson)
+    - mockSetTraceIO called with object containing output: structuredOutput
+
+  Bonus test: "responseOutput is passed straight through without JSON
+               re-parsing (object identity)"
+  Lines: 1145-1160
+  Assertion:
+    - rootCall[1].output === structuredOutput  (uses .toBe(), reference identity)
+  This proves responseOutput is NOT round-tripped through JSON.stringify/parse.
+
+[Required #3] responseOutput absent + responseText present => existing
+             tryParseJsonSafe behavior preserved
+  Test: "baseline fallback: when responseOutput is absent, raw responseText
+         wins for non-stream traces"
+  Lines: 1033-1055
+  Assertions:
+    - llmCall[1].output === JSON.parse(rawJson)
+    - mockSetTraceIO called with output: JSON.parse(rawJson)
+
+[Required #4] Neither responseOutput nor responseText => streaming fallback
+             { streaming: true, sseEventCount } still works
+  Test A: "baseline fallback: streaming placeholder path unchanged when
+           responseOutput absent"
+    Lines: 1057-1076
+    Asserts: llmCall[1].output === { streaming: true, sseEventCount: 7 }
+  Test B (pre-existing): "should show streaming output with sseEventCount
+                          when no responseText"
+    Lines: 495-514
+    Asserts: llmCall[1].output === { streaming: true, sseEventCount: 42 }
+
+SECTION 3: Test execution result
+---------------------------------
+Command: bunx vitest run tests/unit/langfuse/langfuse-trace.test.ts
+Exit code: 0
+Result:
+  Test Files  1 passed (1)
+  Tests       40 passed (40)
+  Duration    1.09s
+
+All 40 tests pass, including the 5 tests covering this task's required
+behavior (3 new + 2 baseline). No flakiness observed across the run.
+
+SECTION 4: Out-of-scope (handled by other tasks)
+-------------------------------------------------
+The two streaming emit sites in src/app/v1/_lib/proxy/response-handler.ts:
+  - Gemini streaming:    lines 2085-2094
+  - General streaming:   lines 2740-2751
+These currently pass only `responseText` and NOT `responseOutput`. Wiring
+them is explicitly listed in the plan as Task 6 and is out of scope here.
+
+CONCLUSION
+----------
+Task 1 is a pure verification + test-coverage task. The production
+precedence logic was already correct; the test file already contains the
+required coverage. No code changes were made. All tests green.

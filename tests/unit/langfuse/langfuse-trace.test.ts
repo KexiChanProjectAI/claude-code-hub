@@ -1069,6 +1069,137 @@ describe("traceProxyRequest", () => {
     expect(metadata.costUsd).toBe("0.05");
     expect(metadata.timingBreakdown).toBeDefined();
   });
+
+  // --- Baseline characterization: fallback when responseOutput absent (Todo 1) ---
+
+  test("baseline fallback: when responseOutput is absent, raw responseText wins for non-stream traces", async () => {
+    const { traceProxyRequest } = await import("@/lib/langfuse/trace-proxy-request");
+    const rawJson = JSON.stringify({ content: [{ type: "text", text: "raw-fallback-body" }] });
+
+    await traceProxyRequest({
+      session: createMockSession(),
+      responseHeaders: new Headers(),
+      durationMs: 500,
+      statusCode: 200,
+      isStreaming: false,
+      responseText: rawJson,
+    });
+
+    const llmCall = mockRootSpan.startObservation.mock.calls.find(
+      (c: unknown[]) => c[0] === "llm-call"
+    );
+    expect(llmCall[1].output).toEqual(JSON.parse(rawJson));
+    expect(mockSetTraceIO).toHaveBeenCalledWith(
+      expect.objectContaining({
+        output: JSON.parse(rawJson),
+      })
+    );
+  });
+
+  test("baseline fallback: streaming placeholder path unchanged when responseOutput absent", async () => {
+    const { traceProxyRequest } = await import("@/lib/langfuse/trace-proxy-request");
+
+    await traceProxyRequest({
+      session: createMockSession(),
+      responseHeaders: new Headers(),
+      durationMs: 500,
+      statusCode: 200,
+      isStreaming: true,
+      sseEventCount: 7,
+    });
+
+    const llmCall = mockRootSpan.startObservation.mock.calls.find(
+      (c: unknown[]) => c[0] === "llm-call"
+    );
+    expect(llmCall[1].output).toEqual({
+      streaming: true,
+      sseEventCount: 7,
+    });
+  });
+
+  // --- Failing-first: responseOutput must win over responseText (Todo 1 core) ---
+
+  test("responseOutput wins over responseText when both are provided", async () => {
+    const { traceProxyRequest } = await import("@/lib/langfuse/trace-proxy-request");
+    const structuredOutput = {
+      id: "msg_001",
+      type: "message",
+      role: "assistant",
+      content: [{ type: "text", text: "merged-structured-output" }],
+      model: "claude-sonnet-4-20250514",
+      stop_reason: "end_turn",
+      usage: { input_tokens: 10, output_tokens: 5 },
+    };
+    const rawStreamText =
+      'event: message_start\ndata: {"type":"message_start"}\n\nevent: message_stop\ndata: {"type":"message_stop"}\n\n';
+
+    await traceProxyRequest({
+      session: createMockSession(),
+      responseHeaders: new Headers(),
+      durationMs: 500,
+      statusCode: 200,
+      isStreaming: true,
+      sseEventCount: 12,
+      responseText: rawStreamText,
+      responseOutput: structuredOutput,
+    });
+
+    const llmCall = mockRootSpan.startObservation.mock.calls.find(
+      (c: unknown[]) => c[0] === "llm-call"
+    );
+    expect(llmCall[1].output).toEqual(structuredOutput);
+    expect(llmCall[1].output).not.toBe(rawStreamText);
+
+    const rootCall = mockStartObservation.mock.calls[0];
+    expect(rootCall[1].output).toEqual(structuredOutput);
+
+    expect(mockSetTraceIO).toHaveBeenCalledWith({
+      input: expect.any(Object),
+      output: structuredOutput,
+    });
+  });
+
+  test("responseOutput wins over responseText for non-stream traces too", async () => {
+    const { traceProxyRequest } = await import("@/lib/langfuse/trace-proxy-request");
+    const structuredOutput = { synthesized: true, choices: [{ message: { content: "x" } }] };
+    const rawJson = JSON.stringify({ raw: "would-have-won-before" });
+
+    await traceProxyRequest({
+      session: createMockSession(),
+      responseHeaders: new Headers(),
+      durationMs: 500,
+      statusCode: 200,
+      isStreaming: false,
+      responseText: rawJson,
+      responseOutput: structuredOutput,
+    });
+
+    const rootCall = mockStartObservation.mock.calls[0];
+    expect(rootCall[1].output).toEqual(structuredOutput);
+    expect(rootCall[1].output).not.toEqual(JSON.parse(rawJson));
+    expect(mockSetTraceIO).toHaveBeenCalledWith(
+      expect.objectContaining({
+        output: structuredOutput,
+      })
+    );
+  });
+
+  test("responseOutput is passed straight through without JSON re-parsing (object identity)", async () => {
+    const { traceProxyRequest } = await import("@/lib/langfuse/trace-proxy-request");
+    const structuredOutput = { id: 1, nested: { preserved: true } };
+
+    await traceProxyRequest({
+      session: createMockSession(),
+      responseHeaders: new Headers(),
+      durationMs: 500,
+      statusCode: 200,
+      isStreaming: false,
+      responseOutput: structuredOutput,
+    });
+
+    const rootCall = mockStartObservation.mock.calls[0];
+    expect(rootCall[1].output).toBe(structuredOutput);
+  });
 });
 
 describe("isLangfuseEnabled", () => {

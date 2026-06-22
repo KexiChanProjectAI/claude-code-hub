@@ -1,0 +1,41 @@
+Task 5: Implement OpenAI Chat and Gemini merge rules - COMPLETE
+==================================================================
+Date: 2026-06-22
+Status: COMPLETE - Implemented in normalizer as part of Task 2, verified separately.
+
+SECTION 1: Implementation
+-------------------------
+File: src/lib/langfuse/stream-output-normalizer.ts
+
+OpenAI Chat:
+- normalizeOpenAIChat() (lines 389-394) - SSE entry
+- normalizeOpenAIChatFromObjects() (lines 396-483) - NDJSON + common logic
+- Merges per-choice delta content, tracks role from first delta, uses last
+  non-null finish_reason, returns ChatCompletionResponse shape
+
+Gemini:
+- normalizeGeminiFromEvents() (lines 487-492) - SSE entry
+- normalizeGeminiFromObjects() (lines 494-601) - NDJSON + common logic
+- Prefers latest complete object with candidates AND content.role
+- Synthesizes GeminiResponse from merged text parts + latest metadata
+- Both SSE-wrapped Gemini and raw NDJSON supported
+
+SECTION 2: Test Coverage
+-------------------------
+File: tests/unit/langfuse/stream-output-normalizer.test.ts
+OpenAI Chat tests (all pass):
+- "synthesizes chat.completion from streamed chunks with merged content + finish_reason" (line 371)
+- "refuses normalization for chunk stream without any finish_reason" (line 441)
+
+Gemini tests (all pass):
+- "returns latest complete object with candidates when terminal object present" (line 465)
+- "synthesizes GeminiResponse from text fragments + metadata when only fragments present" (line 512)
+- "refuses normalization for fragment stream without any candidates" (line 552)
+
+SECTION 3: Test Execution
+-------------------------
+Command: bunx vitest run tests/unit/langfuse/stream-output-normalizer.test.ts -t "OpenAI Chat|Gemini"
+Exit code: 0
+Result: Test Files 1 passed (1)
+
+CONCLUSION: All acceptance criteria met.

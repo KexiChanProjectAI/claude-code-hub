@@ -1,0 +1,225 @@
+================================================================================
+F2: CODE QUALITY REVIEW
+stream-output-normalizer.ts + response-handler.ts emit-site integration
+================================================================================
+
+VERDICT: APPROVE
+================================================================================
+
+The normalizer is well-structured, family-isolated, and free of the three
+forbidden anti-patterns called out in the task (family-boundary drift,
+text-only shortcuts, provider-testing coupling). Implementation is production
+quality. Minor observations below are non-blocking and do not change the
+verdict.
+
+--------------------------------------------------------------------------------
+1. SCOPE REVIEWED
+--------------------------------------------------------------------------------
+- src/lib/langfuse/stream-output-normalizer.ts          (605 lines, full read)
+- src/app/v1/_lib/proxy/response-handler.ts             (lines 1-100,
+  2050-2160, 2740-2820; emit-site + streamFamilyFromFormat)
+- src/lib/langfuse/emit-proxy-trace.ts                  (consumer, responseOutput)
+- src/lib/utils/sse.ts                                  (parseSSEData / isSSEText)
+- Forbidden-import grep across the normalizer file
+
+
+--------------------------------------------------------------------------------
+2. FORBIDDEN IMPORT CHECK  ->  PASS
+--------------------------------------------------------------------------------
+grep "provider-testing" in src/lib/langfuse/stream-output-normalizer.ts
+  -> 0 matches.
+
+The normalizer imports ONLY:
+  - @/lib/utils/sse              (isSSEText, parseSSEData)
+  - @/types/message             (ParsedSSEEvent type)
+
+No provider-testing / runtime-only modules. No coupling to test harness,
+no reach into provider definitions, no reverse dependency on the proxy
+pipeline. Module is pure data-shape transformation.
+
+
+--------------------------------------------------------------------------------
+3. FAMILY-BOUNDARY DRIFT CHECK  ->  PASS (clean isolation)
+--------------------------------------------------------------------------------
+Dispatch:
+  normalizeByFamily() switch   -> 4 dedicated functions, no fallthrough.
+  normalizeNdjsonByFamily()    -> 4 dedicated branches, no shared state.
+
+Each family has its own closed state machine:
+
+  Responses/Codex (normalizeResponses, L146-254):
+    - State: terminalResponseForBase, created, doneText,
+             reasoningDoneText, deltaParts[].
+    - Uses RESPONSES_TERMINAL_TYPES set
+      {"response.completed","response.failed","response.incomplete"}.
+    - Only "response.*" event types read; no Anthropic/OpenAI/Gemini fields
+      inspected.
+
+  Anthropic (normalizeAnthropic, L264-367):
+    - State: base, IndexedBlocks Map, stopReason, stopSequence,
+             messageDeltaUsage, sawMessageStop.
+    - Inspects ONLY {"message_start","content_block_start",
+      "content_block_delta","message_delta","message_stop"}.
+    - "message_stop" is the terminal signal (refusal if missing).
+    - No reference to choices[] / candidates[] / response.completed.
+
+  OpenAI Chat (normalizeOpenAIChat[FromObjects], L389-483):
+    - State: id/created/model/systemFingerprint/usage,
+             choicesByIndex Map, sawFinishReason.
+    - Inspects ONLY {id, created, model, system_fingerprint, usage, choices}.
+    - "finish_reason" is the terminal signal (refusal if missing).
+    - No reference to content_block / candidates / response.* events.
+
+  Gemini (normalizeGeminiFromObjects, L494-601):
+    - State: textParts[], lastFinishReason, lastUsageMetadata,
+             lastModelVersion, lastResponseId, lastPromptFeedback, sawCandidates.
+    - Inspects ONLY {candidates, usageMetadata, modelVersion,
+      model_version, responseId, promptFeedback}.
+    - Coherent-candidate gate requires content.role AND finishReason.
+
+No field, type-string, or state variable crosses family lines.
+
+
+--------------------------------------------------------------------------------
+4. TEXT-ONLY SHORTCUT CHECK  ->  PASS (structure preserved)
+--------------------------------------------------------------------------------
+  Responses synthesis: preserves output[] with type "message" + content[]
+    of type "output_text"; optional reasoning block unshifted with
+    summary[] of "summary_text" parts. NOT a flat string.
+
+  Anthropic tool_use (L333-348): tool_use blocks reconstructed with
+    {type:"tool_use", id, name, input} where input is JSON.parse'd from the
+    accumulated input_json_delta buffer (L336-342). Non-text blocks that are
+    not tool_use fall through to a generic {type:block.type, text} but their
+    type label is preserved (L350-354) so downstream can distinguish.
+
+  OpenAI Chat: choices[].message = {role, content}. role defaults to
+    "assistant" only when absent. logprobs:null explicit. finish_reason
+    always carried. NOT a flat string.
+
+  Gemini synthesis: candidates[] with content{role:"model", parts:[{text}]}
+    + finishReason + optional metadata. Structured, not flattened.
+
+No collapse of structured output into a single text field anywhere.
+
+
+--------------------------------------------------------------------------------
+5. PROVIDER-TESTING / RUNTIME COUPLING  ->  PASS
+--------------------------------------------------------------------------------
+  - No imports from src/lib/provider-testing/* (grep-confirmed).
+  - No imports from src/app/v1/_lib/proxy/* (runtime). The normalizer
+    depends only on sse utils + type definitions.
+  - response-handler.ts depends ON the normalizer (one-way); the normalizer
+    never depends on response-handler. Dependency direction is correct.
+
+
+--------------------------------------------------------------------------------
+6. EMIT-SITE CORRECTNESS IN response-handler.ts  ->  PASS
+--------------------------------------------------------------------------------
+streamFamilyFromFormat (L76-90): mapping is exhaustive and correct.
+  - "response"   -> "responses-codex"  (Codex / Responses API)
+  - "openai"     -> "openai-chat"
+  - "claude"     -> "anthropic"
+  - "gemini"     -> "gemini"
+  - "gemini-cli" -> "gemini"
+  - default      -> null (caller skips normalization -> raw-text fallback)
+
+Two normalizeStreamOutput emit sites verified:
+
+  (A) Gemini NDJSON passthrough branch (L2121):
+        responseOutput: normalizeStreamOutput(allContent, "gemini")
+      - Hardcoded "gemini" is correct: this code path is the Gemini-only
+        stream-passthrough branch (see L2115 comment "Gemini 流式透传").
+      - No format ambiguity here; family is statically known.
+
+  (B) General streaming finalization (L2774-2789):
+        const streamFamily = streamFamilyFromFormat(session.originalFormat);
+        ...
+        responseOutput: streamFamily
+          ? normalizeStreamOutput(allContent, streamFamily)
+          : undefined
+      - Correct conditional: unknown format -> undefined -> consumer falls
+        back to responseText (verified in emit-proxy-trace.ts: responseOutput
+        is typed `unknown` / optional; trace-proxy-request receives it as-is).
+      - normalizeStreamOutput returns null on refusal (incomplete stream,
+        no terminal signal) -> responseOutput:null -> consumer treats null
+        as "no structured output" and uses raw text. Verified safe.
+
+Non-normalized emit sites (L1218, L1631, L4572): these are non-streaming
+JSON-response paths; responseOutput is intentionally absent (raw JSON body
+is already structured). No regression.
+
+
+--------------------------------------------------------------------------------
+7. MINOR OBSERVATIONS (non-blocking, do NOT change verdict)
+--------------------------------------------------------------------------------
+(a) normalizeResponsesFromObjects (L256-260) is a stub that always returns
+    null. This is deliberate and correct: Responses API uses SSE event
+    framing, never raw NDJSON, so the NDJSON branch for this family should
+    refuse. The "void objects" silences the unused-param lint cleanly.
+    Not a defect; documenting for completeness.
+
+(b) Anthropic content_block_start with no subsequent content_block_delta
+    produces an empty text block (text:""). This matches Anthropic's own
+    SDK semantics (empty text block is valid). Acceptable.
+
+(c) OpenAI Chat: when delta.content is absent but delta.role is present
+    (first chunk), content remains "" until later chunks arrive. If the
+    stream terminates after only a role chunk with finish_reason="stop",
+    the merged choice will have content:"". This is correct behavior (the
+    upstream genuinely sent no content); not a normalizer bug.
+
+(d) Gemini complete-object preference loop (L501-514) walks the typed[]
+    array from the END backwards, returning the LATEST coherent candidate
+    object. This is intentional: terminal generateContent responses carry
+    the most complete state. Comment at L497-500 explains the role-gate.
+    Correct.
+
+(e) The synthesis path for Gemini ignores functionCall / inlineData parts
+    (only text parts are concatenated at L540-548). For tool-calling
+    Gemini streams, synthesis will produce text:"" and refuse (textParts
+    empty -> null at L569). This is SAFE (refusal beats fabrication) but
+    means tool-call-only Gemini streams fall back to raw-text tracing.
+    Acceptable for an observability normalizer; flagged for future
+    enhancement only.
+
+(f) No emoji in code, comments, or string literals (AGENTS.md rule
+    satisfied). Biome formatting appears consistent (double quotes,
+    trailing commas, 2-space indent, ~100 char width).
+
+
+--------------------------------------------------------------------------------
+8. ROBUSTNESS / REFUSAL DISCIPLINE  ->  PASS
+--------------------------------------------------------------------------------
+The module's contract (L39-48) states it MUST NOT fabricate a completed
+structured object for streams that did not reach a terminal payload. Every
+family honors this:
+
+  Responses:   null if response.failed/incomplete, or no created base,
+               or no usable output text.
+  Anthropic:   null if no message_start base OR no message_stop.
+  OpenAI Chat: null if no choice ever carried finish_reason.
+  Gemini:      null if no candidates, or no textParts, or no finishReason.
+
+Every "I don't have a trustworthy terminal signal" case returns null,
+forcing the caller (response-handler.ts emit site) to pass responseOutput
+as null/undefined, which the Langfuse consumer handles by falling back to
+responseText. Refusal discipline is uniform and correct.
+
+
+================================================================================
+VERDICT: APPROVE
+================================================================================
+Quality:    production-ready
+Isolation:  strict per-family state machines, no drift
+Structure:  tool_use / candidates / choices preserved (no text-only shortcuts)
+Coupling:   no provider-testing imports, correct one-way dependency
+Emit sites: 2 normalize call sites in response-handler.ts are correct;
+            unknown format safely degrades to raw-text tracing
+Refusals:   all four families refuse instead of fabricating on incomplete input
+
+Recommended follow-up (optional, not blocking):
+- Gemini synthesis could be extended to preserve functionCall parts for
+  tool-calling streams (observation 7e). Current null-on-refuse behavior is
+  safe but loses structured trace for tool-call-only Gemini responses.
+================================================================================

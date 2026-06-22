@@ -65,4 +65,76 @@ describe("sse utils", () => {
     );
     expect(events).toEqual([{ event: "e", data: 1 }]);
   });
+
+  // Baseline characterization coverage for runtime SSE primitives that the
+  // Langfuse streaming-output normalizer depends on. These tests lock the
+  // exact parsing behavior of parseSSEData on real Codex/Anthropic/OpenAI/Gemini
+  // fixtures so that any future change to parseSSEData is detected before the
+  // normalizer regresses.
+  test("parseSSEData characterizes Responses/Codex SSE event stream", () => {
+    const body = [
+      "event: response.output_text.delta",
+      'data: {"type":"response.output_text.delta","delta":"po"}',
+      "",
+      "event: response.output_text.done",
+      'data: {"type":"response.output_text.done","text":"pong"}',
+      "",
+      "event: response.completed",
+      'data: {"type":"response.completed","response":{"id":"r1","status":"completed"}}',
+      "",
+    ].join("\n");
+    const events = parseSSEData(body);
+    expect(events).toHaveLength(3);
+    expect(events[0]?.event).toBe("response.output_text.delta");
+    expect(events[0]?.data).toEqual({
+      type: "response.output_text.delta",
+      delta: "po",
+    });
+    expect(events[1]?.event).toBe("response.output_text.done");
+    expect(events[1]?.data).toEqual({
+      type: "response.output_text.done",
+      text: "pong",
+    });
+    expect(events[2]?.event).toBe("response.completed");
+    expect((events[2]?.data as { response?: { id?: string } }).response?.id).toBe("r1");
+  });
+
+  test("parseSSEData characterizes Anthropic message stream events", () => {
+    const body = [
+      "event: message_start",
+      'data: {"type":"message_start","message":{"id":"m1","role":"assistant"}}',
+      "",
+      "event: content_block_delta",
+      'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"hi"}}',
+      "",
+      "event: message_stop",
+      'data: {"type":"message_stop"}',
+      "",
+    ].join("\n");
+    const events = parseSSEData(body);
+    expect(events).toHaveLength(3);
+    expect(events[0]?.event).toBe("message_start");
+    expect(events[1]?.event).toBe("content_block_delta");
+    const delta = (events[1]?.data as { delta?: { text?: string } }).delta;
+    expect(delta?.text).toBe("hi");
+    expect(events[2]?.event).toBe("message_stop");
+  });
+
+  test("parseSSEData characterizes data-only NDJSON-shaped Gemini stream", () => {
+    // Gemini passthrough often uses data: only (no event:) lines.
+    const body = [
+      'data: {"candidates":[{"content":{"parts":[{"text":"hel"}]}}]}',
+      "",
+      'data: {"candidates":[{"content":{"parts":[{"text":"lo"}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"totalTokenCount":5}}',
+      "",
+    ].join("\n");
+    const events = parseSSEData(body);
+    expect(events).toHaveLength(2);
+    // No event: prefix -> default "message" event name.
+    expect(events.every((e) => e.event === "message")).toBe(true);
+    expect(
+      (events[1]?.data as { candidates?: Array<{ finishReason?: string }> }).candidates?.[0]
+        ?.finishReason
+    ).toBe("STOP");
+  });
 });

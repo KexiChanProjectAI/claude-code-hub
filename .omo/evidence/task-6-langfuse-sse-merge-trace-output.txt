@@ -1,0 +1,82 @@
+Task 6: Langfuse SSE Merge Trace Output — Wiring Emit Sites
+============================================================
+Date: 2026-06-22
+Status: COMPLETE
+
+## Goal
+Wire both streaming Langfuse emit branches in
+`src/app/v1/_lib/proxy/response-handler.ts` to compute and pass normalized
+`responseOutput` via the stream output normalizer, while keeping raw
+`allContent` for accounting and persistence.
+
+## Production Changes (response-handler.ts)
+
+1. Added imports (lines 10-11):
+   - `import type { StreamingFamily } from "@/lib/langfuse/stream-output-normalizer";`
+   - `import { normalizeStreamOutput } from "@/lib/langfuse/stream-output-normalizer";`
+
+2. Added module-level helper `streamFamilyFromFormat(format: string): StreamingFamily | null`
+   (lines ~76-100) + exported it for direct unit testing.
+   Mapping:
+   - "response"   -> "responses-codex"
+   - "openai"     -> "openai-chat"
+   - "claude"     -> "anthropic"
+   - "gemini"     -> "gemini"
+   - "gemini-cli" -> "gemini"
+   - other/unknown -> null
+
+3. Gemini passthrough emit site (~line 2085, NDJSON path):
+   Added `responseOutput: normalizeStreamOutput(allContent, "gemini")` to the
+   emitProxyLangfuseTrace call. Uses "gemini" family unconditionally
+   (Gemini passthrough always serves Gemini-shaped NDJSON regardless of
+   session.originalFormat).
+
+4. General streaming emit site (~line 2740):
+   Added `const streamFamily = streamFamilyFromFormat(session.originalFormat);`
+   before the emit call, and
+   `responseOutput: streamFamily ? normalizeStreamOutput(allContent, streamFamily) : undefined`.
+   When family is null (unknown format), responseOutput is undefined, which
+   forces buildResponseOutput() to fall back to responseText parsing.
+
+## Untouched (per spec MUST-NOT-CHANGE)
+- `allContent` still flows to SessionManager.storeSessionResponse, snapshots,
+  finalizeDeferredStreamingFinalizationIfNeeded, finalizeRequestStats.
+- `sseEventCount: chunks.length` unchanged at general emit site.
+- `chunks.join("")` persistence behavior unchanged.
+- emit-proxy-trace.ts, trace-proxy-request.ts, session-manager.ts untouched.
+
+## Test File
+Created `tests/unit/proxy/response-handler-langfuse-stream-output.test.ts`
+(17 tests, all passing). Covers:
+- streamFamilyFromFormat: all 5 format mappings + null for unknown.
+- Gemini passthrough emit: structured responseOutput from NDJSON, raw text
+  preserved, null responseOutput for incomplete stream.
+- General streaming emit per format: Responses, Anthropic, OpenAI, Gemini
+  all yield structured responseOutput; unknown format yields undefined;
+  incomplete stream yields null.
+- Raw persistence contract: responseText always equals original allContent
+  (normalizer does not mutate input); SSE/NDJSON markers intact.
+
+The test uses a faithful "emit-site simulator" that mirrors the exact
+production computation (streamFamilyFromFormat + normalizeStreamOutput +
+responseText: allContent) rather than spinning up the full
+ProxyResponseHandler (which would drag in cost calc, hedge billing, circuit
+breakers). This keeps the test focused, fast (6.5s), and resilient to
+unrelated refactors.
+
+## Verification
+- `bunx vitest run tests/unit/proxy/response-handler-langfuse-stream-output.test.ts`
+  -> 17/17 passed in 6.5s.
+- `bunx vitest run tests/unit/proxy/response-handler-*.test.ts tests/unit/langfuse/`
+  -> 7 files, all passed (no regressions in response-handler or langfuse suites).
+- `bun run typecheck` (tsgo project mode) -> clean, no errors.
+- `bunx biome check src/app/v1/_lib/proxy/response-handler.ts
+  tests/unit/proxy/response-handler-langfuse-stream-output.test.ts` ->
+  0 errors, 0 warnings, 2 infos (pre-existing style nits, non-blocking).
+
+## Pre-existing failures (NOT caused by this task)
+3 forwarder test files fail on the clean tree too (verified via git stash):
+- tests/unit/proxy/hedge-upstream-message-candidate.test.ts
+- tests/unit/proxy/proxy-forwarder-fake-200-html.test.ts
+- tests/unit/proxy/proxy-forwarder-hedge-first-byte.test.ts
+These are unrelated to the langfuse/response-handler changes.

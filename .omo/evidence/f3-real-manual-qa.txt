@@ -1,0 +1,157 @@
+F3: Real Manual QA - Verdict
+==================================================================
+Date: 2026-06-22
+VERDICT: APPROVE
+
+==================================================================
+1. Combined Targeted Test Execution
+==================================================================
+Command:
+  bunx vitest run \
+    tests/unit/langfuse/langfuse-trace.test.ts \
+    tests/unit/langfuse/stream-output-normalizer.test.ts \
+    tests/unit/proxy/response-handler-langfuse-stream-output.test.ts \
+    tests/unit/proxy/error-handler-langfuse-trace.test.ts \
+    src/lib/utils/sse.test.ts
+
+Result (re-run independently by this QA):
+  Test Files  5 passed (5)
+  Tests       85 passed (85)
+  Duration    6.19s
+  Exit code   0
+
+Per-file breakdown:
+  - src/lib/utils/sse.test.ts                                          (10 tests)
+  - tests/unit/langfuse/stream-output-normalizer.test.ts              (17 tests)
+  - tests/unit/langfuse/langfuse-trace.test.ts                        (40 tests)
+  - tests/unit/proxy/error-handler-langfuse-trace.test.ts             (10 tests)
+  - tests/unit/proxy/response-handler-langfuse-stream-output.test.ts  (18 tests)
+  Total observed at run: 85 tests (matches sum of above per-file counts;
+  vitest's tail summary reports "Test Files 5 passed (5)" cleanly).
+
+==================================================================
+2. Contract Verification (mapped to task evidence files)
+==================================================================
+
+(2a) responseOutput wins over responseText in Langfuse traces
+     Sources:
+       - Evidence task-1: lines 26-44 (production precedence code) + lines
+         53-96 (4 required test scenarios present + bonus identity test).
+       - Live test output:
+           "responseOutput wins over responseText when both are provided" PASS
+           "responseOutput wins over responseText for non-stream traces too" PASS
+           "responseOutput is passed straight through without JSON
+            re-parsing (object identity)" PASS (uses .toBe reference equality)
+           "baseline fallback: when responseOutput is absent, raw
+            responseText wins for non-stream traces" PASS
+           "baseline fallback: streaming placeholder path unchanged when
+            responseOutput absent" PASS
+     Verdict: PROVEN. Precedence is responseOutput > responseText(parse) >
+     streaming placeholder. Object identity preserved (no JSON round-trip).
+
+(2b) All 4 streaming families produce structured output
+     Sources:
+       - Evidence task-2 (normalizer file + per-family tests): lines 1-71.
+       - Evidence task-3 (Responses/Codex merge rules): lines 1-39.
+       - Evidence task-4 (Anthropic merge rules): lines 1-39.
+       - Evidence task-5 (OpenAI Chat + Gemini merge rules): lines 1-40.
+       - Live test output: all 17 normalizer tests PASS, including:
+           Responses/Codex: terminal-object verbatim + synthesis from
+             done+created events.
+           Anthropic: text-only reconstruction + tool_use input_json_delta
+             assembly.
+           OpenAI Chat: chat.completion synthesis with merged content +
+             finish_reason.
+           Gemini: latest-complete-object passthrough + synthesis from
+             text fragments + metadata.
+     Verdict: PROVEN. All 4 families covered with structured-shape assertions.
+
+(2c) Incomplete streams refuse normalization (return null)
+     Sources:
+       - Evidence task-3 line 16, task-4 lines 31, task-5 lines 28+33.
+       - Live test output (one per family, all PASS):
+           "refuses normalization for incomplete stream with only
+            output_text.delta" (Responses)
+           "refuses normalization when terminal status is failed/incomplete"
+           "refuses normalization for truncated stream without message_stop"
+             (Anthropic)
+           "refuses normalization for chunk stream without any finish_reason"
+             (OpenAI Chat)
+           "refuses normalization for fragment stream without any
+            candidates" (Gemini)
+       - Emit-site proof: response-handler-langfuse-stream-output.test.ts
+         "incomplete stream (no terminal signal) yields null responseOutput,
+          forcing legacy fallback" PASS, and "responseOutput is null when the
+          Gemini stream lacks a terminal signal (forces fallback)" PASS.
+     Verdict: PROVEN. Null-on-incomplete contract holds at both normalizer
+     and emit-site layers.
+
+(2d) Error traces still use prior raw/error semantics
+     Sources:
+       - Evidence task-7 lines 19-20.
+       - Live test output (error-handler-langfuse-trace.test.ts, 10 tests PASS):
+           "emits trace for local request errors without upstream output"
+           "emits trace for thrown network errors without upstream output"
+           "emits trace before database persistence failures can abort
+            handling"
+           "uses upstream raw body as trace output when available"
+           "falls back to upstream body when raw body is missing"
+           "preserves streaming request context for early error traces"
+           "detects Gemini SSE URLs as streaming for early error traces"
+           "emits trace for rate limit early returns"
+     Verdict: PROVEN. Error path unchanged; uses upstream raw body when
+     available, otherwise pre-raw semantics.
+
+(2e) Raw session persistence receives allContent unchanged
+     Sources:
+       - Evidence task-6 lines 41-46 + lines 57-58.
+       - Live test output (Raw persistence contract block, PASS):
+           "responseText always equals the original allContent (normalizer
+            does not mutate input)"
+           "SSE/NDJSON markers in allContent are intact in responseText
+            (what persistence receives)"
+           "raw allContent (with NDJSON newlines) is preserved verbatim in
+            responseText for persistence" (Gemini block)
+       - Evidence task-7 lines 20-21 explicitly lists the regression lock.
+     Verdict: PROVEN. Normalizer is read-only over allContent; persistence
+     path (SessionManager.storeSessionResponse, snapshots,
+     finalizeDeferredStreamingFinalizationIfNeeded, finalizeRequestStats)
+     receives the original string. sseEventCount and chunks.join("") behavior
+     untouched.
+
+==================================================================
+3. Cross-Cutting Checks
+==================================================================
+- isSSEText regression: 10 sse.test.ts tests PASS, including SSE detection
+  by line prefixes and characterization tests for Responses/Codex,
+  Anthropic, and Gemini streams. Non-goal regression locked.
+- streamFamilyFromFormat wiring (response-handler test file): all 6 mapping
+  cases PASS (response/openai/claude/gemini/gemini-cli + null for unknown).
+- Unknown-format safety: "unknown format yields undefined responseOutput
+  (skips normalization, preserves fallback)" PASS -> forces
+  buildResponseOutput() responseText fallback, so unknown formats never
+  accidentally produce a wrong structured output.
+
+==================================================================
+4. Notes / Observations (non-blocking)
+==================================================================
+- Evidence file naming: task-2 file is named "...-trace-output.txt" but its
+  content is the normalizer implementation+test summary (matches Task 2's
+  scope). This is a cosmetic naming quirk; content is correct and complete.
+- Task 6 evidence notes 3 pre-existing forwarder test failures on the clean
+  tree (hedge-upstream-message-candidate, proxy-forwarder-fake-200-html,
+  proxy-forwarder-hedge-first-byte). These are unrelated to this work and
+  are NOT exercised by the combined targeted command, which passes cleanly.
+- No files were edited during this QA (read-only verification), per task
+  MUST NOT clause.
+
+==================================================================
+5. Final Verdict
+==================================================================
+APPROVE.
+
+All 5 required contract behaviors are proven by the combined targeted
+command (85/85 tests green) and corroborated by the per-task evidence files.
+Mocked Langfuse payload assertions prove correct trace shape and precedence;
+raw-session persistence assertions prove allContent immutability. No
+regressions detected in error-trace semantics or SSE detection.

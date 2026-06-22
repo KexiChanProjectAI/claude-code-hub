@@ -1,0 +1,135 @@
+F1: Plan Compliance Audit
+Plan: .omo/plans/langfuse-sse-merge-trace-output.md
+Date: 2026-06-22
+Auditor: Sisyphus-Junior (F1 final verification wave)
+
+================================================================
+VERDICT: APPROVE WITH ADVISORY
+================================================================
+
+The plan's Langfuse SSE merge work is fully and correctly implemented
+within scope. One advisory is documented below (an out-of-scope
+uncommitted change in forwarder.ts that does NOT belong to this plan
+and must be excluded from any commit made under this plan).
+
+================================================================
+1. CHANGED FILES (git diff --stat HEAD)
+================================================================
+Production:
+  src/app/v1/_lib/proxy/response-handler.ts   +38  (imports, streamFamilyFromFormat, 2 emit sites)
+  src/lib/langfuse/emit-proxy-trace.ts        +2   (responseOutput field added)
+  src/lib/langfuse/trace-proxy-request.ts     +5   (responseOutput field + precedence in buildResponseOutput)
+  src/app/v1/_lib/proxy/forwarder.ts          +30/-20  *** ADVISORY: OUT OF SCOPE ***
+
+Tests:
+  src/lib/utils/sse.test.ts                   +72  (baseline characterization for parseSSEData)
+  tests/unit/langfuse/langfuse-trace.test.ts  +131 (responseOutput precedence + baseline fallback)
+
+Untracked (new, expected by plan):
+  src/lib/langfuse/stream-output-normalizer.ts                         (new, 19781 bytes)
+  tests/unit/langfuse/stream-output-normalizer.test.ts                 (new, 18710 bytes)
+  tests/unit/proxy/response-handler-langfuse-stream-output.test.ts     (new, 16130 bytes)
+
+================================================================
+2. MUST HAVE ITEMS
+================================================================
+[x] Langfuse streaming traces prefer structured `responseOutput` over reparsing raw `responseText`.
+    - emit-proxy-trace.ts: EmitProxyLangfuseTraceData gains optional `responseOutput?: unknown`.
+    - trace-proxy-request.ts: TraceContext gains `responseOutput?`, buildResponseOutput()
+      returns ctx.responseOutput verbatim when defined; falls back to responseText parsing.
+
+[x] All 4 payload families implemented in stream-output-normalizer.ts:
+    - responses-codex: normalizeResponses (terminal-object-first via response.completed.response;
+      synthesis from response.created + output_text.done/reasoning_summary_text.done/reasoning_summary_part.done
+      + output_text.delta fallback). Matches codex/types/response.ts shape.
+    - anthropic: normalizeAnthropic (message_start base, per-block assembly from content_block_start/
+      delta/stop, tool_use input_json_delta merge, message_delta stop_reason/stop_sequence/usage,
+      message_stop terminal gate).
+    - openai-chat: normalizeOpenAIChat / normalizeOpenAIChatFromObjects (per-choice role/content merge,
+      last non-null finish_reason). Matches codex/types/compatible.ts ChatCompletionResponse.
+    - gemini: normalizeGeminiFromEvents / normalizeGeminiFromObjects (latest complete object with
+      candidates preferred; otherwise synthesize from merged text parts + latest usageMetadata/
+      modelVersion/responseId/promptFeedback/finishReason).
+
+[x] Incomplete/error streams fall back: normalizer contract (lines 39-48) explicitly refuses to
+    fabricate; returns null when terminal evidence is missing. Verified in normalizeResponses
+    (returns null when no `created` event, no done/delta text, or response.failed/incomplete).
+    Caller (response-handler.ts:2778-2780) passes `undefined` when streamFamily is null or
+    normalization returns null, preserving legacy raw/error behavior.
+
+[x] sseEventCount, usageMetrics, costUsd, costBreakdown, statusCode, durationMs, error fields
+    remain on both emit sites (response-handler.ts:2121-2128 Gemini, 2775-2789 general).
+
+[x] Raw session response storage / snapshots / SSE dashboard display unchanged:
+    - response-handler.ts Gemini site: allContent still used for
+      SessionManager.storeSessionResponsePhaseSnapshot (line 2083),
+      finalizeDeferredStreamingFinalizationIfNeeded (line 2102),
+      finalizeRequestStats (line 2110). Only the Langfuse emit (line 2121) receives responseOutput.
+    - General site: same pattern — chunks.join("") persistence unchanged; only the Langfuse emit
+      (lines 2778-2780) receives responseOutput.
+
+================================================================
+3. MUST NOT HAVE (GUARDRAILS)
+================================================================
+[x] src/lib/config/env.schema.ts              -> CLEAN (no diff)
+[x] .env.example                              -> CLEAN (no diff)
+[x] src/lib/session-manager.ts                -> CLEAN (no diff)
+[x] src/app/[locale]/dashboard/sessions/[sessionId]/messages/_components/session-details-tabs.tsx -> CLEAN
+[x] src/components/ui/code-display.tsx        -> CLEAN (no diff)
+[x] src/lib/provider-testing/utils/sse-collector.ts -> CLEAN; and grep confirms NO production
+    import of provider-testing into src/lib/langfuse/*, response-handler.ts, or utils/sse.ts.
+    The normalizer only imports isSSEText/parseSSEData from @/lib/utils/sse (line 1).
+
+[x] No env/feature/rollout flag added. Searched changed production files for
+    ENABLE_*, FEATURE_*, ROLLOUT, LANGFUSE_NORMALIZE -> none found. The behavior is a direct
+    rollout as specified by the plan's "What it will NOT do: no feature flag or env switch."
+
+[x] Billing/fake-200/session-binding/persistence/response-body accounting: untouched. The only
+    production behavioral change is the addition of `responseOutput` to the Langfuse emit payload;
+    all other call sites still consume raw `allContent`.
+
+[x] Non-stream and error trace behavior preserved: buildResponseOutput falls through to legacy
+    tryParseJsonSafe(responseText) when responseOutput is undefined (which it is for all non-stream
+    and error paths, since only the two streaming emit sites populate it).
+
+================================================================
+4. ADVISORY: OUT-OF-SCOPE CHANGE IN forwarder.ts
+================================================================
+src/app/v1/_lib/proxy/forwarder.ts has an uncommitted working-tree modification (+30/-20 lines)
+in `selectProviderForHedgeRetry` (around line 3669). The change adds same-priority tier exclusion
+("同层互斥") and renames the monotonic-priority gate. This is NOT mentioned anywhere in the
+langfuse-sse-merge-trace-output plan and is semantically unrelated (provider hedge selection vs.
+Langfuse trace shaping).
+
+Likely cause: this is pre-existing local work-in-progress from a prior hedge-priority effort
+(HEAD commit 642e1d67 "feat(hedge): enforce monotonic priority selection" touched the same area).
+
+REQUIRED ACTION (does not block this plan's verdict):
+  - When committing the Langfuse plan work, do NOT stage forwarder.ts.
+  - The forwarder.ts change should be reviewed/committed under its own hedge-related context.
+  - This file is a guardrail only in the sense that it is outside this plan's declared scope;
+    it is NOT in the plan's explicit "Must NOT change" guardrail list, so its presence in the
+    working tree does not invalidate the Langfuse implementation.
+
+================================================================
+5. RAW SESSION DISPLAY/BEHAVIOR CONFIRMATION
+================================================================
+- session-manager.ts: no diff (CLEAN).
+- session-details-tabs.tsx: no diff (CLEAN).
+- code-display.tsx: no diff (CLEAN).
+- response-handler.ts emit sites: raw allContent still flows to all persistence/accounting paths;
+  only the Langfuse trace emit additionally receives the normalized responseOutput.
+- src/lib/utils/sse.ts (the runtime SSE primitives used by dashboard display helpers): no production
+  diff; only sse.test.ts gained baseline characterization tests (no behavior change).
+
+================================================================
+FINAL VERDICT: APPROVE
+================================================================
+All plan Must-have items are implemented and verified against the diff.
+All Must-NOT-have guardrails are respected; every guardrailed file is byte-clean.
+No env/config/rollout flag was introduced.
+Raw session storage and dashboard display behavior remain untouched.
+
+The advisory on forwarder.ts is a scope-hygiene note for the committer, not a defect in the
+Langfuse plan work itself. Exclude forwarder.ts from any commit made under this plan and the
+work is ready for F2/F3/F4.

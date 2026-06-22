@@ -1,0 +1,54 @@
+F4 SCOPE FIDELITY RE-APPROVAL
+==============================
+Timestamp: 2026-06-22 (re-run after forwarder.ts revert)
+
+OBJECTIVE
+---------
+Confirm the working-tree diff contains ONLY Langfuse trace-shaping changes,
+their tests/helpers, and evidence files. forwarder.ts scope creep was reverted
+and must show zero diff from HEAD.
+
+TRACKED DIFF (git diff --stat HEAD)
+-----------------------------------
+ src/app/v1/_lib/proxy/response-handler.ts  |  38 +++++++++
+ src/lib/langfuse/emit-proxy-trace.ts        |   2 +
+ src/lib/langfuse/trace-proxy-request.ts     |   5 ++
+ src/lib/utils/sse.test.ts                   | 72 ++++++++++++++++
+ tests/unit/langfuse/langfuse-trace.test.ts  |131 +++++++++++++++++++++++++++++
+ 5 files changed, 248 insertions(+)
+
+NEW UNTRACKED (in-scope)
+------------------------
+ src/lib/langfuse/stream-output-normalizer.ts
+ tests/unit/langfuse/stream-output-normalizer.test.ts
+ tests/unit/proxy/response-handler-langfuse-stream-output.test.ts
+
+VERIFICATION CHECKS
+-------------------
+[X] forwarder.ts: NO diff from HEAD (empty diff confirmed)
+[X] Only Langfuse-related source changed:
+    - src/lib/langfuse/emit-proxy-trace.ts       (+2)
+    - src/lib/langfuse/trace-proxy-request.ts    (+5)
+    - src/lib/langfuse/stream-output-normalizer.ts (new)
+[X] Only proxy/response-handler.ts touched outside langfuse/ (stream wiring, +38)
+[X] Test-only files: sse.test.ts, langfuse-trace.test.ts,
+    stream-output-normalizer.test.ts, response-handler-langfuse-stream-output.test.ts
+[X] NO billing files changed
+[X] NO session storage files changed
+[X] NO UI/dashboard files changed
+[X] NO forbidden path matched in tracked diff
+    (grep forwarder|billing|session|store|ui|dashboard -> no match)
+
+SCOPE COMPLIANCE
+----------------
+All changed paths fall within the approved F4 scope:
+  - Langfuse trace shaping (stream-output-normalizer, emit-proxy-trace, trace-proxy-request)
+  - Response handler stream-output wiring (single entry point for normalization)
+  - Supporting tests and helpers
+  - Evidence/notepad files under .omo/
+
+No collateral scope creep detected after the forwarder.ts revert.
+
+VERDICT
+-------
+APPROVE

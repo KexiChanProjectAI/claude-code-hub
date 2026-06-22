@@ -1,0 +1,35 @@
+Task 3: Implement Responses/Codex merge rules - COMPLETE
+==================================================================
+Date: 2026-06-22
+Status: COMPLETE - Implemented in normalizer as part of Task 2, verified separately.
+
+SECTION 1: Implementation
+-------------------------
+File: src/lib/langfuse/stream-output-normalizer.ts
+Function: normalizeResponses() (lines 146-254)
+
+Merge rules implemented:
+1. Terminal-object-first: response.completed with status="completed" AND non-empty
+   output array returns the response object verbatim (line 169)
+2. Synthesis: response.output_text.done + response.completed without output yields
+   a valid ResponseObject using terminal response's usage metadata (lines 226-253)
+3. Incomplete refusal: delta-only streams without terminal events return null (line 214)
+4. Reasoning summary text carried forward in synthesized output (lines 245-251)
+5. Failed/incomplete terminal status returns null (lines 179-180)
+
+SECTION 2: Test Coverage
+-------------------------
+File: tests/unit/langfuse/stream-output-normalizer.test.ts
+Tests (all pass):
+- "returns response.completed.response verbatim when terminal object is present" (line 23)
+- "synthesizes minimal ResponseObject from done + created events when terminal response lacks output" (line 65)
+- "refuses normalization for incomplete stream with only output_text.delta" (line 133)
+- "refuses normalization when terminal status is failed/incomplete" (line 153)
+
+SECTION 3: Test Execution
+-------------------------
+Command: bunx vitest run tests/unit/langfuse/stream-output-normalizer.test.ts -t "Responses/Codex"
+Exit code: 0
+Result: Test Files 1 passed (1)
+
+CONCLUSION: All acceptance criteria met.

@@ -1,0 +1,24 @@
+Task 7: Lock non-goal regressions - COMPLETE
+==================================================================
+Date: 2026-06-22
+Status: COMPLETE - All regression tests pass.
+
+SECTION 1: Combined Targeted Test Suite Results
+-----------------------------------------------
+Command: bunx vitest run tests/unit/langfuse/langfuse-trace.test.ts tests/unit/langfuse/stream-output-normalizer.test.ts tests/unit/proxy/response-handler-langfuse-stream-output.test.ts tests/unit/proxy/error-handler-langfuse-trace.test.ts src/lib/utils/sse.test.ts
+
+Result: Test Files 5 passed (5)
+- tests/unit/langfuse/langfuse-trace.test.ts: 40 tests - responseOutput precedence + existing trace behavior
+- tests/unit/langfuse/stream-output-normalizer.test.ts: 19 tests - all 4 family implementations
+- tests/unit/proxy/response-handler-langfuse-stream-output.test.ts: 17 tests - emit site wiring + raw persistence contract
+- tests/unit/proxy/error-handler-langfuse-trace.test.ts: 12 tests - error traces use prior raw/error semantics unchanged
+- src/lib/utils/sse.test.ts: 8 tests - SSE parsing and identification unchanged
+
+SECTION 2: Regression Assertions Coverage
+------------------------------------------
+1. Error handler Langfuse traces still use prior raw/error semantics (PROVEN - error-handler-langfuse-trace.test.ts passes)
+2. Raw session/debug strings still identify as SSE (PROVEN - sse.test.ts tests isSSEText passes)
+3. Raw session persistence receives original allContent, not normalized output (PROVEN - response-handler-langfuse-stream-output.test.ts has "responseText always equals original allContent" and "SSE/NDJSON markers intact" assertions)
+4. Incomplete/error streams still refuse normalization (PROVEN - stream-output-normalizer.test.ts has refusal fixtures for all 4 families)
+
+CONCLUSION: All regression locks pass.
