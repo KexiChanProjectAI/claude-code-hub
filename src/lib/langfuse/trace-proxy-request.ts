@@ -1,3 +1,4 @@
+import type { ClientFormat } from "@/app/v1/_lib/proxy/format-mapper";
 import type { UsageMetrics } from "@/app/v1/_lib/proxy/response-handler";
 import type { ProxySession } from "@/app/v1/_lib/proxy/session";
 import { isLangfuseEnabled } from "@/lib/langfuse/index";
@@ -152,6 +153,32 @@ function buildLargeTextPreview(text: string): Record<string, unknown> {
     head: text.slice(0, LANGFUSE_TEXT_PREVIEW_EDGE_CHARS),
     tail: text.slice(-LANGFUSE_TEXT_PREVIEW_EDGE_CHARS),
   };
+}
+
+/**
+ * Map a client request format to a human-readable protocol name used
+ * in Langfuse trace names.
+ *
+ * - "response"  -> "response"   (Codex / Responses API)
+ * - "openai"    -> "chat"       (OpenAI Chat Completions)
+ * - "claude"    -> "message"    (Anthropic Messages API)
+ * - "gemini"    -> "gemini"     (Gemini API)
+ * - "gemini-cli" -> "gemini"    (Gemini CLI)
+ */
+function formatToProtocolName(format: ClientFormat): string {
+  switch (format) {
+    case "response":
+      return "response";
+    case "openai":
+      return "chat";
+    case "claude":
+      return "message";
+    case "gemini":
+    case "gemini-cli":
+      return "gemini";
+    default:
+      return "chat";
+  }
 }
 
 /**
@@ -337,7 +364,7 @@ export async function traceProxyRequest(ctx: TraceContext): Promise<void> {
         sessionId: session.sessionId ?? undefined,
         tags,
         metadata: traceMetadata,
-        traceName: `${session.method} ${session.getEndpoint() ?? "/"}`,
+        traceName: `${messageContext?.user?.name ?? "unknown"} ${session.getOriginalModel() ?? "(no-model)"} ${formatToProtocolName(session.originalFormat)}`,
       },
       async () => {
         // 1. Guard pipeline span (if forwardStartTime was recorded)
