@@ -239,7 +239,11 @@ export async function traceProxyRequest(ctx: TraceContext): Promise<void> {
 
     // Build trace-level metadata (propagateAttributes requires all values to be strings)
     const traceMetadata: Record<string, string> = {
+      user: messageContext?.user?.name ?? "",
       keyName: messageContext?.key?.name ?? "",
+      sessionId: session.sessionId ?? "",
+      ip: session.clientIp ?? "",
+      provider: provider?.name ?? "",
       endpoint: session.getEndpoint() ?? "",
       method: session.method,
       clientFormat: session.originalFormat,

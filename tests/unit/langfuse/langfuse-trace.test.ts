@@ -90,6 +90,7 @@ function createMockSession(overrides: Record<string, unknown> = {}) {
     originalFormat: "claude",
     userAgent: "claude-code/1.0",
     sessionId: "sess_abc12345_def67890",
+    clientIp: "192.168.1.1",
     provider: {
       id: 1,
       name: "anthropic-main",
@@ -275,6 +276,13 @@ describe("traceProxyRequest", () => {
           "claude-sonnet-4-20250514",
           "2xx",
         ]),
+        metadata: expect.objectContaining({
+          user: "testuser",
+          keyName: "default-key",
+          sessionId: "sess_abc12345_def67890",
+          ip: "192.168.1.1",
+          provider: "anthropic-main",
+        }),
       })
     );
   });
