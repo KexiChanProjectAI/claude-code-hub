@@ -244,7 +244,7 @@ export async function traceProxyRequest(ctx: TraceContext): Promise<void> {
     const rootSpanMetadata: Record<string, unknown> = {
       endpoint: session.getEndpoint(),
       method: session.method,
-      model: session.getCurrentModel(),
+      model: session.getOriginalModel(),
       clientFormat: session.originalFormat,
       providerName: provider?.name,
       statusCode,
@@ -261,7 +261,7 @@ export async function traceProxyRequest(ctx: TraceContext): Promise<void> {
     if (provider?.providerType) tags.push(provider.providerType);
     if (provider?.name) tags.push(provider.name);
     if (session.originalFormat) tags.push(session.originalFormat);
-    if (session.getCurrentModel()) tags.push(session.getCurrentModel()!);
+    if (session.getOriginalModel()) tags.push(session.getOriginalModel()!);
     tags.push(getStatusCategory(statusCode));
 
     // Build trace-level metadata (propagateAttributes requires all values to be strings)
@@ -286,8 +286,8 @@ export async function traceProxyRequest(ctx: TraceContext): Promise<void> {
       providerType: provider?.providerType,
       providerChain: session.getProviderChain(),
       // Model
-      model: session.getCurrentModel(),
-      originalModel: session.getOriginalModel(),
+      model: session.getOriginalModel(),
+      redirectedModel: session.getCurrentModel(),
       modelRedirected: session.isModelRedirected(),
       // Special settings
       specialSettings: session.getSpecialSettings(),
@@ -444,7 +444,7 @@ export async function traceProxyRequest(ctx: TraceContext): Promise<void> {
         const generation = rootSpan.startObservation(
           "llm-call",
           {
-            model: session.getCurrentModel() ?? undefined,
+            model: session.getOriginalModel() ?? undefined,
             input: generationInput,
             output: generationOutput,
             ...(usageDetails && Object.keys(usageDetails).length > 0 ? { usageDetails } : {}),
