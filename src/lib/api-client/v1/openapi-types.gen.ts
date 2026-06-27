@@ -2508,6 +2508,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/keys:validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate API key string
+         * @description Admin-only diagnostic endpoint. Tests whether an API key string is currently usable and returns the key owner and name. Does not consume tokens, does not count against the proxy brute-force auth rate limiter, and never returns the raw key.
+         */
+        post: operations["postKeysValidate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/keys/{keyId}:enable": {
         parameters: {
             query?: never;
@@ -33152,6 +33172,221 @@ export interface operations {
                 content: {
                     "application/json": {
                         [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @description Stable problem type URI or URN. */
+                        type: string;
+                        /** @description Short problem title. */
+                        title: string;
+                        /** @description HTTP status code. */
+                        status: number;
+                        /** @description Human-readable error detail. */
+                        detail: string;
+                        /** @description Request path that produced the problem. */
+                        instance: string;
+                        /** @description Application error code for frontend i18n. */
+                        errorCode: string;
+                        /** @description Optional i18n parameters. */
+                        errorParams?: {
+                            [key: string]: unknown;
+                        };
+                        /** @description Optional request trace identifier. */
+                        traceId?: string;
+                        /** @description Validation failure details. */
+                        invalidParams?: {
+                            /** @description Path to the invalid input field. */
+                            path: (string | number)[];
+                            /** @description Machine-readable validation error code. */
+                            code: string;
+                            /** @description Validation error message. */
+                            message: string;
+                        }[];
+                    };
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @description Stable problem type URI or URN. */
+                        type: string;
+                        /** @description Short problem title. */
+                        title: string;
+                        /** @description HTTP status code. */
+                        status: number;
+                        /** @description Human-readable error detail. */
+                        detail: string;
+                        /** @description Request path that produced the problem. */
+                        instance: string;
+                        /** @description Application error code for frontend i18n. */
+                        errorCode: string;
+                        /** @description Optional i18n parameters. */
+                        errorParams?: {
+                            [key: string]: unknown;
+                        };
+                        /** @description Optional request trace identifier. */
+                        traceId?: string;
+                        /** @description Validation failure details. */
+                        invalidParams?: {
+                            /** @description Path to the invalid input field. */
+                            path: (string | number)[];
+                            /** @description Machine-readable validation error code. */
+                            code: string;
+                            /** @description Validation error message. */
+                            message: string;
+                        }[];
+                    };
+                };
+            };
+            /** @description Access denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @description Stable problem type URI or URN. */
+                        type: string;
+                        /** @description Short problem title. */
+                        title: string;
+                        /** @description HTTP status code. */
+                        status: number;
+                        /** @description Human-readable error detail. */
+                        detail: string;
+                        /** @description Request path that produced the problem. */
+                        instance: string;
+                        /** @description Application error code for frontend i18n. */
+                        errorCode: string;
+                        /** @description Optional i18n parameters. */
+                        errorParams?: {
+                            [key: string]: unknown;
+                        };
+                        /** @description Optional request trace identifier. */
+                        traceId?: string;
+                        /** @description Validation failure details. */
+                        invalidParams?: {
+                            /** @description Path to the invalid input field. */
+                            path: (string | number)[];
+                            /** @description Machine-readable validation error code. */
+                            code: string;
+                            /** @description Validation error message. */
+                            message: string;
+                        }[];
+                    };
+                };
+            };
+            /** @description Key not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @description Stable problem type URI or URN. */
+                        type: string;
+                        /** @description Short problem title. */
+                        title: string;
+                        /** @description HTTP status code. */
+                        status: number;
+                        /** @description Human-readable error detail. */
+                        detail: string;
+                        /** @description Request path that produced the problem. */
+                        instance: string;
+                        /** @description Application error code for frontend i18n. */
+                        errorCode: string;
+                        /** @description Optional i18n parameters. */
+                        errorParams?: {
+                            [key: string]: unknown;
+                        };
+                        /** @description Optional request trace identifier. */
+                        traceId?: string;
+                        /** @description Validation failure details. */
+                        invalidParams?: {
+                            /** @description Path to the invalid input field. */
+                            path: (string | number)[];
+                            /** @description Machine-readable validation error code. */
+                            code: string;
+                            /** @description Validation error message. */
+                            message: string;
+                        }[];
+                    };
+                };
+            };
+        };
+    };
+    postKeysValidate: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required only when authenticating with the auth-token cookie on mutation requests. */
+                "X-CCH-CSRF"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description API key string to validate. May also be supplied via Authorization or x-api-key header. */
+                    key?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Validation outcome. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description Whether the key is currently usable. */
+                        valid: boolean;
+                        /**
+                         * @description Machine-readable validation outcome.
+                         * @enum {string}
+                         */
+                        reason: "valid" | "key_not_found" | "key_disabled" | "key_expired" | "user_disabled" | "user_expired" | "server_error";
+                        /** @description Masked representation of the supplied key. */
+                        maskedKey?: string;
+                        /** @description Key metadata when the key is found. */
+                        key?: {
+                            /** @description Key ID. */
+                            id: number;
+                            /** @description Key name. */
+                            name: string;
+                            /** @description Whether the key is enabled. */
+                            enabled: boolean;
+                            /** @description Key expiration timestamp. */
+                            expiresAt?: string | null;
+                        };
+                        /** @description Key owner metadata when the key is found. */
+                        user?: {
+                            /** @description User ID. */
+                            id: number;
+                            /** @description User name. */
+                            name: string;
+                            /**
+                             * @description User role.
+                             * @enum {string}
+                             */
+                            role: "admin" | "user";
+                            /** @description Whether the user is enabled. */
+                            enabled: boolean;
+                            /** @description User expiration timestamp. */
+                            expiresAt?: string | null;
+                        };
                     };
                 };
             };
