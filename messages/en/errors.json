@@ -33,6 +33,7 @@
   "PROXY_INVALID_API_KEY": "Invalid API key. The provided key does not exist or has been deleted.",
   "PROXY_API_KEY_DISABLED": "This API key has been disabled. Please contact your administrator to re-enable it, or use a different key.",
   "PROXY_API_KEY_EXPIRED": "This API key has expired. Please contact your administrator to renew it or rotate to a new key.",
+  "KEY_VALIDATE_MISSING_INPUT": "No API key provided. Provide the key in the request body as `key` or via the Authorization or x-api-key header.",
 
   "INTERNAL_ERROR": "Internal server error, please try again later",
   "DATABASE_ERROR": "Database error",
