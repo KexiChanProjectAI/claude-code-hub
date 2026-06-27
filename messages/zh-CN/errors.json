@@ -33,6 +33,7 @@
   "PROXY_INVALID_API_KEY": "API 密钥无效。提供的密钥不存在或已被删除。",
   "PROXY_API_KEY_DISABLED": "API 密钥已被禁用。请联系管理员重新启用，或使用其他可用密钥。",
   "PROXY_API_KEY_EXPIRED": "API 密钥已过期。请联系管理员续期或更换密钥。",
+  "KEY_VALIDATE_MISSING_INPUT": "未提供 API 密钥。请在请求体中以 `key` 字段提供，或通过 Authorization、x-api-key 头部提供。",
 
   "INTERNAL_ERROR": "系统内部错误，请稍后重试",
   "DATABASE_ERROR": "数据库错误",
