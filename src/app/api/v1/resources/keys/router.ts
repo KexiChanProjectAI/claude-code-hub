@@ -13,6 +13,8 @@ import {
   KeyRevealResponseSchema,
   KeysBatchUpdateSchema,
   KeyUpdateSchema,
+  KeyValidateRequestSchema,
+  KeyValidateResponseSchema,
   PatchKeyLimitParamSchema,
   PatchKeyLimitSchema,
   UserIdForKeysParamSchema,
@@ -32,6 +34,7 @@ import {
   resetKeyLimits,
   revealKey,
   updateKey,
+  validateApiKey,
 } from "./handlers";
 
 export const keysRouter = new OpenAPIHono({
@@ -136,6 +139,30 @@ keysRouter.openapi(
   }),
   createSelfKey as never
 );
+
+const validateKeyRoute = createRoute({
+  method: "post",
+  path: "/keys:validate",
+  tags: ["Keys"],
+  summary: "Validate API key string",
+  description:
+    "Admin-only diagnostic endpoint. Tests whether an API key string is currently usable and returns the key owner and name. Does not consume tokens, does not count against the proxy brute-force auth rate limiter, and never returns the raw key.",
+  "x-required-access": "admin",
+  security,
+  request: {
+    body: { required: true, content: { "application/json": { schema: KeyValidateRequestSchema } } },
+  },
+  responses: {
+    200: {
+      description: "Validation outcome.",
+      content: { "application/json": { schema: KeyValidateResponseSchema } },
+    },
+    ...problemResponses,
+  },
+});
+
+keysRouter.openAPIRegistry.registerPath(validateKeyRoute);
+keysRouter.post("/keys:validate", requireAuth("admin"), validateApiKey);
 
 // Custom-method routes (`/keys/{id}:reveal` etc.) must register before the
 // generic `/keys/{keyId}` CRUD routes — Hono's RegExpRouter resolves

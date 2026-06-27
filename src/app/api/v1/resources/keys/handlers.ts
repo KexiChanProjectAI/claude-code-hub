@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import type { ActionResult } from "@/actions/types";
+import { extractApiKeyFromHeaders } from "@/lib/api/auth-header-extractor";
 import { callAction } from "@/lib/api/v1/_shared/action-bridge";
 import { withNoStoreHeaders } from "@/lib/api/v1/_shared/cache-control";
 import {
@@ -21,6 +22,7 @@ import {
   KeyRenewSchema,
   KeysBatchUpdateSchema,
   KeyUpdateSchema,
+  KeyValidateRequestSchema,
   PatchKeyLimitParamSchema,
   PatchKeyLimitSchema,
   UserIdForKeysParamSchema,
@@ -106,6 +108,75 @@ export async function createSelfKey(c: Context): Promise<Response> {
   const createdKeyId = (result.data as { id?: number }).id;
   const location = createdKeyId ? `/api/v1/keys/${createdKeyId}` : "/api/v1/users:self/keys";
   return createdResponse(result.data, location, { headers: withNoStoreHeaders() });
+}
+
+export async function validateApiKey(c: Context): Promise<Response> {
+  const body = await parseHonoJsonBody(c, KeyValidateRequestSchema);
+  if (!body.ok) return body.response;
+
+  const candidateKey =
+    normalizeCandidateKey(body.data.key) ??
+    extractApiKeyFromHeaders({
+      authorization: c.req.header("authorization") ?? null,
+      "x-api-key": c.req.header("x-api-key") ?? null,
+      "x-goog-api-key": null,
+    });
+
+  if (!candidateKey) {
+    const locale = await getRequestLocale();
+    const { getErrorMessageServer } = await import("@/lib/utils/error-messages");
+    return createProblemResponse({
+      status: 400,
+      instance: new URL(c.req.url).pathname,
+      errorCode: "key.validate.missing_input",
+      detail: await getErrorMessageServer(locale, "KEY_VALIDATE_MISSING_INPUT"),
+    });
+  }
+
+  const { validateKeyString } = await import("@/lib/api/v1/_shared/key-validator");
+  const outcome = await validateKeyString(candidateKey);
+
+  const baseResponse = {
+    valid: outcome.valid,
+    reason: outcome.reason,
+    maskedKey: maskKey(candidateKey),
+  };
+
+  if (!outcome.valid) {
+    return jsonResponse(baseResponse, { headers: withNoStoreHeaders() });
+  }
+
+  const { key, user } = outcome;
+
+  return jsonResponse(
+    {
+      ...baseResponse,
+      key: {
+        id: key.id,
+        name: key.name,
+        enabled: key.isEnabled,
+        expiresAt: key.expiresAt?.toISOString() ?? null,
+      },
+      user: {
+        id: user.id,
+        name: user.name,
+        role: user.role,
+        enabled: user.isEnabled,
+        expiresAt: user.expiresAt?.toISOString() ?? null,
+      },
+    },
+    { headers: withNoStoreHeaders() }
+  );
+}
+
+function getRequestLocale(): Promise<string> {
+  return import("next-intl/server").then(({ getLocale }) => getLocale());
+}
+
+function normalizeCandidateKey(value: string | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 export async function getKey(c: Context): Promise<Response> {
