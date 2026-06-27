@@ -121,6 +121,59 @@ export const KeysBatchUpdateSchema = z
   })
   .strict();
 
+export const KeyValidateRequestSchema = z
+  .object({
+    key: z
+      .string()
+      .trim()
+      .min(1)
+      .max(512)
+      .optional()
+      .describe(
+        "API key string to validate. May also be supplied via Authorization or x-api-key header."
+      ),
+  })
+  .strict()
+  .describe("API key validation request.");
+
+export const KeyValidateOutcomeSchema = z.enum([
+  "valid",
+  "key_not_found",
+  "key_disabled",
+  "key_expired",
+  "user_disabled",
+  "user_expired",
+  "server_error",
+]);
+
+export const KeyValidateResponseSchema = z
+  .object({
+    valid: z.boolean().describe("Whether the key is currently usable."),
+    reason: KeyValidateOutcomeSchema.describe("Machine-readable validation outcome."),
+    maskedKey: z.string().optional().describe("Masked representation of the supplied key."),
+    key: z
+      .object({
+        id: z.number().int().positive().describe("Key ID."),
+        name: z.string().describe("Key name."),
+        enabled: z.boolean().describe("Whether the key is enabled."),
+        expiresAt: z.string().nullable().optional().describe("Key expiration timestamp."),
+      })
+      .optional()
+      .describe("Key metadata when the key is found."),
+    user: z
+      .object({
+        id: z.number().int().positive().describe("User ID."),
+        name: z.string().describe("User name."),
+        role: z.enum(["admin", "user"]).describe("User role."),
+        enabled: z.boolean().describe("Whether the user is enabled."),
+        expiresAt: z.string().nullable().optional().describe("User expiration timestamp."),
+      })
+      .optional()
+      .describe("Key owner metadata when the key is found."),
+  })
+  .strict()
+  .describe("API key validation result.");
+
 export const GenericKeyResponseSchema = z
   .record(z.string(), z.unknown())
   .describe("Key API response object.");
@@ -140,4 +193,6 @@ export const KeyRevealResponseSchema = z.object({
 export type KeyCreateInput = z.infer<typeof KeyCreateSchema>;
 export type KeyUpdateInput = z.infer<typeof KeyUpdateSchema>;
 export type KeyRenewInput = z.infer<typeof KeyRenewSchema>;
+export type KeyValidateInput = z.infer<typeof KeyValidateRequestSchema>;
+export type KeyValidateResponse = z.infer<typeof KeyValidateResponseSchema>;
 export type PatchKeyLimitFieldInput = z.infer<typeof PatchKeyLimitFieldSchema>;
