@@ -1,0 +1,51 @@
+provider,providerType,sourceModel,matchType,redirectedModel,isRedirected
+Opencode go-lzu,openai-compatible,deepseek-v4-flash,exact,deepseek-v4-flash,no
+Opencode go-lzu,openai-compatible,mimo-v2.5,exact,mimo-v2.5,no
+OpenAI 5.5 主力,codex,gpt-5.5,exact,gpt-5.5,no
+OpenAI 5.5 主力,codex,codex-auto-review,exact,codex-auto-review,no
+新Key-M3-fast,codex,MiniMax-M3,exact,MiniMax-M3,no
+旧Key-M3-fast,codex,MiniMax-M3,exact,MiniMax-M3,no
+新Key-M2.7,codex,MiniMax-M2.7,exact,MiniMax-M2.7,no
+旧Key-M2.7,codex,MiniMax-M2.7,exact,MiniMax-M2.7,no
+旧Key-M2.7hs,codex,MiniMax-M2.7,exact,MiniMax-M2.7-highspeed,yes
+旧Key-M2.7hs,codex,MiniMax-M2.7-highspeed,exact,MiniMax-M2.7-highspeed,no
+智谱乌云-4.7,claude,glm-4.7,exact,glm-4.7,no
+智谱自用-5.2,claude,glm-5.2,exact,glm-5.2,no
+新Key-M2.7hs,codex,MiniMax-M2.7,exact,MiniMax-M2.7-highspeed,yes
+新Key-M2.7hs,codex,MiniMax-M2.7-highspeed,exact,MiniMax-M2.7-highspeed,no
+Zenmux 中转,claude,anthropic/claude-sonnet-4.6,exact,anthropic/claude-sonnet-4.6,no
+Zenmux 中转,claude,anthropic/claude-haiku-4.5,exact,anthropic/claude-haiku-4.5,no
+Zenmux 中转,claude,claude-sonnet-4.6,exact,anthropic/claude-sonnet-4.6,yes
+Zenmux 中转,claude,claude-haiku-4.5,exact,anthropic/claude-haiku-4.5,yes
+Zenmux 中转,claude,qwen/qwen3.7-max,exact,qwen/qwen3.7-max,no
+Zenmux 中转,claude,qwen3.7-max,exact,qwen/qwen3.7-max,yes
+Zenmux 中转,claude,z-ai/glm-5.2,exact,z-ai/glm-5.2,no
+备用-5.x,codex,gpt-5.3-codex-spark,exact,gpt-5.3-codex-spark,no
+备用-5.x,codex,gpt-5.4,exact,gpt-5.4,no
+备用-5.x,codex,gpt-5.4-mini,exact,gpt-5.4-mini,no
+备用-5.x,codex,gpt-5.5,exact,gpt-5.4,yes
+日常余额-5.x,codex,gpt-5.3-codex-spark,exact,gpt-5.3-codex-spark,no
+日常余额-5.x,codex,gpt-5.4,exact,gpt-5.4,no
+日常余额-5.x,codex,gpt-5.4-mini,exact,gpt-5.4-mini,no
+主力-5.x,codex,gpt-5.3-codex-spark,exact,gpt-5.3-codex-spark,no
+主力-5.x,codex,gpt-5.4,exact,gpt-5.4,no
+主力-5.x,codex,gpt-5.4-mini,exact,gpt-5.4-mini,no
+主力-5.x,codex,gpt-5.5,exact,gpt-5.4,yes
+Kimi 月之暗面,claude,kimi-for-coding,exact,kimi-for-coding,no
+Kimi 月之暗面,claude,kimi-k2.6,exact,kimi-for-coding,yes
+Kimi 月之暗面,claude,kimi-k2.7,exact,kimi-for-coding,yes
+Opencode go,openai-compatible,deepseek-v4-flash,exact,deepseek-v4-flash,no
+Opencode go,openai-compatible,mimo-v2.5,exact,mimo-v2.5,no
+Mimo,claude,mimo-v2.5-pro,exact,mimo-v2.5-pro,no
+Mimo,claude,mimo-v2.5,exact,mimo-v2.5,no
+智谱乌云-5.2,claude,glm-5.2,exact,glm-5.2,no
+智谱自用-4.7,claude,glm-4.7,exact,glm-4.7,no
+旧Key-M3,codex,MiniMax-M3,exact,MiniMax-M3,no
+新Key-M3,codex,MiniMax-M3,exact,MiniMax-M3,no
+讯飞平台,claude,astron-code-latest,exact,astron-code-latest,no
+讯飞平台,claude,glm-5.1,exact,astron-code-latest,yes
+讯飞平台,claude,glm-5.2,exact,astron-code-latest,yes
+讯飞自用,claude,astron-code-latest,exact,astron-code-latest,no
+讯飞自用,claude,glm-5.1,exact,astron-code-latest,yes
+讯飞自用,claude,glm-5.2,exact,astron-code-latest,yes
+DeepSeek 按量付费,openai-compatible,deepseek-v4-pro,exact,deepseek-v4-pro,no

@@ -1,0 +1,17 @@
+[
+  {
+    "host": "https://xixiapi.cc",
+    "username": "xixigpt@zenkexi.com",
+    "site_type": "sub2api",
+    "login_success": false,
+    "error": "登录失败",
+    "balance": null,
+    "balance_unit": "",
+    "balance_raw_points": null,
+    "api_keys": [],
+    "data_complete": false,
+    "rate_multipliers": null,
+    "expected_rate": null,
+    "recharge_multiplier": 1.0
+  }
+]
