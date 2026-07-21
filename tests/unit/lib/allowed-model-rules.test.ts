@@ -55,6 +55,18 @@ describe("allowed-model-rules", () => {
     ).toBe(false);
   });
 
+  it("matches whitelist entries case-insensitively", () => {
+    const rules: AllowedModelRule[] = [
+      { matchType: "exact", pattern: "Xunfei/KIMI-K2.5" },
+      { matchType: "prefix", pattern: "Moonshot/" },
+    ];
+
+    expect(matchesAllowedModelRules("xunfei/kimi-k2.5", rules)).toBe(true);
+    expect(matchesAllowedModelRules("moonshot/kimi-k3", rules)).toBe(true);
+    expect(findMatchingAllowedModelRule("XUNFEI/KIMI-K2.5", rules)).toEqual(rules[0]);
+    expect(matchesAllowedModelRules("openai/gpt-5.5", rules)).toBe(false);
+  });
+
   it("detects allowed model rule objects safely", () => {
     expect(isAllowedModelRule({ matchType: "prefix", pattern: "claude-" })).toBe(true);
     expect(isAllowedModelRule({ matchType: "prefix", source: "claude-" })).toBe(false);

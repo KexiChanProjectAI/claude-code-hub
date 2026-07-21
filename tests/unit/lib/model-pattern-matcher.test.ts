@@ -22,6 +22,30 @@ describe("matchesPattern", () => {
     expect(matchesPattern("claude-opus-4-1", "regex", "[")).toBe(false);
   });
 
+  describe("case-insensitive matching", () => {
+    it.each<[ProviderModelRedirectMatchType, string, string, boolean]>([
+      ["exact", "Xunfei/Kimi-K2.5", "xunfei/kimi-k2.5", true],
+      ["exact", "KIMI-K2.5", "kimi-k2.6", false],
+      ["prefix", "Moonshot/", "moonshot/kimi-k3", true],
+      ["prefix", "MOONSHOT/", "moonshot/kimi-k3", true],
+      ["suffix", "K2.5", "xunfei/kimi-k2.5", true],
+      ["suffix", "K2.6", "xunfei/kimi-k2.5", false],
+      ["contains", "OPUS", "claude-opus-4-1", true],
+      ["regex", "^GPT-5", "gpt-5.5", true],
+      ["regex", "^GPT-4", "gpt-5.5", false],
+    ])(
+      "matches %s pattern %s against %s ignoring case -> %s",
+      (matchType, pattern, model, expected) => {
+        expect(matchesPattern(model, matchType, pattern)).toBe(expected);
+      }
+    );
+
+    it("glob fallback is also case-insensitive", () => {
+      expect(matchesPattern("claude-opus-4-1", "regex", "CLAUDE-*")).toBe(true);
+      expect(matchesPattern("gpt-4", "regex", "CLAUDE-*")).toBe(false);
+    });
+  });
+
   describe("glob fallback for regex matching", () => {
     it.each<[string, string, boolean]>([
       ["*", "claude-opus-4-1", true],

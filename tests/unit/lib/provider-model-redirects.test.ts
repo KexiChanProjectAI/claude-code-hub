@@ -56,6 +56,16 @@ describe("provider model redirect rules", () => {
     expect(findMatchingProviderModelRedirectRule("claude-sonnet-4-5", rules)).toBeNull();
   });
 
+  it("matches redirect sources case-insensitively while preserving target verbatim", () => {
+    const rules: ProviderModelRedirectRule[] = [
+      { matchType: "exact", source: "Moonshot/Kimi-K3", target: "k3" },
+    ];
+
+    expect(findMatchingProviderModelRedirectRule("moonshot/kimi-k3", rules)?.target).toBe("k3");
+    expect(findMatchingProviderModelRedirectRule("MOONSHOT/KIMI-K3", rules)?.target).toBe("k3");
+    expect(findMatchingProviderModelRedirectRule("moonshot/kimi-k2.7", rules)).toBeNull();
+  });
+
   it("normalizes legacy exact redirect maps into exact-match rules", () => {
     const normalized = normalizeProviderModelRedirectRules({
       "claude-opus-4-5": "glm-4.6",

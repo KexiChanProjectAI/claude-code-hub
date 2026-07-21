@@ -68,7 +68,7 @@ function checkProviderGroupMatch(providerGroupTag: string | null, userGroups: st
  *
  * 核心逻辑（统一所有供应商类型）：
  * 1. 未设置 allowedModels（null 或空数组）：接受任意模型（格式兼容性由 checkFormatProviderTypeCompatibility 保证）
- * 2. 设置了 allowedModels：仅当原始请求模型命中 allowedModels 时才支持
+ * 2. 设置了 allowedModels：仅当原始请求模型命中 allowedModels 时才支持（大小写不敏感）
  * 3. modelRedirects 仅在供应商已被选中后用于改写上游模型，不参与调度放行
  *
  * 注意：allowedModels 是声明性列表（用户可填写任意字符串），用于调度器匹配，不是真实模型校验。

@@ -27,14 +27,15 @@ export function resolveProviderPatternRegex(pattern: string): Compiled | null {
   }
 
   let result: Compiled | null = null;
+  // 统一带 i 标志编译：模型名匹配全链路大小写不敏感（见 model-pattern-matcher）。
   try {
-    result = { regex: new RegExp(pattern), source: pattern };
+    result = { regex: new RegExp(pattern, "i"), source: pattern };
   } catch {}
 
   if (!result && GLOB_META.test(pattern)) {
     const globSource = `^${globPatternToRegexSource(pattern)}$`;
     try {
-      result = { regex: new RegExp(globSource), source: globSource };
+      result = { regex: new RegExp(globSource, "i"), source: globSource };
     } catch {}
   }
 
