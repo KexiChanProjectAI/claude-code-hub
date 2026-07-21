@@ -27,6 +27,7 @@ vi.mock("@/lib/utils/timezone", () => ({
 }));
 
 import {
+  filterModelsByUserAllowedModels,
   formatAnthropicResponse,
   formatGeminiResponse,
   formatOpenAIResponse,
@@ -124,6 +125,47 @@ describe("getProviderTypesForFormat - 客户端格式到 Provider 类型映射",
 
   test("response 格式应仅返回 codex 类型", () => {
     expect(getProviderTypesForFormat("response")).toEqual(["codex"]);
+  });
+});
+
+describe("filterModelsByUserAllowedModels - 用户级模型白名单过滤", () => {
+  const models: FetchedModel[] = [
+    { id: "claude-3-opus-20240229" },
+    { id: "claude-3-sonnet-20240229" },
+    { id: "gpt-4o" },
+    { id: "gemini-pro" },
+  ];
+
+  test("allowedModels 为 undefined 时应原样返回（无限制）", () => {
+    expect(filterModelsByUserAllowedModels(models, undefined)).toEqual(models);
+  });
+
+  test("allowedModels 为 null 时应原样返回（无限制）", () => {
+    expect(filterModelsByUserAllowedModels(models, null)).toEqual(models);
+  });
+
+  test("allowedModels 为空数组时应原样返回（无限制）", () => {
+    expect(filterModelsByUserAllowedModels(models, [])).toEqual(models);
+  });
+
+  test("配置了 allowedModels 时应仅保留命中的模型", () => {
+    const result = filterModelsByUserAllowedModels(models, ["gpt-4o", "gemini-pro"]);
+    expect(result.map((m) => m.id)).toEqual(["gpt-4o", "gemini-pro"]);
+  });
+
+  test("匹配应为大小写不敏感（与 ProxyModelGuard 语义一致）", () => {
+    const result = filterModelsByUserAllowedModels(models, ["CLAUDE-3-OPUS-20240229"]);
+    expect(result.map((m) => m.id)).toEqual(["claude-3-opus-20240229"]);
+  });
+
+  test("白名单中的模型不存在于列表时应返回空数组", () => {
+    const result = filterModelsByUserAllowedModels(models, ["nonexistent-model"]);
+    expect(result).toEqual([]);
+  });
+
+  test("白名单为精确匹配，不应做前缀/子串匹配", () => {
+    const result = filterModelsByUserAllowedModels(models, ["claude-3", "gpt"]);
+    expect(result).toEqual([]);
   });
 });
 

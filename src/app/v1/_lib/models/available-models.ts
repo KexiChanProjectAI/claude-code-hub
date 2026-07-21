@@ -53,7 +53,13 @@ function extractApiKey(c: Context): string | null {
  * @throws {Response} 401 错误响应（未提供凭据、无效 key、用户禁用、用户过期）
  */
 async function authenticateRequest(c: Context): Promise<{
-  user: { id: number; providerGroup: string | null; isEnabled: boolean; expiresAt?: Date | null };
+  user: {
+    id: number;
+    providerGroup: string | null;
+    isEnabled: boolean;
+    expiresAt?: Date | null;
+    allowedModels?: string[];
+  };
   key: { providerGroup: string | null; name: string };
 }> {
   const apiKey = extractApiKey(c);
@@ -346,7 +352,7 @@ export function getProviderTypesForFormat(clientFormat: ClientFormat): Provider[
  */
 async function getAvailableModels(
   authState: {
-    user: { id: number; providerGroup: string | null };
+    user: { id: number; providerGroup: string | null; allowedModels?: string[] | null };
     key: { providerGroup: string | null };
   },
   clientFormat: ClientFormat
@@ -414,6 +420,26 @@ export function formatGeminiResponse(models: FetchedModel[]): GeminiModelsRespon
 }
 
 /**
+ * 按用户级 allowedModels 过滤模型列表。
+ *
+ * 与 ProxyModelGuard（src/app/v1/_lib/proxy/model-guard.ts）保持同一语义：
+ * - allowedModels 为空/未配置：不过滤（无限制）
+ * - 配置了 allowedModels：仅保留大小写不敏感精确命中的模型
+ *
+ * 这样 /v1/models 等模型列表端点不会暴露用户实际无法请求的模型。
+ */
+export function filterModelsByUserAllowedModels(
+  models: FetchedModel[],
+  allowedModels: string[] | null | undefined
+): FetchedModel[] {
+  if (!allowedModels || allowedModels.length === 0) {
+    return models;
+  }
+  const allowedSet = new Set(allowedModels.map((m) => m.toLowerCase()));
+  return models.filter((m) => allowedSet.has(m.id.toLowerCase()));
+}
+
+/**
  * 根据指定的 providerTypes 获取模型列表
  *
  * 与代理请求不同，模型列表需要展示所有已启用 provider 的模型（不做健康检查），
@@ -423,7 +449,7 @@ export function formatGeminiResponse(models: FetchedModel[]): GeminiModelsRespon
  */
 async function getAvailableModelsByProviderTypes(
   authState: {
-    user: { id: number; providerGroup: string | null };
+    user: { id: number; providerGroup: string | null; allowedModels?: string[] | null };
     key: { providerGroup: string | null };
   },
   providerTypes: Provider["providerType"][]
@@ -473,14 +499,18 @@ async function getAvailableModelsByProviderTypes(
     }
   }
 
+  // 用户级模型白名单过滤（与代理链路的 ProxyModelGuard 语义一致）
+  const filteredModels = filterModelsByUserAllowedModels(allModels, authState.user.allowedModels);
+
   logger.info("[AvailableModels] Aggregated models", {
     userId: authState.user.id,
-    modelCount: allModels.length,
+    modelCount: filteredModels.length,
+    unfilteredModelCount: allModels.length,
     providerCount: matchedProviders.length,
   });
 
   return {
-    models: allModels.sort((a, b) => a.id.localeCompare(b.id)),
+    models: filteredModels.sort((a, b) => a.id.localeCompare(b.id)),
     providerName: matchedProviders.map((p) => p.name).join(", "),
   };
 }
