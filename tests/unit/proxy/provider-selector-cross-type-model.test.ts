@@ -72,6 +72,36 @@ function createProvider(overrides: Partial<Provider> = {}): Provider {
   } as unknown as Provider;
 }
 
+// Module-level helpers shared across describe blocks: lifted from the
+// pickRandomProvider describe so the client-restriction tests can reuse them
+// without redefining.
+function createPickSession(originalFormat: string, providers: Provider[], originalModel: string) {
+  return {
+    originalFormat,
+    authState: null,
+    getProvidersSnapshot: async () => providers,
+    getOriginalModel: () => originalModel,
+    getCurrentModel: () => originalModel,
+    clientRequestsContext1m: () => false,
+  } as any;
+}
+
+async function setupResolverMocks() {
+  const { ProxyProviderResolver } = await import("@/app/v1/_lib/proxy/provider-selector");
+
+  vi.spyOn(ProxyProviderResolver as any, "filterByLimits").mockImplementation(
+    async (...args: unknown[]) => args[0] as Provider[]
+  );
+  vi.spyOn(ProxyProviderResolver as any, "selectTopPriority").mockImplementation(
+    (...args: unknown[]) => args[0] as Provider[]
+  );
+  vi.spyOn(ProxyProviderResolver as any, "selectOptimal").mockImplementation(
+    (...args: unknown[]) => (args[0] as Provider[])[0] ?? null
+  );
+
+  return ProxyProviderResolver;
+}
+
 // ══════════════════════════════════════════════════════════════════
 // Part 1: Direct unit tests for providerSupportsModel (table-driven)
 // ══════════════════════════════════════════════════════════════════
@@ -198,21 +228,18 @@ describe("providerSupportsModel - direct unit tests (#832)", () => {
     },
   ];
 
-  test.each(cases)("$name", async ({
-    providerType,
-    allowedModels,
-    modelRedirects,
-    requestedModel,
-    expected,
-  }) => {
-    const { providerSupportsModel } = await import("@/app/v1/_lib/proxy/provider-selector");
-    const provider = createProvider({
-      providerType,
-      allowedModels,
-      ...(modelRedirects && { modelRedirects }),
-    });
-    expect(providerSupportsModel(provider, requestedModel)).toBe(expected);
-  });
+  test.each(cases)(
+    "$name",
+    async ({ providerType, allowedModels, modelRedirects, requestedModel, expected }) => {
+      const { providerSupportsModel } = await import("@/app/v1/_lib/proxy/provider-selector");
+      const provider = createProvider({
+        providerType,
+        allowedModels,
+        ...(modelRedirects && { modelRedirects }),
+      });
+      expect(providerSupportsModel(provider, requestedModel)).toBe(expected);
+    }
+  );
 });
 
 // ══════════════════════════════════════════════════════════════════
@@ -347,33 +374,6 @@ describe("findReusable - cross-type model routing (#832)", () => {
 // ══════════════════════════════════════════════════════════════════
 
 describe("pickRandomProvider - cross-type model routing (#832)", () => {
-  function createPickSession(originalFormat: string, providers: Provider[], originalModel: string) {
-    return {
-      originalFormat,
-      authState: null,
-      getProvidersSnapshot: async () => providers,
-      getOriginalModel: () => originalModel,
-      getCurrentModel: () => originalModel,
-      clientRequestsContext1m: () => false,
-    } as any;
-  }
-
-  async function setupResolverMocks() {
-    const { ProxyProviderResolver } = await import("@/app/v1/_lib/proxy/provider-selector");
-
-    vi.spyOn(ProxyProviderResolver as any, "filterByLimits").mockImplementation(
-      async (...args: unknown[]) => args[0] as Provider[]
-    );
-    vi.spyOn(ProxyProviderResolver as any, "selectTopPriority").mockImplementation(
-      (...args: unknown[]) => args[0] as Provider[]
-    );
-    vi.spyOn(ProxyProviderResolver as any, "selectOptimal").mockImplementation(
-      (...args: unknown[]) => (args[0] as Provider[])[0] ?? null
-    );
-
-    return ProxyProviderResolver;
-  }
-
   test("openai format + openai-compatible with allowedModels=[claude-opus-4-6] -> selected", async () => {
     const Resolver = await setupResolverMocks();
 
@@ -531,5 +531,232 @@ describe("pickRandomProvider - cross-type model routing (#832)", () => {
       (fp: any) => fp.id === 40 && fp.reason === "model_not_allowed"
     );
     expect(mismatch).toBeDefined();
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════
+// Part 4: Integration tests via pickRandomProvider (fresh selection
+// with allowedClients/blockedClients)
+// ══════════════════════════════════════════════════════════════════
+
+describe("pickRandomProvider - client restriction gating (allowedClients/blockedClients)", () => {
+  // Build a session that supplies the complete matcher shape that
+  // isClientAllowedDetailed / confirmClaudeCodeSignals require:
+  //   - userAgent (string | null)
+  //   - headers (instance with .get(name) / .has(name))
+  //   - request.message.metadata (null for negative cases; object for confirmed Claude Code)
+  // For non-claude CLI traffic we just need a UA the pattern matcher can include-search.
+  function createClientRestrictedSession(
+    originalFormat: string,
+    providers: Provider[],
+    originalModel: string,
+    options: { userAgent: string; headers?: Headers; metadata?: unknown }
+  ) {
+    const headers = options.headers ?? new Headers();
+    if (!headers.has("x-app")) headers.set("x-app", "");
+    if (!headers.has("anthropic-beta")) headers.set("anthropic-beta", "");
+    const message: Record<string, unknown> = {};
+    if (options.metadata !== undefined) {
+      message.metadata = options.metadata;
+    }
+    return {
+      originalFormat,
+      authState: null,
+      getProvidersSnapshot: async () => providers,
+      getOriginalModel: () => originalModel,
+      getCurrentModel: () => originalModel,
+      clientRequestsContext1m: () => false,
+      // matcher-shape required by client-detector:
+      userAgent: options.userAgent,
+      headers,
+      request: { message },
+    } as any;
+  }
+
+  test("(a) unrestricted fallback wins when a competing provider is rejected by allowlist", async () => {
+    const Resolver = await setupResolverMocks();
+
+    // Restricted provider: requires UA to include "claude-code-cli" - this UA does NOT match.
+    const restrictedProvider = createProvider({
+      id: 50,
+      providerType: "claude",
+      allowedModels: null,
+      allowedClients: ["claude-code-cli"],
+    });
+    // Unrestricted fallback: any client allowed.
+    const fallbackProvider = createProvider({
+      id: 51,
+      providerType: "claude",
+      allowedModels: null,
+      allowedClients: [],
+    });
+
+    const session = createClientRestrictedSession(
+      "claude",
+      [restrictedProvider, fallbackProvider],
+      "claude-opus-4-6",
+      { userAgent: "curl/8.4.0", metadata: null }
+    );
+
+    const { provider: picked, context } = await (Resolver as any).pickRandomProvider(session, []);
+
+    // The unrestricted provider must win.
+    expect(picked?.id).toBe(51);
+
+    // The restricted provider must appear in filteredProviders with the documented shape.
+    const restrictionRecord = context.filteredProviders.find(
+      (fp: any) => fp.id === 50 && fp.reason === "client_restriction"
+    );
+    expect(restrictionRecord).toBeDefined();
+    expect(restrictionRecord?.details).toBe("allowlist_miss");
+    expect(restrictionRecord?.clientRestrictionContext?.matchType).toBe("allowlist_miss");
+    expect(restrictionRecord?.clientRestrictionContext?.providerAllowlist).toEqual([
+      "claude-code-cli",
+    ]);
+    expect(restrictionRecord?.clientRestrictionContext?.providerBlocklist).toEqual([]);
+  });
+
+  test("(a) allowlist match allows the targeted provider through (no rejection recorded)", async () => {
+    const Resolver = await setupResolverMocks();
+
+    const allowedProvider = createProvider({
+      id: 52,
+      providerType: "claude",
+      allowedModels: null,
+      allowedClients: ["custom-ua-marker"],
+    });
+
+    const session = createClientRestrictedSession(
+      "claude",
+      [allowedProvider],
+      "claude-opus-4-6",
+      // UA contains the allowlist pattern -> provider is permitted.
+      { userAgent: "my-client/1.2.3 custom-ua-marker", metadata: null }
+    );
+
+    const { provider: picked, context } = await (Resolver as any).pickRandomProvider(session, []);
+
+    expect(picked?.id).toBe(52);
+    const restrictionRecord = context.filteredProviders.find(
+      (fp: any) => fp.reason === "client_restriction"
+    );
+    expect(restrictionRecord).toBeUndefined();
+  });
+
+  test("(b) blocklist hit wins even when allowlist also matches (blocklist precedence)", async () => {
+    const Resolver = await setupResolverMocks();
+
+    // Provider has BOTH an allowlist AND a blocklist; both patterns would match
+    // this UA in isolation, but the blocklist wins.
+    const provider = createProvider({
+      id: 60,
+      providerType: "claude",
+      allowedModels: null,
+      allowedClients: ["custom-ua-marker"], // would match
+      blockedClients: ["custom-ua-marker"], // also matches -> precedence
+    });
+
+    const session = createClientRestrictedSession("claude", [provider], "claude-opus-4-6", {
+      userAgent: "my-client/1.2.3 custom-ua-marker",
+      metadata: null,
+    });
+
+    const { provider: picked, context } = await (Resolver as any).pickRandomProvider(session, []);
+
+    expect(picked).toBeNull();
+    const restrictionRecord = context.filteredProviders.find(
+      (fp: any) => fp.id === 60 && fp.reason === "client_restriction"
+    );
+    expect(restrictionRecord).toBeDefined();
+    expect(restrictionRecord?.details).toBe("blocklist_hit");
+    expect(restrictionRecord?.clientRestrictionContext?.matchType).toBe("blocklist_hit");
+    expect(restrictionRecord?.clientRestrictionContext?.matchedPattern).toBe("custom-ua-marker");
+    expect(restrictionRecord?.clientRestrictionContext?.providerBlocklist).toEqual([
+      "custom-ua-marker",
+    ]);
+  });
+
+  test("(c) all candidates rejected by client restrictions -> provider is null and rejection is recorded", async () => {
+    const Resolver = await setupResolverMocks();
+
+    // Two providers, both with blocklist patterns that match this UA.
+    const blockedA = createProvider({
+      id: 70,
+      providerType: "claude",
+      allowedModels: null,
+      blockedClients: ["custom-ua-marker"],
+    });
+    const blockedB = createProvider({
+      id: 71,
+      providerType: "claude",
+      allowedModels: null,
+      blockedClients: ["custom-ua-marker"],
+    });
+
+    const session = createClientRestrictedSession(
+      "claude",
+      [blockedA, blockedB],
+      "claude-opus-4-6",
+      { userAgent: "my-client/1.2.3 custom-ua-marker", metadata: null }
+    );
+
+    const { provider: picked, context } = await (Resolver as any).pickRandomProvider(session, []);
+
+    // No candidate survives client filtering AND basic health checks.
+    expect(picked).toBeNull();
+
+    const blockedAEntry = context.filteredProviders.find(
+      (fp: any) => fp.id === 70 && fp.reason === "client_restriction"
+    );
+    expect(blockedAEntry).toBeDefined();
+    expect(blockedAEntry?.details).toBe("blocklist_hit");
+
+    const blockedBEntry = context.filteredProviders.find(
+      (fp: any) => fp.id === 71 && fp.reason === "client_restriction"
+    );
+    expect(blockedBEntry).toBeDefined();
+    expect(blockedBEntry?.details).toBe("blocklist_hit");
+  });
+
+  test("(c) all candidates rejected by allowlist miss -> provider is null and allowlist_miss is recorded", async () => {
+    const Resolver = await setupResolverMocks();
+
+    // Two providers, each with a different allowlist that this UA does not match.
+    const gatedA = createProvider({
+      id: 72,
+      providerType: "claude",
+      allowedModels: null,
+      allowedClients: ["some-other-client"],
+    });
+    const gatedB = createProvider({
+      id: 73,
+      providerType: "claude",
+      allowedModels: null,
+      allowedClients: ["yet-another-client"],
+    });
+
+    const session = createClientRestrictedSession(
+      "claude",
+      [gatedA, gatedB],
+      "claude-opus-4-6",
+      // UA does NOT contain any allowed pattern -> allowlist_miss for both providers.
+      { userAgent: "stranger/1.0.0", metadata: null }
+    );
+
+    const { provider: picked, context } = await (Resolver as any).pickRandomProvider(session, []);
+
+    expect(picked).toBeNull();
+
+    const aEntry = context.filteredProviders.find(
+      (fp: any) => fp.id === 72 && fp.reason === "client_restriction"
+    );
+    expect(aEntry).toBeDefined();
+    expect(aEntry?.details).toBe("allowlist_miss");
+
+    const bEntry = context.filteredProviders.find(
+      (fp: any) => fp.id === 73 && fp.reason === "client_restriction"
+    );
+    expect(bEntry).toBeDefined();
+    expect(bEntry?.details).toBe("allowlist_miss");
   });
 });

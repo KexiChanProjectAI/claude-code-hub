@@ -34,10 +34,24 @@ const rateLimitMocks = vi.hoisted(() => ({
   RateLimitService: {
     checkCostLimitsWithLease: vi.fn(async () => ({ allowed: true })),
     checkTotalCostLimit: vi.fn(async () => ({ allowed: true, current: 0 })),
+    checkAndTrackProviderSession: vi.fn(async () => ({
+      allowed: true,
+      count: 0,
+      tracked: false,
+      referenced: true,
+    })),
   },
 }));
 
 vi.mock("@/lib/rate-limit", () => rateLimitMocks);
+
+// Deterministic verbose-error mode so the no-fallback branch never touches
+// the repository / DB layer via getVerboseProviderErrorCached().
+const settingsCacheMocks = vi.hoisted(() => ({
+  getVerboseProviderErrorCached: vi.fn(async () => false),
+}));
+
+vi.mock("@/app/v1/_lib/proxy/provider-selector-settings-cache", () => settingsCacheMocks);
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -238,5 +252,351 @@ describe("findReusable - model mismatch clears stale binding", () => {
     expect(sessionManagerMocks.SessionManager.clearSessionProvider).toHaveBeenCalledWith(
       "sess_variant"
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sticky-session regression: client-restriction-rejected bound provider must
+// be cleared, traced, and replaced by an eligible fallback. Exercises the
+// public ProxyProviderResolver.ensure flow.
+// ---------------------------------------------------------------------------
+
+const RESTRICTED_USER_AGENT = "test-suite-ua/1.0 (some-marker)";
+const RESTRICTED_METADATA: Record<string, unknown> = null;
+
+function createHeadersStub(): Headers {
+  // Minimal Headers-like stand-in: provides get()/has() the client detector
+  // touches. The restricted session uses a non-builtin keyword (UA substring),
+  // so confirmClaudeCodeSignals() is not invoked.
+  const map = new Map<string, string>();
+  return {
+    get: (k: string) => map.get(k.toLowerCase()) ?? null,
+    has: (k: string) => map.has(k.toLowerCase()),
+  } as unknown as Headers;
+}
+
+function createFallbackProvider(overrides: Partial<Provider> = {}): Provider {
+  return {
+    id: 99,
+    name: "eligible_fallback",
+    isEnabled: true,
+    providerType: "claude",
+    groupTag: null,
+    weight: 1,
+    priority: 0,
+    costMultiplier: 1,
+    disableSessionReuse: false,
+    allowedModels: null, // supports every claude model
+    allowedClients: [],
+    blockedClients: [],
+    providerVendorId: null,
+    limit5hUsd: null,
+    limitDailyUsd: null,
+    dailyResetMode: "fixed",
+    dailyResetTime: "00:00",
+    limitWeeklyUsd: null,
+    limitMonthlyUsd: null,
+    limitTotalUsd: null,
+    totalCostResetAt: null,
+    limitConcurrentSessions: 0,
+    ...overrides,
+  } as unknown as Provider;
+}
+
+function createOtherRestrictedProvider(): Provider {
+  return {
+    id: 88,
+    name: "other_restricted",
+    isEnabled: true,
+    providerType: "claude",
+    groupTag: null,
+    weight: 1,
+    priority: 0,
+    costMultiplier: 1,
+    disableSessionReuse: false,
+    allowedModels: null,
+    allowedClients: [],
+    blockedClients: ["test-suite"], // also rejects RESTRICTED_USER_AGENT
+    providerVendorId: null,
+    limit5hUsd: null,
+    limitDailyUsd: null,
+    dailyResetMode: "fixed",
+    dailyResetTime: "00:00",
+    limitWeeklyUsd: null,
+    limitMonthlyUsd: null,
+    limitTotalUsd: null,
+    totalCostResetAt: null,
+    limitConcurrentSessions: 0,
+  } as unknown as Provider;
+}
+
+function createBoundRestrictedProvider(): Provider {
+  return {
+    id: 78,
+    name: "bound_restricted",
+    isEnabled: true,
+    providerType: "claude",
+    groupTag: null,
+    weight: 1,
+    priority: 0,
+    costMultiplier: 1,
+    disableSessionReuse: false,
+    allowedModels: null, // model support is fine — restriction is client-side
+    allowedClients: [],
+    blockedClients: ["test-suite"], // rejects RESTRICTED_USER_AGENT
+    providerVendorId: null,
+    limit5hUsd: null,
+    limitDailyUsd: null,
+    dailyResetMode: "fixed",
+    dailyResetTime: "00:00",
+    limitWeeklyUsd: null,
+    limitMonthlyUsd: null,
+    limitTotalUsd: null,
+    totalCostResetAt: null,
+    limitConcurrentSessions: 0,
+  } as unknown as Provider;
+}
+
+interface RestrictedSession {
+  sessionId: string;
+  shouldReuseProvider: () => boolean;
+  getOriginalModel: () => string;
+  getCurrentModel: () => null;
+  originalFormat: string;
+  authState: null;
+  userAgent: string;
+  headers: Headers;
+  request: { message: { metadata: unknown } };
+  provider: Provider | null;
+  providerChain: Array<Record<string, unknown>>;
+  setProvider(provider: Provider | null): void;
+  addProviderToChain(
+    provider: Provider,
+    metadata?: { reason?: string; decisionContext?: unknown; [k: string]: unknown }
+  ): void;
+  getProviderChain(): Array<Record<string, unknown>>;
+  setLastSelectionContext(ctx: unknown): void;
+  getLastSelectionContext(): unknown;
+  setGroupCostMultiplier(value: number): void;
+  recordProviderSessionRef(providerId: number): void;
+  getProvidersSnapshot: () => Promise<Provider[]>;
+}
+
+function createRestrictedSession(opts: {
+  sessionId: string;
+  providers: Provider[];
+}): RestrictedSession {
+  let provider: Provider | null = null;
+  let lastSelectionContext: unknown;
+  const chain: Array<Record<string, unknown>> = [];
+  const sessionRefs: number[] = [];
+
+  return {
+    sessionId: opts.sessionId,
+    shouldReuseProvider: () => true,
+    getOriginalModel: () => "claude-opus-4-6",
+    getCurrentModel: () => null,
+    originalFormat: "claude",
+    authState: null,
+    userAgent: RESTRICTED_USER_AGENT,
+    headers: createHeadersStub(),
+    request: { message: { metadata: RESTRICTED_METADATA } },
+    get provider() {
+      return provider;
+    },
+    setProvider(p: Provider | null) {
+      provider = p;
+    },
+    providerChain: chain,
+    addProviderToChain(p, metadata) {
+      const last = chain[chain.length - 1];
+      const shouldAdd =
+        chain.length === 0 ||
+        last.id !== p.id ||
+        last.reason !== metadata?.reason ||
+        (metadata?.attemptNumber !== undefined && last.attemptNumber !== metadata?.attemptNumber);
+      if (shouldAdd) {
+        chain.push({
+          id: p.id,
+          name: p.name,
+          reason: metadata?.reason,
+          selectionMethod: metadata?.selectionMethod,
+          attemptNumber: metadata?.attemptNumber,
+          errorMessage: metadata?.errorMessage,
+          decisionContext: metadata?.decisionContext,
+        });
+      }
+    },
+    getProviderChain() {
+      return chain;
+    },
+    setLastSelectionContext(ctx: unknown) {
+      lastSelectionContext = ctx;
+    },
+    getLastSelectionContext() {
+      return lastSelectionContext;
+    },
+    setGroupCostMultiplier(_value: number) {
+      // No-op: ensure() calls this when authState has a group, but our tests
+      // use authState=null so this branch is never reached.
+    },
+    recordProviderSessionRef(providerId: number) {
+      sessionRefs.push(providerId);
+    },
+    getProvidersSnapshot: async () => opts.providers,
+  };
+}
+
+describe("ProxyProviderResolver.ensure - sticky-session client restriction regression", () => {
+  beforeEach(() => {
+    // verboseError=false keeps the no-fallback branch deterministic and avoids
+    // pulling the repository / DB-backed settings cache.
+    settingsCacheMocks.getVerboseProviderErrorCached.mockResolvedValue(false);
+
+    // ensure() invokes checkAndTrackProviderSession for every candidate.
+    // Default = allowed + referenced so the success path can complete.
+    rateLimitMocks.RateLimitService.checkAndTrackProviderSession.mockResolvedValue({
+      allowed: true,
+      count: 0,
+      tracked: false,
+      referenced: true,
+    });
+
+    // Default fall-throughs for cost checks used by pickRandomProvider's
+    // filterByLimits stage.
+    rateLimitMocks.RateLimitService.checkCostLimitsWithLease.mockResolvedValue({
+      allowed: true,
+    });
+    rateLimitMocks.RateLimitService.checkTotalCostLimit.mockResolvedValue({
+      allowed: true,
+      current: 0,
+    });
+  });
+
+  test("reusable session bound to a client-ineligible provider is cleared and replaced by an eligible fallback", async () => {
+    const { ProxyProviderResolver } = await import("@/app/v1/_lib/proxy/provider-selector");
+
+    const bound = createBoundRestrictedProvider();
+    const fallback = createFallbackProvider();
+
+    sessionManagerMocks.SessionManager.getSessionProvider.mockResolvedValueOnce(78);
+    providerRepositoryMocks.findProviderById.mockResolvedValueOnce(bound);
+    providerRepositoryMocks.findAllProviders.mockResolvedValueOnce([bound, fallback]);
+
+    const session = createRestrictedSession({
+      sessionId: "sess_restricted_a",
+      providers: [bound, fallback],
+    });
+
+    const result = await ProxyProviderResolver.ensure(session as any);
+
+    // Success: no 503 Response surfaced; ensure() returns null on success.
+    expect(result).toBeNull();
+
+    // 1) The stale binding is cleared.
+    expect(sessionManagerMocks.SessionManager.clearSessionProvider).toHaveBeenCalledWith(
+      "sess_restricted_a"
+    );
+
+    // 2) The bound provider is recorded as client_restriction_filtered with the
+    //    detailed client-restriction context, then the eligible fallback is
+    //    recorded as initial_selection.
+    const chain = session.getProviderChain();
+    expect(chain.length).toBeGreaterThanOrEqual(2);
+
+    const filteredEntry = chain.find((c) => c.reason === "client_restriction_filtered");
+    expect(filteredEntry).toBeDefined();
+    expect(filteredEntry?.id).toBe(78);
+    expect(filteredEntry?.name).toBe("bound_restricted");
+    const filteredDecision = (filteredEntry?.decisionContext ?? {}) as {
+      filteredProviders?: Array<{
+        id: number;
+        reason: string;
+        details?: string;
+        clientRestrictionContext?: {
+          matchType: string;
+          matchedPattern?: string;
+          detectedClient?: string;
+          providerAllowlist: unknown[];
+          providerBlocklist: unknown[];
+        };
+      }>;
+    };
+    const filteredProvider = filteredDecision.filteredProviders?.[0];
+    expect(filteredProvider).toBeDefined();
+    expect(filteredProvider?.reason).toBe("client_restriction");
+    expect(filteredProvider?.details).toBe("blocklist_hit");
+    expect(filteredProvider?.clientRestrictionContext).toBeDefined();
+    expect(filteredProvider?.clientRestrictionContext?.matchType).toBe("blocklist_hit");
+    expect(filteredProvider?.clientRestrictionContext?.matchedPattern).toBe("test-suite");
+    expect(filteredProvider?.clientRestrictionContext?.detectedClient).toBe(RESTRICTED_USER_AGENT);
+    expect(filteredProvider?.clientRestrictionContext?.providerAllowlist).toEqual([]);
+    expect(filteredProvider?.clientRestrictionContext?.providerBlocklist).toEqual(["test-suite"]);
+
+    const initialEntry = chain.find((c) => c.reason === "initial_selection");
+    expect(initialEntry).toBeDefined();
+    expect(initialEntry?.id).toBe(99);
+    expect(initialEntry?.name).toBe("eligible_fallback");
+
+    // 3) The eligible fallback is the session.provider after ensure() finishes.
+    expect(session.provider).not.toBeNull();
+    expect(session.provider?.id).toBe(99);
+    expect(session.provider?.id).not.toBe(78); // bound provider is not re-attached
+  });
+
+  test("all candidates restricted surfaces a 503 with error type no_available_providers and leaves no bound provider on the session", async () => {
+    const { ProxyProviderResolver } = await import("@/app/v1/_lib/proxy/provider-selector");
+
+    const bound = createBoundRestrictedProvider();
+    const otherRestricted = createOtherRestrictedProvider();
+
+    sessionManagerMocks.SessionManager.getSessionProvider.mockResolvedValueOnce(78);
+    providerRepositoryMocks.findProviderById.mockResolvedValueOnce(bound);
+    // Snapshot contains only restricted candidates -> pickRandomProvider filters
+    // both out via client_restriction, returns null provider.
+    providerRepositoryMocks.findAllProviders.mockResolvedValueOnce([bound, otherRestricted]);
+
+    const session = createRestrictedSession({
+      sessionId: "sess_restricted_b",
+      providers: [bound, otherRestricted],
+    });
+
+    const result = await ProxyProviderResolver.ensure(session as any);
+
+    // 1) Result is a Response (503 surfaced by the no-fallback branch).
+    expect(result).not.toBeNull();
+    expect(result).toBeInstanceOf(Response);
+    const response = result as unknown as Response;
+    expect(response.status).toBe(503);
+
+    // 2) Error type is no_available_providers — assert TYPE only, never wording.
+    const body = (await response.json()) as {
+      error: { type: string; code: string; message: string };
+    };
+    expect(body.error.type).toBe("no_available_providers");
+
+    // 3) The stale binding was still cleared.
+    expect(sessionManagerMocks.SessionManager.clearSessionProvider).toHaveBeenCalledWith(
+      "sess_restricted_b"
+    );
+
+    // 4) The previously-bound provider is NOT left attached to the session.
+    expect(session.provider === null || session.provider?.id !== 78).toBe(true);
+
+    // 5) The bound provider is recorded as client_restriction_filtered (so the
+    //    rejection IS traced) but never attached as session.provider — the
+    //    clearSessionProvider call above removed the binding and ensure()
+    //    never re-attached it. Both restricted candidates appear in the chain
+    //    only as filter records.
+    const chain = session.getProviderChain();
+    const restrictedEntries = chain.filter((c) => c.reason === "client_restriction_filtered");
+    expect(restrictedEntries.length).toBeGreaterThanOrEqual(1);
+    const restrictedIds = new Set(restrictedEntries.map((e) => e.id));
+    expect(restrictedIds.has(78)).toBe(true); // bound provider is traced
+    expect(session.provider).toBeNull(); // ...but never re-attached
+
+    // 6) ensure() did NOT silently emit an initial_selection entry — no
+    //    candidate actually won the race.
+    expect(chain.some((c) => c.reason === "initial_selection")).toBe(false);
   });
 });
