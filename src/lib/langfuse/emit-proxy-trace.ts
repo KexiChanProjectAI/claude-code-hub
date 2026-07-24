@@ -62,6 +62,7 @@ function buildLangfuseSessionSnapshot(session: ProxySession): ProxySession {
       ? truncateResponseTextForLangfuse(session.forwardedRequestBody)
       : null;
   const requestMessage = buildRequestMessagePreview(session.request.message);
+  const clientIp = session.clientIp;
 
   return {
     startTime: session.startTime,
@@ -81,6 +82,7 @@ function buildLangfuseSessionSnapshot(session: ProxySession): ProxySession {
     forwardStartTime: session.forwardStartTime,
     forwardedRequestBody,
     sessionId: session.sessionId,
+    clientIp,
     originalFormat: session.originalFormat,
     getMessagesLength: () => messagesLength,
     getEndpoint: () => endpoint,

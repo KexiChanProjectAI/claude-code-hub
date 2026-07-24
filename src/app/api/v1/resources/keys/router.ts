@@ -13,6 +13,8 @@ import {
   KeyRevealResponseSchema,
   KeysBatchUpdateSchema,
   KeyUpdateSchema,
+  KeyValidateRequestSchema,
+  KeyValidateResponseSchema,
   PatchKeyLimitParamSchema,
   PatchKeyLimitSchema,
   UserIdForKeysParamSchema,
@@ -32,6 +34,7 @@ import {
   resetKeyLimits,
   revealKey,
   updateKey,
+  validateKey,
 } from "./handlers";
 
 export const keysRouter = new OpenAPIHono({
@@ -214,6 +217,34 @@ keysRouter.openAPIRegistry.registerPath(revealKeyRoute);
 // Auth tier is "read" so the action's per-request ownership check can
 // apply (admin OR key owner). Non-owners are rejected at the action layer.
 keysRouter.get("/keys/:keyId{[0-9]+:reveal}", requireAuth("read"), revealKey);
+
+keysRouter.openapi(
+  createRoute({
+    method: "post",
+    path: "/keys:validate",
+    middleware: requireAuth("admin"),
+    tags: ["Keys"],
+    summary: "Validate an API key",
+    description:
+      "Validates a plaintext API key. Returns the owning user name and key name if the key is active; otherwise returns 404.",
+    "x-required-access": "admin",
+    security,
+    request: {
+      body: {
+        required: true,
+        content: { "application/json": { schema: KeyValidateRequestSchema } },
+      },
+    },
+    responses: {
+      200: {
+        description: "Key is valid.",
+        content: { "application/json": { schema: KeyValidateResponseSchema } },
+      },
+      ...problemResponses,
+    },
+  }),
+  validateKey as never
+);
 
 keysRouter.openapi(
   createRoute({

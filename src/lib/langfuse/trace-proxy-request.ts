@@ -215,6 +215,9 @@ export async function traceProxyRequest(ctx: TraceContext): Promise<void> {
       model: session.getCurrentModel(),
       clientFormat: session.originalFormat,
       providerName: provider?.name,
+      userName: messageContext?.user?.name ?? session.userName ?? null,
+      keyName: messageContext?.key?.name ?? null,
+      clientIp: session.clientIp ?? null,
       statusCode,
       durationMs,
       errorMessage: ctx.errorMessage,
@@ -234,7 +237,9 @@ export async function traceProxyRequest(ctx: TraceContext): Promise<void> {
 
     // Build trace-level metadata (propagateAttributes requires all values to be strings)
     const traceMetadata: Record<string, string> = {
+      userName: messageContext?.user?.name ?? session.userName ?? "",
       keyName: messageContext?.key?.name ?? "",
+      clientIp: session.clientIp ?? "",
       endpoint: session.getEndpoint() ?? "",
       method: session.method,
       clientFormat: session.originalFormat,
@@ -262,7 +267,9 @@ export async function traceProxyRequest(ctx: TraceContext): Promise<void> {
       userAgent: session.userAgent,
       requestSequence: session.getRequestSequence(),
       sessionId: session.sessionId,
-      keyName: messageContext?.key?.name,
+      userName: messageContext?.user?.name ?? session.userName ?? null,
+      keyName: messageContext?.key?.name ?? null,
+      clientIp: session.clientIp ?? null,
       // Timing
       durationMs,
       ttfbMs: session.ttfbMs,
@@ -324,11 +331,11 @@ export async function traceProxyRequest(ctx: TraceContext): Promise<void> {
     // Propagate trace attributes
     await propagateAttributes(
       {
-        userId: messageContext?.user?.name ?? undefined,
+        userId: messageContext?.user?.name ?? session.userName ?? undefined,
         sessionId: session.sessionId ?? undefined,
         tags,
         metadata: traceMetadata,
-        traceName: `${session.method} ${session.getEndpoint() ?? "/"}`,
+        traceName: session.getCurrentModel() ?? "unknown",
       },
       async () => {
         // 1. Guard pipeline span (if forwardStartTime was recorded)

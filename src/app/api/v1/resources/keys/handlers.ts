@@ -21,6 +21,7 @@ import {
   KeyRenewSchema,
   KeysBatchUpdateSchema,
   KeyUpdateSchema,
+  KeyValidateRequestSchema,
   PatchKeyLimitParamSchema,
   PatchKeyLimitSchema,
   UserIdForKeysParamSchema,
@@ -286,6 +287,36 @@ export async function batchUpdateKeys(c: Context): Promise<Response> {
     c,
     await callAction(c, actions.batchUpdateKeys, [body.data] as never[], c.get("auth"))
   );
+}
+
+export async function validateKey(c: Context): Promise<Response> {
+  const body = await parseHonoJsonBody(c, KeyValidateRequestSchema);
+  if (!body.ok) return body.response;
+
+  const { validateApiKeyAndGetUser } = await import("@/repository/key");
+  const outcome = await validateApiKeyAndGetUser(body.data.key);
+
+  if (!outcome) {
+    return createProblemResponse({
+      status: 404,
+      instance: new URL(c.req.url).pathname,
+      errorCode: "key.not_found",
+      detail: "API key is invalid or does not exist.",
+    });
+  }
+
+  const { user, key } = outcome;
+  const now = Date.now();
+  if (!user.isEnabled || (user.expiresAt && user.expiresAt.getTime() <= now)) {
+    return createProblemResponse({
+      status: 404,
+      instance: new URL(c.req.url).pathname,
+      errorCode: "key.not_found",
+      detail: "API key is invalid or does not exist.",
+    });
+  }
+
+  return jsonResponse({ owner: user.name, name: key.name });
 }
 
 function parseUserParams(c: Context): { userId: number } | Response {

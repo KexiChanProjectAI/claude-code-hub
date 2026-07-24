@@ -3,6 +3,17 @@ import { z } from "@hono/zod-openapi";
 const ResetModeSchema = z.enum(["fixed", "rolling"]);
 const CacheTtlPreferenceSchema = z.enum(["inherit", "5m", "1h"]);
 
+export const KeyValidateRequestSchema = z
+  .object({
+    key: z.string().min(1).describe("Plaintext API key to validate."),
+  })
+  .strict();
+
+export const KeyValidateResponseSchema = z.object({
+  owner: z.string().describe("API key owner user name."),
+  name: z.string().describe("API key name."),
+});
+
 export const KeyIdParamSchema = z.object({
   keyId: z.coerce.number().int().positive().describe("Key id."),
 });

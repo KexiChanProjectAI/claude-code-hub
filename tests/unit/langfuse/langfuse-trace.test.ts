@@ -90,6 +90,7 @@ function createMockSession(overrides: Record<string, unknown> = {}) {
     originalFormat: "claude",
     userAgent: "claude-code/1.0",
     sessionId: "sess_abc12345_def67890",
+    clientIp: "192.168.1.42",
     provider: {
       id: 1,
       name: "anthropic-main",
@@ -275,6 +276,29 @@ describe("traceProxyRequest", () => {
           "claude-sonnet-4-20250514",
           "2xx",
         ]),
+      })
+    );
+  });
+
+  test("should use model name as trace name and include user/key/ip metadata", async () => {
+    const { traceProxyRequest } = await import("@/lib/langfuse/trace-proxy-request");
+
+    await traceProxyRequest({
+      session: createMockSession(),
+      responseHeaders: new Headers(),
+      durationMs: 500,
+      statusCode: 200,
+      isStreaming: false,
+    });
+
+    expect(mockPropagateAttributes).toHaveBeenCalledWith(
+      expect.objectContaining({
+        traceName: "claude-sonnet-4-20250514",
+        metadata: expect.objectContaining({
+          userName: "testuser",
+          keyName: "default-key",
+          clientIp: "192.168.1.42",
+        }),
       })
     );
   });
