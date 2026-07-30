@@ -1,7 +1,10 @@
 import type { UsageMetrics } from "@/app/v1/_lib/proxy/response-handler";
 import type { ProxySession } from "@/app/v1/_lib/proxy/session";
 import { isLangfuseEnabled } from "@/lib/langfuse/index";
-import type { StreamFinalOutput } from "@/lib/langfuse/stream-final-output-core";
+import {
+  createFinalOutputUnavailable,
+  type StreamFinalOutput,
+} from "@/lib/langfuse/stream-final-output-core";
 import { logger } from "@/lib/logger";
 import type { CostBreakdown } from "@/lib/utils/cost-calculation";
 
@@ -124,6 +127,13 @@ function buildResponseOutput(ctx: TraceContext): unknown {
   }
   if (ctx.finalResponseOutput !== undefined) {
     return ctx.finalResponseOutput;
+  }
+
+  if (ctx.isStreaming) {
+    return createFinalOutputUnavailable("no_terminal_event", {
+      eventCount: ctx.sseEventCount ?? 0,
+      status: ctx.statusCode,
+    });
   }
 
   if (ctx.responseText) {

@@ -178,6 +178,16 @@ export function finalizeOpenAIChatStream(frames: ParsedStreamFrames): StreamFina
     });
   }
 
+  if (
+    choices.size === 0 ||
+    [...choices.values()].some((choice) => choice.finishReason === undefined)
+  ) {
+    return createFinalOutputUnavailable("no_terminal_event", {
+      eventCount: frames.frames.length,
+      framing: frames.framing,
+    });
+  }
+
   const value = {
     id: id ?? "",
     object: "chat.completion",

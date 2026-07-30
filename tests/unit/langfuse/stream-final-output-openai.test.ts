@@ -41,6 +41,102 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 describe("finalizeOpenAIChatStream", () => {
+  test("returns no_terminal_event for a DONE-only stream", () => {
+    const result = finalizeOpenAIChatStream(frames([{ data: "[DONE]" }]));
+
+    expect(result).toEqual({
+      kind: "final_output_unavailable",
+      reason: "no_terminal_event",
+      eventCount: 1,
+      framing: "sse",
+    });
+  });
+
+  test("returns no_terminal_event for a partial stream without DONE or finish reasons", () => {
+    const result = finalizeOpenAIChatStream(
+      frames([
+        {
+          data: {
+            id: "chatcmpl-partial",
+            choices: [
+              {
+                index: 0,
+                delta: { role: "assistant", content: "unfinished" },
+                finish_reason: null,
+              },
+            ],
+          },
+        },
+      ])
+    );
+
+    expect(result).toEqual({
+      kind: "final_output_unavailable",
+      reason: "no_terminal_event",
+      eventCount: 1,
+      framing: "sse",
+    });
+  });
+
+  test("returns no_terminal_event when DONE follows a choice with a null finish reason", () => {
+    const result = finalizeOpenAIChatStream(
+      frames([
+        {
+          data: {
+            id: "chatcmpl-truncated",
+            choices: [
+              {
+                index: 0,
+                delta: { role: "assistant", content: "truncated" },
+                finish_reason: null,
+              },
+            ],
+          },
+        },
+        { data: "[DONE]" },
+      ])
+    );
+
+    expect(result).toEqual({
+      kind: "final_output_unavailable",
+      reason: "no_terminal_event",
+      eventCount: 2,
+      framing: "sse",
+    });
+  });
+
+  test("finalizes all choices with non-null finish reasons without DONE", () => {
+    const result = finalizeOpenAIChatStream(
+      frames([
+        {
+          data: {
+            id: "chatcmpl-finished",
+            choices: [
+              {
+                index: 0,
+                delta: { role: "assistant", content: "first" },
+                finish_reason: "stop",
+              },
+              {
+                index: 1,
+                delta: { role: "assistant", content: "second" },
+                finish_reason: "length",
+              },
+            ],
+          },
+        },
+      ])
+    );
+
+    expect(finalValue(result)).toMatchObject({
+      id: "chatcmpl-finished",
+      choices: [
+        { index: 0, message: { content: "first" }, finish_reason: "stop" },
+        { index: 1, message: { content: "second" }, finish_reason: "length" },
+      ],
+    });
+  });
+
   test("concatenates reasoning-only deltas into one native chat completion", () => {
     const result = finalizeOpenAIChatStream(
       frames([
@@ -74,6 +170,15 @@ describe("finalizeOpenAIChatStream", () => {
             ],
           },
         },
+        {
+          data: {
+            id: "chatcmpl-reasoning",
+            object: "chat.completion.chunk",
+            created: 100,
+            model: "gpt-test",
+            choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+          },
+        },
         { data: "[DONE]" },
       ])
     );
@@ -87,7 +192,7 @@ describe("finalizeOpenAIChatStream", () => {
         {
           index: 0,
           message: { role: "assistant", reasoning_content: "First second" },
-          finish_reason: null,
+          finish_reason: "stop",
           logprobs: null,
         },
       ],

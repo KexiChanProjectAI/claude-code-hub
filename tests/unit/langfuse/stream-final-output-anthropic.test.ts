@@ -208,4 +208,48 @@ describe("finalizeAnthropicStreamOutput", () => {
     expect(serialized).not.toContain("hidden");
     expect(serialized).not.toContain("data:");
   });
+
+  test("returns malformed_frame for an unknown content block delta type", () => {
+    const result = finalizeAnthropicStreamOutput(
+      frames(
+        frame("message_start", {
+          type: "message_start",
+          message: { id: "msg_unknown_delta", type: "message", content: [] },
+        }),
+        contentBlockStart(0, { type: "text", text: "" }),
+        contentBlockDelta(0, { type: "unknown_delta", text: "hidden" })
+      )
+    );
+
+    expect(result).toEqual({
+      kind: "final_output_unavailable",
+      reason: "malformed_frame",
+      eventCount: 3,
+      framing: "sse",
+    });
+    expect(JSON.stringify(result)).not.toContain("hidden");
+  });
+
+  test("ignores ping events while reconstructing a message", () => {
+    const result = expectFinal(
+      finalizeAnthropicStreamOutput(
+        frames(
+          frame("message_start", {
+            type: "message_start",
+            message: { id: "msg_ping", type: "message", content: [] },
+          }),
+          frame("ping", { type: "ping" }),
+          contentBlockStart(0, { type: "text", text: "" }),
+          contentBlockDelta(0, { type: "text_delta", text: "still complete" }),
+          contentBlockStop(0),
+          frame("message_stop", { type: "message_stop" })
+        )
+      )
+    );
+
+    expect(result.value).toMatchObject({
+      id: "msg_ping",
+      content: [{ type: "text", text: "still complete" }],
+    });
+  });
 });

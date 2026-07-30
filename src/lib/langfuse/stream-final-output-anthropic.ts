@@ -100,6 +100,8 @@ export function finalizeAnthropicStreamOutput(parsedFrames: ParsedStreamFrames):
             return createFinalOutputUnavailable("malformed_frame", metadata);
           }
           blockState.inputJsonFragments.push(partialJson);
+        } else {
+          return createFinalOutputUnavailable("malformed_frame", metadata);
         }
         break;
       }

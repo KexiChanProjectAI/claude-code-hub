@@ -559,7 +559,7 @@ describe("traceProxyRequest", () => {
     expect(output).not.toContain("...[truncated]");
   });
 
-  test("should show streaming output with sseEventCount when no responseText", async () => {
+  test("should use a bounded diagnostic when streaming output has no finalizer result and no responseText", async () => {
     const { traceProxyRequest } = await import("@/lib/langfuse/trace-proxy-request");
 
     await traceProxyRequest({
@@ -575,8 +575,10 @@ describe("traceProxyRequest", () => {
       (c: unknown[]) => c[0] === "llm-call"
     );
     expect(llmCall[1].output).toEqual({
-      streaming: true,
-      sseEventCount: 42,
+      kind: "final_output_unavailable",
+      reason: "no_terminal_event",
+      eventCount: 42,
+      status: 200,
     });
   });
 
@@ -752,6 +754,40 @@ describe("traceProxyRequest", () => {
     expect(rootCall[1].output).toBe(diagnostic);
     expect(llmCall?.[1].output).toBe(diagnostic);
     expect(mockSetTraceIO.mock.calls[0][0].output).toBe(diagnostic);
+  });
+
+  test("should use a bounded diagnostic when streaming output has no finalizer result", async () => {
+    const { traceProxyRequest } = await import("@/lib/langfuse/trace-proxy-request");
+    const rawSse = 'data: {"choices":[{"delta":{"content":"partial"}}]}\n\ndata: [DONE]';
+    const diagnostic: StreamFinalOutput = {
+      kind: "final_output_unavailable",
+      reason: "no_terminal_event",
+      eventCount: 2,
+      status: 200,
+    };
+
+    await traceProxyRequest({
+      session: createMockSession({ originalFormat: "openai" }),
+      responseHeaders: new Headers(),
+      durationMs: 500,
+      statusCode: 200,
+      isStreaming: true,
+      sseEventCount: 2,
+      responseText: rawSse,
+    });
+
+    const rootCall = mockStartObservation.mock.calls[0];
+    const llmCall = mockRootSpan.startObservation.mock.calls.find(
+      (call: unknown[]) => call[0] === "llm-call"
+    );
+    const traceIoCall = mockSetTraceIO.mock.calls[0];
+
+    expect(rootCall[1].output).toEqual(diagnostic);
+    expect(llmCall?.[1].output).toEqual(diagnostic);
+    expect(traceIoCall[0].output).toEqual(diagnostic);
+    expect(JSON.stringify(rootCall[1].output)).not.toContain("data:");
+    expect(JSON.stringify(llmCall?.[1].output)).not.toContain("data:");
+    expect(JSON.stringify(traceIoCall[0].output)).not.toContain("data:");
   });
 
   // --- New tests for multi-span hierarchy ---
