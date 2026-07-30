@@ -281,7 +281,7 @@ describe("traceProxyRequest", () => {
     );
   });
 
-  test("should use model name as trace name and include user/key/ip metadata", async () => {
+  test("should prefix trace name with username and include user/key/ip metadata", async () => {
     const { traceProxyRequest } = await import("@/lib/langfuse/trace-proxy-request");
 
     await traceProxyRequest({
@@ -294,12 +294,30 @@ describe("traceProxyRequest", () => {
 
     expect(mockPropagateAttributes).toHaveBeenCalledWith(
       expect.objectContaining({
-        traceName: "claude-sonnet-4-20250514",
+        traceName: "testuser:claude-sonnet-4-20250514",
         metadata: expect.objectContaining({
           userName: "testuser",
           keyName: "default-key",
           clientIp: "192.168.1.42",
         }),
+      })
+    );
+  });
+
+  test("should use the bare model as trace name when username is absent", async () => {
+    const { traceProxyRequest } = await import("@/lib/langfuse/trace-proxy-request");
+
+    await traceProxyRequest({
+      session: createMockSession({ messageContext: null, userName: undefined }),
+      responseHeaders: new Headers(),
+      durationMs: 500,
+      statusCode: 200,
+      isStreaming: false,
+    });
+
+    expect(mockPropagateAttributes).toHaveBeenCalledWith(
+      expect.objectContaining({
+        traceName: "claude-sonnet-4-20250514",
       })
     );
   });

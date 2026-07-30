@@ -348,13 +348,18 @@ export async function traceProxyRequest(ctx: TraceContext): Promise<void> {
     );
 
     // Propagate trace attributes
+    const username = messageContext?.user?.name ?? session.userName;
+    const traceName = username
+      ? `${username}:${session.getCurrentModel() ?? "unknown"}`
+      : (session.getCurrentModel() ?? "unknown");
+
     await propagateAttributes(
       {
         userId: messageContext?.user?.name ?? session.userName ?? undefined,
         sessionId: session.sessionId ?? undefined,
         tags,
         metadata: traceMetadata,
-        traceName: session.getCurrentModel() ?? "unknown",
+        traceName,
       },
       async () => {
         // 1. Guard pipeline span (if forwardStartTime was recorded)
