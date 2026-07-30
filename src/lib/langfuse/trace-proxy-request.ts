@@ -1,6 +1,7 @@
 import type { UsageMetrics } from "@/app/v1/_lib/proxy/response-handler";
 import type { ProxySession } from "@/app/v1/_lib/proxy/session";
 import { isLangfuseEnabled } from "@/lib/langfuse/index";
+import type { StreamFinalOutput } from "@/lib/langfuse/stream-final-output-core";
 import { logger } from "@/lib/logger";
 import type { CostBreakdown } from "@/lib/utils/cost-calculation";
 
@@ -88,6 +89,7 @@ export interface TraceContext {
   durationMs: number;
   statusCode: number;
   responseText?: string;
+  finalResponseOutput?: StreamFinalOutput;
   isStreaming: boolean;
   sseEventCount?: number;
   errorMessage?: string;
@@ -117,6 +119,13 @@ function isResponseMissing(ctx: TraceContext): boolean {
 }
 
 function buildResponseOutput(ctx: TraceContext): unknown {
+  if (ctx.finalResponseOutput?.kind === "final") {
+    return ctx.finalResponseOutput.value;
+  }
+  if (ctx.finalResponseOutput !== undefined) {
+    return ctx.finalResponseOutput;
+  }
+
   if (ctx.responseText) {
     return tryParseJsonSafe(ctx.responseText);
   }
@@ -409,7 +418,7 @@ export async function traceProxyRequest(ctx: TraceContext): Promise<void> {
 
         // Generation input/output = raw payload, no truncation
         const generationInput = actualRequestBody;
-        const generationOutput = buildResponseOutput(ctx);
+        const generationOutput = actualResponseBody;
 
         // Create the LLM generation observation
         const generation = rootSpan.startObservation(

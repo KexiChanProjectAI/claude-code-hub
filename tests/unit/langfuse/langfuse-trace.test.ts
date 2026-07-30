@@ -1,4 +1,5 @@
 import { describe, expect, test, vi, beforeEach, afterEach } from "vitest";
+import type { StreamFinalOutput } from "@/lib/langfuse/stream-final-output-core";
 
 // Mock the langfuse modules at the top level
 const mockStartObservation = vi.fn();
@@ -689,6 +690,68 @@ describe("traceProxyRequest", () => {
       }),
       output: responseBody,
     });
+  });
+
+  test("should reuse structured streaming output across all Langfuse output sinks", async () => {
+    const { traceProxyRequest } = await import("@/lib/langfuse/trace-proxy-request");
+    const finalValue = {
+      id: "chat-1",
+      object: "chat.completion",
+      choices: [{ index: 0, message: { role: "assistant", content: "hello" } }],
+    };
+    const finalResponseOutput: StreamFinalOutput = { kind: "final", value: finalValue };
+
+    await traceProxyRequest({
+      session: createMockSession({ originalFormat: "openai" }),
+      responseHeaders: new Headers(),
+      durationMs: 500,
+      statusCode: 200,
+      isStreaming: true,
+      responseText: 'data: {"choices":[{"delta":{"content":"hello"}}]}\n\ndata: [DONE]\n\n',
+      finalResponseOutput,
+    });
+
+    const rootCall = mockStartObservation.mock.calls[0];
+    const llmCall = mockRootSpan.startObservation.mock.calls.find(
+      (call: unknown[]) => call[0] === "llm-call"
+    );
+    const traceIoCall = mockSetTraceIO.mock.calls[0];
+
+    expect(rootCall[1].output).toBe(finalValue);
+    expect(llmCall?.[1].output).toBe(finalValue);
+    expect(traceIoCall[0].output).toBe(finalValue);
+    expect(JSON.stringify(rootCall[1].output)).not.toContain("data: ");
+    expect(JSON.stringify(llmCall?.[1].output)).not.toContain("data: ");
+    expect(JSON.stringify(traceIoCall[0].output)).not.toContain("data: ");
+  });
+
+  test("should use a structured diagnostic as the shared streaming output", async () => {
+    const { traceProxyRequest } = await import("@/lib/langfuse/trace-proxy-request");
+    const diagnostic: StreamFinalOutput = {
+      kind: "final_output_unavailable",
+      reason: "no_terminal_event",
+      eventCount: 2,
+      framing: "sse",
+    };
+
+    await traceProxyRequest({
+      session: createMockSession(),
+      responseHeaders: new Headers(),
+      durationMs: 500,
+      statusCode: 200,
+      isStreaming: true,
+      responseText: "data: partial\n\n",
+      finalResponseOutput: diagnostic,
+    });
+
+    const rootCall = mockStartObservation.mock.calls[0];
+    const llmCall = mockRootSpan.startObservation.mock.calls.find(
+      (call: unknown[]) => call[0] === "llm-call"
+    );
+
+    expect(rootCall[1].output).toBe(diagnostic);
+    expect(llmCall?.[1].output).toBe(diagnostic);
+    expect(mockSetTraceIO.mock.calls[0][0].output).toBe(diagnostic);
   });
 
   // --- New tests for multi-span hierarchy ---
