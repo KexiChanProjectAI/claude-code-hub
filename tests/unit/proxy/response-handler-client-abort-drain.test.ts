@@ -655,6 +655,12 @@ async function drainAsyncTasks(): Promise<void> {
   }
 }
 
+async function settleTimerDrivenAsyncTasks(): Promise<void> {
+  const tasks = asyncTasks.splice(0, asyncTasks.length);
+  vi.useRealTimers();
+  await Promise.allSettled(tasks);
+}
+
 describe("ProxyResponseHandler stream client abort finalization", () => {
   beforeEach(() => {
     asyncTasks.splice(0, asyncTasks.length);
@@ -1055,8 +1061,7 @@ describe("ProxyResponseHandler stream client abort finalization", () => {
       expect(upstreamController.signal.aborted).toBe(false);
 
       await vi.advanceTimersByTimeAsync(1_000);
-      const tasks = asyncTasks.splice(0, asyncTasks.length);
-      await Promise.allSettled(tasks);
+      await settleTimerDrivenAsyncTasks();
 
       expect(upstreamController.signal.aborted).toBe(true);
       expect(AsyncTaskManager.cancel).not.toHaveBeenCalled();
@@ -1103,8 +1108,7 @@ describe("ProxyResponseHandler stream client abort finalization", () => {
       expect(upstreamController.signal.aborted).toBe(false);
 
       await vi.advanceTimersByTimeAsync(1);
-      const tasks = asyncTasks.splice(0, asyncTasks.length);
-      await Promise.allSettled(tasks);
+      await settleTimerDrivenAsyncTasks();
 
       expect(upstreamController.signal.aborted).toBe(true);
       expect(AsyncTaskManager.cancel).not.toHaveBeenCalled();
@@ -1151,8 +1155,7 @@ describe("ProxyResponseHandler stream client abort finalization", () => {
 
       clientController.abort();
       await vi.advanceTimersByTimeAsync(1);
-      const tasks = asyncTasks.splice(0, asyncTasks.length);
-      await Promise.allSettled(tasks);
+      await settleTimerDrivenAsyncTasks();
 
       expect(upstreamController.signal.aborted).toBe(true);
       expect(AsyncTaskManager.cancel).not.toHaveBeenCalled();
@@ -1196,8 +1199,7 @@ describe("ProxyResponseHandler stream client abort finalization", () => {
       clientController.abort();
 
       await vi.advanceTimersByTimeAsync(60_000);
-      const tasks = asyncTasks.splice(0, asyncTasks.length);
-      await Promise.allSettled(tasks);
+      await settleTimerDrivenAsyncTasks();
 
       expect(upstreamController.signal.aborted).toBe(true);
       expect(AsyncTaskManager.cancel).not.toHaveBeenCalled();
