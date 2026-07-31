@@ -329,6 +329,8 @@ function ProviderFormContent({
           ? (endpointPoolPreferredUrl ?? state.basic.url).trim()
           : state.basic.url.trim();
 
+        const hasRules = state.routing.reasoningEffortOverrideRules !== null;
+
         const baseFormData = {
           name: state.basic.name.trim(),
           url: effectiveProviderUrl,
@@ -352,7 +354,17 @@ function ProviderFormContent({
           group_tag: state.routing.groupTag.length > 0 ? state.routing.groupTag.join(",") : null,
           cache_ttl_preference: state.routing.cacheTtlPreference,
           swap_cache_ttl_billing: state.routing.swapCacheTtlBilling,
-          codex_reasoning_effort_preference: state.routing.codexReasoningEffortPreference,
+          // Legacy effort/adaptive fields: only submit when rules are absent
+          ...(hasRules
+            ? {
+                codex_reasoning_effort_preference: "inherit" as const,
+                anthropic_adaptive_thinking: null,
+              }
+            : {
+                codex_reasoning_effort_preference: state.routing.codexReasoningEffortPreference,
+                anthropic_adaptive_thinking: state.routing.anthropicAdaptiveThinking,
+              }),
+          reasoning_effort_override_rules: state.routing.reasoningEffortOverrideRules,
           codex_reasoning_summary_preference: state.routing.codexReasoningSummaryPreference,
           codex_text_verbosity_preference: state.routing.codexTextVerbosityPreference,
           codex_parallel_tool_calls_preference: state.routing.codexParallelToolCallsPreference,
@@ -360,7 +372,6 @@ function ProviderFormContent({
           codex_service_tier_preference: state.routing.codexServiceTierPreference,
           anthropic_max_tokens_preference: state.routing.anthropicMaxTokensPreference,
           anthropic_thinking_budget_preference: state.routing.anthropicThinkingBudgetPreference,
-          anthropic_adaptive_thinking: state.routing.anthropicAdaptiveThinking,
           gemini_google_search_preference: state.routing.geminiGoogleSearchPreference,
           active_time_start: state.routing.activeTimeStart || null,
           active_time_end: state.routing.activeTimeEnd || null,
@@ -545,6 +556,8 @@ function ProviderFormContent({
       state.routing.anthropicMaxTokensPreference !== "inherit" ||
       state.routing.anthropicThinkingBudgetPreference !== "inherit" ||
       state.routing.anthropicAdaptiveThinking !== null ||
+      // Conditional reasoning effort override rules
+      state.routing.reasoningEffortOverrideRules !== null ||
       // Gemini overrides
       state.routing.geminiGoogleSearchPreference !== "inherit" ||
       // Active time

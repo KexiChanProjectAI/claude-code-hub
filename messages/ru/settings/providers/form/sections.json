@@ -204,6 +204,47 @@
         "crlf": "Имя и значение заголовка не могут содержать переводы строки"
       }
     },
+    "effortRules": {
+      "title": "Условные правила усилий рассуждений",
+      "description": "Правила проверяются по порядку. Первое подходящее правило определяет целевое усилие. Если ни одно правило не подходит, переопределение не применяется.",
+      "noRules": "Правила не настроены. Добавьте правило для включения условных переопределений усилий.",
+      "addRule": "Добавить правило",
+      "removeRule": "Удалить правило",
+      "moveUp": "Переместить вверх",
+      "moveDown": "Переместить вниз",
+      "ruleLabel": "Правило {number}",
+      "targetEffort": "Целевое усилие",
+      "selectTarget": "Выберите целевое усилие",
+      "originalModelCondition": "Когда исходная модель...",
+      "executionModelCondition": "Когда модель выполнения...",
+      "removeCondition": "убрать",
+      "addCondition": "добавить",
+      "matchModes": {
+        "exact": "точное совпадение",
+        "prefix": "начало строки",
+        "suffix": "конец строки",
+        "contains": "содержит",
+        "regex": "регулярное выражение"
+      },
+      "patternPlaceholder": "например, claude-opus-4-6",
+      "originalEffortCondition": "Когда исходное усилие...",
+      "effortMode": {
+        "any": "Любое (опустить условие)",
+        "missing": "Отсутствует (явный null)",
+        "specific": "Конкретное значение"
+      },
+      "originalEffortPlaceholder": "например, medium",
+      "maxRulesReached": "Достигнут максимум из {max} правил",
+      "effortValues": {
+        "none": "none",
+        "minimal": "minimal",
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
     "codexOverrides": {
       "title": "Переопределение параметров Codex",
       "desc": "Переопределение параметров запросов Codex (Responses API) на уровне провайдера",

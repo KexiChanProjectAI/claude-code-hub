@@ -101,6 +101,7 @@ const ACTION_TO_FIELD_PATH: Partial<Record<ProviderFormActionWith5hResetMode["ty
   SET_ACTIVE_TIME_START: "routing.activeTimeStart",
   SET_ACTIVE_TIME_END: "routing.activeTimeEnd",
   SET_CUSTOM_HEADERS_TEXT: "routing.customHeadersText",
+  SET_REASONING_EFFORT_RULES: "routing.reasoningEffortOverrideRules",
   SET_LIMIT_5H_USD: "rateLimit.limit5hUsd",
   SET_LIMIT_5H_RESET_MODE: "rateLimit.limit5hResetMode",
   SET_LIMIT_DAILY_USD: "rateLimit.limitDailyUsd",
@@ -243,6 +244,10 @@ export function createInitialState(
           analysis.routing.activeTimeEnd.status === "uniform"
             ? analysis.routing.activeTimeEnd.value
             : null,
+        reasoningEffortOverrideRules:
+          analysis.routing.reasoningEffortOverrideRules.status === "uniform"
+            ? analysis.routing.reasoningEffortOverrideRules.value
+            : null,
         // Batch mode does not support customHeaders edits; always start empty
         customHeadersText: "",
       },
@@ -371,6 +376,7 @@ export function createInitialState(
         anthropicThinkingBudgetPreference: "inherit",
         anthropicAdaptiveThinking: null,
         geminiGoogleSearchPreference: "inherit",
+        reasoningEffortOverrideRules: null,
         activeTimeStart: null,
         activeTimeEnd: null,
         customHeadersText: "",
@@ -451,6 +457,14 @@ export function createInitialState(
         sourceProvider?.anthropicThinkingBudgetPreference ?? "inherit",
       anthropicAdaptiveThinking: sourceProvider?.anthropicAdaptiveThinking ?? null,
       geminiGoogleSearchPreference: sourceProvider?.geminiGoogleSearchPreference ?? "inherit",
+      reasoningEffortOverrideRules:
+        (
+          sourceProvider as unknown as {
+            reasoningEffortOverrideRules?:
+              | import("@/types/provider").ReasoningEffortOverrideRule[]
+              | null;
+          }
+        )?.reasoningEffortOverrideRules ?? null,
       activeTimeStart: sourceProvider?.activeTimeStart ?? null,
       activeTimeEnd: sourceProvider?.activeTimeEnd ?? null,
       customHeadersText: stringifyCustomHeadersForTextarea(
@@ -669,6 +683,11 @@ export function providerFormReducer(
       return {
         ...state,
         routing: { ...state.routing, customHeadersText: action.payload },
+      };
+    case "SET_REASONING_EFFORT_RULES":
+      return {
+        ...state,
+        routing: { ...state.routing, reasoningEffortOverrideRules: action.payload },
       };
 
     // Rate limit

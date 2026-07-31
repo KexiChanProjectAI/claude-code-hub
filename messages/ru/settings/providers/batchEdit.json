@@ -55,7 +55,8 @@
     "modelRedirects": "Перенаправление моделей",
     "allowedModels": "Разрешенные модели",
     "thinkingBudget": "Бюджет размышлений",
-    "adaptiveThinking": "Адаптивное мышление"
+    "adaptiveThinking": "Адаптивное мышление",
+    "reasoningEffortRules": "Условные правила усилий рассуждений"
   },
   "toast": {
     "previewFailed": "Ошибка предпросмотра: {error}",

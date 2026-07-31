@@ -204,6 +204,47 @@
         "crlf": "Header name and value cannot contain line breaks"
       }
     },
+    "effortRules": {
+      "title": "Conditional Reasoning Effort Rules",
+      "description": "Rules are evaluated in order. The first matching rule determines the override effort. If no rule matches, no override is applied.",
+      "noRules": "No rules configured. Add a rule to enable conditional effort overrides.",
+      "addRule": "Add Rule",
+      "removeRule": "Remove rule",
+      "moveUp": "Move up",
+      "moveDown": "Move down",
+      "ruleLabel": "Rule {number}",
+      "targetEffort": "Target effort",
+      "selectTarget": "Select target effort",
+      "originalModelCondition": "When original model...",
+      "executionModelCondition": "When execution model...",
+      "removeCondition": "remove",
+      "addCondition": "add",
+      "matchModes": {
+        "exact": "exact",
+        "prefix": "prefix",
+        "suffix": "suffix",
+        "contains": "contains",
+        "regex": "regex"
+      },
+      "patternPlaceholder": "e.g. claude-opus-4-6",
+      "originalEffortCondition": "When original effort...",
+      "effortMode": {
+        "any": "Any (omit condition)",
+        "missing": "Missing (explicit null)",
+        "specific": "Specific value"
+      },
+      "originalEffortPlaceholder": "e.g. medium",
+      "maxRulesReached": "Maximum {max} rules reached",
+      "effortValues": {
+        "none": "none",
+        "minimal": "minimal",
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
     "codexOverrides": {
       "title": "Codex Parameter Overrides",
       "desc": "Override Codex (Responses API) request parameters at the provider level",

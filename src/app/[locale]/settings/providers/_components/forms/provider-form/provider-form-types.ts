@@ -17,6 +17,7 @@ import type {
   ProviderDisplay,
   ProviderModelRedirectRule,
   ProviderType,
+  ReasoningEffortOverrideRule,
 } from "@/types/provider";
 import type { BatchSettingsAnalysis } from "../../batch-edit/analyze-batch-settings";
 
@@ -75,6 +76,8 @@ export interface RoutingState {
   anthropicAdaptiveThinking: AnthropicAdaptiveThinkingConfig | null;
   // Gemini-specific
   geminiGoogleSearchPreference: GeminiGoogleSearchPreference;
+  // Conditional reasoning effort override rules (null = use legacy fallback, [] = explicitly disable legacy override)
+  reasoningEffortOverrideRules: ReasoningEffortOverrideRule[] | null;
   // Scheduled active time window (HH:mm format, null = always active)
   activeTimeStart: string | null;
   activeTimeEnd: string | null;
@@ -177,6 +180,7 @@ export type ProviderFormAction =
   | { type: "SET_ACTIVE_TIME_START"; payload: string | null }
   | { type: "SET_ACTIVE_TIME_END"; payload: string | null }
   | { type: "SET_CUSTOM_HEADERS_TEXT"; payload: string }
+  | { type: "SET_REASONING_EFFORT_RULES"; payload: ReasoningEffortOverrideRule[] | null }
   // Rate limit actions
   | { type: "SET_LIMIT_5H_USD"; payload: number | null }
   | { type: "SET_LIMIT_DAILY_USD"; payload: number | null }

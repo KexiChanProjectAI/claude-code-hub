@@ -21,6 +21,19 @@ vi.mock(
 vi.mock("@/app/[locale]/settings/providers/_components/adaptive-thinking-editor", () => ({
   AdaptiveThinkingEditor: (_props: any) => <div data-testid="adaptive-thinking-editor" />,
 }));
+vi.mock("@/app/[locale]/settings/providers/_components/reasoning-effort-rule-editor", () => ({
+  ReasoningEffortRuleEditor: ({
+    rules,
+    providerType,
+  }: {
+    rules: unknown;
+    providerType: string;
+  }) => (
+    <div data-testid="reasoning-effort-rule-editor" data-provider-type={providerType}>
+      Rule Editor (rules: {rules === null ? "null" : Array.isArray(rules) ? rules.length : "?"})
+    </div>
+  ),
+}));
 vi.mock("@/app/[locale]/settings/providers/_components/thinking-budget-editor", () => ({
   ThinkingBudgetEditor: (_props: any) => <div data-testid="thinking-budget-editor" />,
 }));
@@ -607,5 +620,57 @@ describe("OptionsSection", () => {
 
       unmount();
     });
+  });
+});
+
+// ---- ReasoningEffortRuleEditor integration ----
+
+describe("OptionsSection - ReasoningEffortRuleEditor integration", () => {
+  it("shows reasoning effort rule editor for codex providers", () => {
+    const { container, unmount } = renderSection({
+      state: createMockState({ routing: { providerType: "codex" } }),
+    });
+
+    const editor = container.querySelector("[data-testid='reasoning-effort-rule-editor']");
+    expect(editor).toBeTruthy();
+    expect(editor?.getAttribute("data-provider-type")).toBe("codex");
+
+    unmount();
+  });
+
+  it("shows reasoning effort rule editor for claude providers", () => {
+    const { container, unmount } = renderSection({
+      state: createMockState({ routing: { providerType: "claude" } }),
+    });
+
+    const editor = container.querySelector("[data-testid='reasoning-effort-rule-editor']");
+    expect(editor).toBeTruthy();
+    expect(editor?.getAttribute("data-provider-type")).toBe("claude");
+
+    unmount();
+  });
+
+  it("does not show adaptive thinking editor anymore", () => {
+    const { container, unmount } = renderSection({
+      state: createMockState({ routing: { providerType: "claude" } }),
+    });
+
+    const adaptiveEditor = container.querySelector("[data-testid='adaptive-thinking-editor']");
+    expect(adaptiveEditor).toBeNull();
+
+    unmount();
+  });
+
+  it("does not show legacy codex reasoning effort select", () => {
+    const { container, unmount } = renderSection({
+      state: createMockState({ routing: { providerType: "codex" } }),
+    });
+
+    // The old codex reasoning effort label should not be in the Codex Overrides section
+    // (it was replaced by the rule editor)
+    const allText = container.textContent ?? "";
+    expect(allText).not.toContain("sections.routing.codexOverrides.reasoningEffort.label");
+
+    unmount();
   });
 });

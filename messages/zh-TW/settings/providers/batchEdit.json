@@ -55,7 +55,8 @@
     "modelRedirects": "模型重新導向",
     "allowedModels": "允許的模型",
     "thinkingBudget": "思考預算",
-    "adaptiveThinking": "自適應思考"
+    "adaptiveThinking": "自適應思考",
+    "reasoningEffortRules": "條件推理強度規則"
   },
   "toast": {
     "previewFailed": "預覽失敗: {error}",

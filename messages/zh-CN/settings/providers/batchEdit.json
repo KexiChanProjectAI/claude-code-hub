@@ -55,7 +55,8 @@
     "modelRedirects": "模型重定向",
     "allowedModels": "允许的模型",
     "thinkingBudget": "思考预算",
-    "adaptiveThinking": "自适应思考"
+    "adaptiveThinking": "自适应思考",
+    "reasoningEffortRules": "条件推理强度规则"
   },
   "toast": {
     "previewFailed": "预览失败: {error}",

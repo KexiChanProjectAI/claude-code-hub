@@ -34,6 +34,7 @@ function createBatchState(): ProviderFormState {
       anthropicThinkingBudgetPreference: "inherit",
       anthropicAdaptiveThinking: null,
       geminiGoogleSearchPreference: "inherit",
+      reasoningEffortOverrideRules: null,
     },
     rateLimit: {
       limit5hUsd: null,
@@ -737,5 +738,61 @@ describe("buildPatchDraftFromFormState", () => {
     const draft = buildPatchDraftFromFormState(state, dirty);
 
     expect(draft.blocked_clients).toEqual({ set: ["bad-client"] });
+  });
+
+  // ---- reasoningEffortOverrideRules ----
+
+  it("includes reasoning_effort_override_rules when dirty and rules are set", () => {
+    const state = createBatchState();
+    state.routing.reasoningEffortOverrideRules = [{ when: {}, overrideEffort: "high" }];
+    const dirty = new Set(["routing.reasoningEffortOverrideRules"]);
+
+    const draft = buildPatchDraftFromFormState(state, dirty);
+
+    const d = draft as typeof draft & {
+      reasoning_effort_override_rules?: { set: unknown[] };
+    };
+    expect(d.reasoning_effort_override_rules).toEqual({
+      set: [{ when: {}, overrideEffort: "high" }],
+    });
+  });
+
+  it("clears reasoning_effort_override_rules when dirty and null", () => {
+    const state = createBatchState();
+    state.routing.reasoningEffortOverrideRules = null;
+    const dirty = new Set(["routing.reasoningEffortOverrideRules"]);
+
+    const draft = buildPatchDraftFromFormState(state, dirty);
+
+    const d = draft as typeof draft & {
+      reasoning_effort_override_rules?: { clear: boolean };
+    };
+    expect(d.reasoning_effort_override_rules).toEqual({ clear: true });
+  });
+
+  it("sets reasoning_effort_override_rules to empty array when dirty and rules are empty", () => {
+    const state = createBatchState();
+    state.routing.reasoningEffortOverrideRules = [];
+    const dirty = new Set(["routing.reasoningEffortOverrideRules"]);
+
+    const draft = buildPatchDraftFromFormState(state, dirty);
+
+    const d = draft as typeof draft & {
+      reasoning_effort_override_rules?: { set: unknown[] };
+    };
+    expect(d.reasoning_effort_override_rules).toEqual({ set: [] });
+  });
+
+  it("does not include reasoning_effort_override_rules when not dirty", () => {
+    const state = createBatchState();
+    state.routing.reasoningEffortOverrideRules = [{ when: {}, overrideEffort: "high" }];
+    const dirty = new Set<string>();
+
+    const draft = buildPatchDraftFromFormState(state, dirty);
+
+    const d = draft as typeof draft & {
+      reasoning_effort_override_rules?: unknown;
+    };
+    expect(d.reasoning_effort_override_rules).toBeUndefined();
   });
 });

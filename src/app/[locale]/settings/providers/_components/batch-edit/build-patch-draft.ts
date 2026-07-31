@@ -185,6 +185,16 @@ export function buildPatchDraftFromFormState(
       draft.anthropic_adaptive_thinking = { set: state.routing.anthropicAdaptiveThinking };
     }
   }
+  // Conditional reasoning effort override rules
+  if (dirtyFields.has("routing.reasoningEffortOverrideRules")) {
+    const rules = state.routing.reasoningEffortOverrideRules;
+    const d = draft as ProviderBatchPatchDraft & Record<string, unknown>;
+    if (rules === null) {
+      d.reasoning_effort_override_rules = { clear: true };
+    } else {
+      d.reasoning_effort_override_rules = { set: rules };
+    }
+  }
 
   // Gemini preferences
   if (dirtyFields.has("routing.geminiGoogleSearchPreference")) {

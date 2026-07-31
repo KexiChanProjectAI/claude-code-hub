@@ -204,6 +204,47 @@
         "crlf": "ヘッダー名と値に改行を含めることはできません"
       }
     },
+    "effortRules": {
+      "title": "条件付き推論努力ルール",
+      "description": "ルールは順番に評価されます。最初に一致したルールがオーバーライド努力を決定します。一致するルールがない場合、オーバーライドは適用されません。",
+      "noRules": "ルールが設定されていません。ルールを追加して条件付き努力オーバーライドを有効にします。",
+      "addRule": "ルールを追加",
+      "removeRule": "ルールを削除",
+      "moveUp": "上に移動",
+      "moveDown": "下に移動",
+      "ruleLabel": "ルール {number}",
+      "targetEffort": "ターゲット努力",
+      "selectTarget": "ターゲット努力を選択",
+      "originalModelCondition": "元のモデルが一致する場合...",
+      "executionModelCondition": "実行モデルが一致する場合...",
+      "removeCondition": "削除",
+      "addCondition": "追加",
+      "matchModes": {
+        "exact": "完全一致",
+        "prefix": "前方一致",
+        "suffix": "後方一致",
+        "contains": "部分一致",
+        "regex": "正規表現"
+      },
+      "patternPlaceholder": "例: claude-opus-4-6",
+      "originalEffortCondition": "元の努力が一致する場合...",
+      "effortMode": {
+        "any": "すべて（条件を省略）",
+        "missing": "未設定（明示的な null）",
+        "specific": "特定の値"
+      },
+      "originalEffortPlaceholder": "例: medium",
+      "maxRulesReached": "最大 {max} パスのルールに達しました",
+      "effortValues": {
+        "none": "none",
+        "minimal": "minimal",
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
     "codexOverrides": {
       "title": "Codex パラメータオーバーライド",
       "desc": "プロバイダーレベルで Codex (Responses API) リクエストパラメータをオーバーライド",

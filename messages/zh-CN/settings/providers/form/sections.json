@@ -160,6 +160,47 @@
         "crlf": "请求头名称和值不能包含换行符"
       }
     },
+    "effortRules": {
+      "title": "条件推理强度规则",
+      "description": "规则按顺序评估，第一条匹配的规则决定覆写强度。如果没有匹配的规则，则不应用覆写。",
+      "noRules": "未配置规则。添加规则以启用条件强度覆写。",
+      "addRule": "添加规则",
+      "removeRule": "删除规则",
+      "moveUp": "上移",
+      "moveDown": "下移",
+      "ruleLabel": "规则 {number}",
+      "targetEffort": "目标强度",
+      "selectTarget": "选择目标强度",
+      "originalModelCondition": "当原始模型匹配时...",
+      "executionModelCondition": "当执行模型匹配时...",
+      "removeCondition": "移除",
+      "addCondition": "添加",
+      "matchModes": {
+        "exact": "完全匹配",
+        "prefix": "前缀匹配",
+        "suffix": "后缀匹配",
+        "contains": "包含匹配",
+        "regex": "正则表达式"
+      },
+      "patternPlaceholder": "例如 claude-opus-4-6",
+      "originalEffortCondition": "当原始强度匹配时...",
+      "effortMode": {
+        "any": "任意（省略条件）",
+        "missing": "缺失（显式 null）",
+        "specific": "特定值"
+      },
+      "originalEffortPlaceholder": "例如 medium",
+      "maxRulesReached": "已达到最大 {max} 条规则",
+      "effortValues": {
+        "none": "none",
+        "minimal": "minimal",
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
     "codexOverrides": {
       "title": "Codex 参数覆写",
       "desc": "在供应商级别覆写 Codex (Responses API) 请求参数",

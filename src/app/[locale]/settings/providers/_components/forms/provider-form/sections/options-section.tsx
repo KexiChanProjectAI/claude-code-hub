@@ -19,13 +19,12 @@ import { CUSTOM_HEADERS_PLACEHOLDER } from "@/lib/custom-headers";
 import type {
   CodexImageGenerationPreference,
   CodexParallelToolCallsPreference,
-  CodexReasoningEffortPreference,
   CodexReasoningSummaryPreference,
   CodexServiceTierPreference,
   CodexTextVerbosityPreference,
   GeminiGoogleSearchPreference,
 } from "@/types/provider";
-import { AdaptiveThinkingEditor } from "../../../adaptive-thinking-editor";
+import { ReasoningEffortRuleEditor } from "../../../reasoning-effort-rule-editor";
 import { ThinkingBudgetEditor } from "../../../thinking-budget-editor";
 import { SectionCard, SmartInputWrapper, ToggleRow } from "../components/section-card";
 import { useProviderForm } from "../provider-form-context";
@@ -168,54 +167,14 @@ export function OptionsSection({ subSectionRefs }: OptionsSectionProps) {
               }
             >
               <div className="space-y-4">
-                <SmartInputWrapper
-                  label={t("sections.routing.codexOverrides.reasoningEffort.label")}
-                >
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="relative">
-                        <Select
-                          value={state.routing.codexReasoningEffortPreference}
-                          onValueChange={(val) =>
-                            dispatch({
-                              type: "SET_CODEX_REASONING_EFFORT",
-                              payload: val as CodexReasoningEffortPreference,
-                            })
-                          }
-                          disabled={state.ui.isPending}
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue
-                              placeholder={t(
-                                "sections.routing.codexOverrides.reasoningEffort.options.inherit"
-                              )}
-                            />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {["inherit", "minimal", "low", "medium", "high", "xhigh", "none"].map(
-                              (val) => (
-                                <SelectItem key={val} value={val}>
-                                  {t(
-                                    `sections.routing.codexOverrides.reasoningEffort.options.${val}`
-                                  )}
-                                </SelectItem>
-                              )
-                            )}
-                          </SelectContent>
-                        </Select>
-                        <Info
-                          aria-hidden="true"
-                          className="pointer-events-none absolute right-10 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
-                        />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="max-w-xs">
-                      <p className="text-sm">
-                        {t("sections.routing.codexOverrides.reasoningEffort.help")}
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                </SmartInputWrapper>
+                <ReasoningEffortRuleEditor
+                  rules={state.routing.reasoningEffortOverrideRules}
+                  onChange={(rules) =>
+                    dispatch({ type: "SET_REASONING_EFFORT_RULES", payload: rules })
+                  }
+                  providerType={providerType}
+                  disabled={state.ui.isPending}
+                />
 
                 <SmartInputWrapper
                   label={t("sections.routing.codexOverrides.reasoningSummary.label")}
@@ -487,34 +446,16 @@ export function OptionsSection({ subSectionRefs }: OptionsSectionProps) {
                   />
                 </SmartInputWrapper>
 
-                <AdaptiveThinkingEditor
-                  enabled={state.routing.anthropicAdaptiveThinking !== null}
-                  config={
-                    state.routing.anthropicAdaptiveThinking || {
-                      effort: "medium",
-                      modelMatchMode: "all",
-                      models: [],
+                {!isBatch && (
+                  <ReasoningEffortRuleEditor
+                    rules={state.routing.reasoningEffortOverrideRules}
+                    onChange={(rules) =>
+                      dispatch({ type: "SET_REASONING_EFFORT_RULES", payload: rules })
                     }
-                  }
-                  onEnabledChange={(enabled) =>
-                    dispatch({ type: "SET_ADAPTIVE_THINKING_ENABLED", payload: enabled })
-                  }
-                  onConfigChange={(newConfig) => {
-                    dispatch({
-                      type: "SET_ADAPTIVE_THINKING_EFFORT",
-                      payload: newConfig.effort,
-                    });
-                    dispatch({
-                      type: "SET_ADAPTIVE_THINKING_MODEL_MATCH_MODE",
-                      payload: newConfig.modelMatchMode,
-                    });
-                    dispatch({
-                      type: "SET_ADAPTIVE_THINKING_MODELS",
-                      payload: newConfig.models,
-                    });
-                  }}
-                  disabled={state.ui.isPending}
-                />
+                    providerType={providerType}
+                    disabled={state.ui.isPending}
+                  />
+                )}
               </div>
             </SectionCard>
           )}

@@ -55,7 +55,8 @@
     "modelRedirects": "モデルリダイレクト",
     "allowedModels": "許可モデル",
     "thinkingBudget": "思考バジェット",
-    "adaptiveThinking": "アダプティブ思考"
+    "adaptiveThinking": "アダプティブ思考",
+    "reasoningEffortRules": "条件付き推論強度ルール"
   },
   "toast": {
     "previewFailed": "プレビュー失敗: {error}",

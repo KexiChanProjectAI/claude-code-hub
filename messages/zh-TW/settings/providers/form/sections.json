@@ -204,6 +204,47 @@
         "crlf": "請求標頭名稱和值不能包含換行符"
       }
     },
+    "effortRules": {
+      "title": "條件推理強度規則",
+      "description": "規則依序評估，第一條匹配的規則決定覆寫強度。如果沒有匹配的規則，則不套用覆寫。",
+      "noRules": "未設定規則。新增規則以啟用條件強度覆寫。",
+      "addRule": "新增規則",
+      "removeRule": "刪除規則",
+      "moveUp": "上移",
+      "moveDown": "下移",
+      "ruleLabel": "規則 {number}",
+      "targetEffort": "目標強度",
+      "selectTarget": "選擇目標強度",
+      "originalModelCondition": "當原始模型匹配時...",
+      "executionModelCondition": "當執行模型匹配時...",
+      "removeCondition": "移除",
+      "addCondition": "新增",
+      "matchModes": {
+        "exact": "完全匹配",
+        "prefix": "前綴匹配",
+        "suffix": "後綴匹配",
+        "contains": "包含匹配",
+        "regex": "正規表達式"
+      },
+      "patternPlaceholder": "例如 claude-opus-4-6",
+      "originalEffortCondition": "當原始強度匹配時...",
+      "effortMode": {
+        "any": "任意（省略條件）",
+        "missing": "缺失（明確 null）",
+        "specific": "特定值"
+      },
+      "originalEffortPlaceholder": "例如 medium",
+      "maxRulesReached": "已達到最大 {max} 條規則",
+      "effortValues": {
+        "none": "none",
+        "minimal": "minimal",
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
     "codexOverrides": {
       "title": "Codex 參數覆寫",
       "desc": "在供應商級別覆寫 Codex (Responses API) 請求參數",

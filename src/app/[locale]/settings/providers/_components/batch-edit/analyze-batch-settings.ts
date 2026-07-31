@@ -16,6 +16,7 @@ import type {
   McpPassthroughType,
   ProviderDisplay,
   ProviderModelRedirectRule,
+  ReasoningEffortOverrideRule,
 } from "@/types/provider";
 import { deepEquals } from "./deep-equals";
 
@@ -50,6 +51,7 @@ export interface BatchSettingsAnalysis {
     anthropicMaxTokensPreference: FieldAnalysisResult<AnthropicMaxTokensPreference>;
     anthropicThinkingBudgetPreference: FieldAnalysisResult<AnthropicThinkingBudgetPreference>;
     anthropicAdaptiveThinking: FieldAnalysisResult<AnthropicAdaptiveThinkingConfig | null>;
+    reasoningEffortOverrideRules: FieldAnalysisResult<ReasoningEffortOverrideRule[] | null>;
     geminiGoogleSearchPreference: FieldAnalysisResult<GeminiGoogleSearchPreference>;
     activeTimeStart: FieldAnalysisResult<string | null>;
     activeTimeEnd: FieldAnalysisResult<string | null>;
@@ -172,6 +174,15 @@ export function analyzeBatchProviderSettings(providers: ProviderDisplay[]): Batc
       anthropicAdaptiveThinking: analyzeField(
         providers,
         (p) => p.anthropicAdaptiveThinking ?? null
+      ),
+      reasoningEffortOverrideRules: analyzeField(
+        providers,
+        (p) =>
+          (
+            p as unknown as {
+              reasoningEffortOverrideRules?: ReasoningEffortOverrideRule[] | null;
+            }
+          ).reasoningEffortOverrideRules ?? null
       ),
       geminiGoogleSearchPreference: analyzeField(
         providers,
