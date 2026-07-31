@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const getSessionMock = vi.fn();
 
+const findAllProvidersFreshMock = vi.fn();
 const updateProvidersBatchMock = vi.fn();
 
 const publishProviderCacheInvalidationMock = vi.fn();
@@ -12,6 +13,7 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 vi.mock("@/repository/provider", () => ({
+  findAllProvidersFresh: findAllProvidersFreshMock,
   updateProvidersBatch: updateProvidersBatchMock,
 }));
 
@@ -40,6 +42,7 @@ describe("batchUpdateProviders - advanced field mapping", () => {
     vi.clearAllMocks();
 
     getSessionMock.mockResolvedValue({ user: { id: 1, role: "admin" } });
+    findAllProvidersFreshMock.mockResolvedValue([]);
     updateProvidersBatchMock.mockResolvedValue(2);
     publishProviderCacheInvalidationMock.mockResolvedValue(undefined);
     terminateStickySessionsForProvidersMock.mockResolvedValue(undefined);
@@ -230,6 +233,36 @@ describe("batchUpdateProviders - advanced field mapping", () => {
     expect(updateProvidersBatchMock).toHaveBeenCalledWith([6], {
       anthropicAdaptiveThinking: null,
     });
+  });
+
+  it("should reject legacy adaptive updates when existing rules are non-null", async () => {
+    findAllProvidersFreshMock.mockResolvedValueOnce([
+      {
+        id: 4,
+        providerType: "claude",
+        reasoningEffortOverrideRules: [
+          {
+            when: {},
+            overrideEffort: "high",
+          },
+        ],
+      },
+    ]);
+
+    const { batchUpdateProviders } = await import("@/actions/providers");
+    const result = await batchUpdateProviders({
+      providerIds: [4],
+      updates: {
+        anthropic_adaptive_thinking: {
+          effort: "high",
+          modelMatchMode: "all",
+          models: [],
+        },
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(updateProvidersBatchMock).not.toHaveBeenCalled();
   });
 
   it("should handle mix of old and new fields together", async () => {
