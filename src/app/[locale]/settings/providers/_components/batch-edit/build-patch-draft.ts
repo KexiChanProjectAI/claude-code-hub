@@ -110,7 +110,11 @@ export function buildPatchDraftFromFormState(
     draft.swap_cache_ttl_billing = { set: state.routing.swapCacheTtlBilling };
   }
   // Codex preferences
-  if (dirtyFields.has("routing.codexReasoningEffortPreference")) {
+  // Skip legacy effort patch when rules are dirty (server rejects co-emission)
+  if (
+    dirtyFields.has("routing.codexReasoningEffortPreference") &&
+    !dirtyFields.has("routing.reasoningEffortOverrideRules")
+  ) {
     if (state.routing.codexReasoningEffortPreference === "inherit") {
       draft.codex_reasoning_effort_preference = { clear: true };
     } else {
@@ -178,7 +182,11 @@ export function buildPatchDraftFromFormState(
       };
     }
   }
-  if (dirtyFields.has("routing.anthropicAdaptiveThinking")) {
+  // Skip legacy adaptive thinking patch when rules are dirty (server rejects co-emission)
+  if (
+    dirtyFields.has("routing.anthropicAdaptiveThinking") &&
+    !dirtyFields.has("routing.reasoningEffortOverrideRules")
+  ) {
     if (state.routing.anthropicAdaptiveThinking === null) {
       draft.anthropic_adaptive_thinking = { clear: true };
     } else {

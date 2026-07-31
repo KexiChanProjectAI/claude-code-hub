@@ -177,12 +177,7 @@ export function analyzeBatchProviderSettings(providers: ProviderDisplay[]): Batc
       ),
       reasoningEffortOverrideRules: analyzeField(
         providers,
-        (p) =>
-          (
-            p as unknown as {
-              reasoningEffortOverrideRules?: ReasoningEffortOverrideRule[] | null;
-            }
-          ).reasoningEffortOverrideRules ?? null
+        (p) => p.reasoningEffortOverrideRules ?? null
       ),
       geminiGoogleSearchPreference: analyzeField(
         providers,

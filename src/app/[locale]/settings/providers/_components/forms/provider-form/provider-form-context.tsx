@@ -457,14 +457,7 @@ export function createInitialState(
         sourceProvider?.anthropicThinkingBudgetPreference ?? "inherit",
       anthropicAdaptiveThinking: sourceProvider?.anthropicAdaptiveThinking ?? null,
       geminiGoogleSearchPreference: sourceProvider?.geminiGoogleSearchPreference ?? "inherit",
-      reasoningEffortOverrideRules:
-        (
-          sourceProvider as unknown as {
-            reasoningEffortOverrideRules?:
-              | import("@/types/provider").ReasoningEffortOverrideRule[]
-              | null;
-          }
-        )?.reasoningEffortOverrideRules ?? null,
+      reasoningEffortOverrideRules: sourceProvider?.reasoningEffortOverrideRules ?? null,
       activeTimeStart: sourceProvider?.activeTimeStart ?? null,
       activeTimeEnd: sourceProvider?.activeTimeEnd ?? null,
       customHeadersText: stringifyCustomHeadersForTextarea(

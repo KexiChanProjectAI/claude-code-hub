@@ -461,6 +461,9 @@ export interface Provider {
   // Gemini (generateContent API) parameter overrides (only for gemini/gemini-cli providers)
   geminiGoogleSearchPreference: GeminiGoogleSearchPreference | null;
 
+  // Conditional reasoning effort override rules
+  reasoningEffortOverrideRules: ReasoningEffortOverrideRule[] | null;
+
   // 废弃（保留向后兼容，但不再使用）
   // TPM (Tokens Per Minute): 每分钟可处理的文本总量
   tpm: number | null;
@@ -550,6 +553,7 @@ export interface ProviderDisplay {
   anthropicThinkingBudgetPreference: AnthropicThinkingBudgetPreference | null;
   anthropicAdaptiveThinking: AnthropicAdaptiveThinkingConfig | null;
   geminiGoogleSearchPreference: GeminiGoogleSearchPreference | null;
+  reasoningEffortOverrideRules: ReasoningEffortOverrideRule[] | null;
   // 废弃字段（保留向后兼容）
   tpm: number | null;
   rpm: number | null;

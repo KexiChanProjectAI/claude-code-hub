@@ -330,6 +330,8 @@ function ProviderFormContent({
           : state.basic.url.trim();
 
         const hasRules = state.routing.reasoningEffortOverrideRules !== null;
+        // Detect whether the provider originally had rules (loaded from DB)
+        const hadRulesInitially = !!provider?.reasoningEffortOverrideRules;
 
         const baseFormData = {
           name: state.basic.name.trim(),
@@ -354,17 +356,7 @@ function ProviderFormContent({
           group_tag: state.routing.groupTag.length > 0 ? state.routing.groupTag.join(",") : null,
           cache_ttl_preference: state.routing.cacheTtlPreference,
           swap_cache_ttl_billing: state.routing.swapCacheTtlBilling,
-          // Legacy effort/adaptive fields: only submit when rules are absent
-          ...(hasRules
-            ? {
-                codex_reasoning_effort_preference: "inherit" as const,
-                anthropic_adaptive_thinking: null,
-              }
-            : {
-                codex_reasoning_effort_preference: state.routing.codexReasoningEffortPreference,
-                anthropic_adaptive_thinking: state.routing.anthropicAdaptiveThinking,
-              }),
-          reasoning_effort_override_rules: state.routing.reasoningEffortOverrideRules,
+          // Codex and Anthropic: always include other non-effort preference fields
           codex_reasoning_summary_preference: state.routing.codexReasoningSummaryPreference,
           codex_text_verbosity_preference: state.routing.codexTextVerbosityPreference,
           codex_parallel_tool_calls_preference: state.routing.codexParallelToolCallsPreference,
@@ -399,9 +391,24 @@ function ProviderFormContent({
           mcp_passthrough_url: state.mcp.mcpPassthroughUrl?.trim() || null,
         };
 
+        // Server rejects co-emission of reasoning_effort_override_rules with legacy
+        // effort/adaptive fields. Conditionally include exactly one set:
+        //   1. rules present -> rules field only, no legacy
+        //   2. rules cleared (hadRulesInitially && !hasRules) -> rules:null only, no legacy
+        //   3. rules never set (!hadRulesInitially) -> legacy fields only, no rules key
+        const effortPayload = hasRules
+          ? { reasoning_effort_override_rules: state.routing.reasoningEffortOverrideRules }
+          : hadRulesInitially
+            ? { reasoning_effort_override_rules: null }
+            : {
+                codex_reasoning_effort_preference: state.routing.codexReasoningEffortPreference,
+                anthropic_adaptive_thinking: state.routing.anthropicAdaptiveThinking,
+              };
+        const submitFormData = { ...baseFormData, ...effortPayload };
+
         if (isEdit && provider) {
           // For edit: only include key if user provided a new one
-          const editFormData = trimmedKey ? { ...baseFormData, key: trimmedKey } : baseFormData;
+          const editFormData = trimmedKey ? { ...submitFormData, key: trimmedKey } : submitFormData;
           const res = await editProvider(provider.id, editFormData);
           if (!res.ok) {
             toast.error(res.error || t("errors.updateFailed"));
@@ -438,7 +445,7 @@ function ProviderFormContent({
           void doInvalidate();
         } else {
           // For create: key is required
-          const createFormData = { ...baseFormData, key: trimmedKey };
+          const createFormData = { ...submitFormData, key: trimmedKey };
           const res = await addProvider(createFormData);
           if (!res.ok) {
             toast.error(res.error || t("errors.addFailed"));

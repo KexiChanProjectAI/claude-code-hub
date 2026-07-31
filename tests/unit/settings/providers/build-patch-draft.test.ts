@@ -795,4 +795,148 @@ describe("buildPatchDraftFromFormState", () => {
     };
     expect(d.reasoning_effort_override_rules).toBeUndefined();
   });
+
+  // ---- Regression: never co-emit rules and legacy patches ----
+
+  it("does not co-emit codex_reasoning_effort_preference when rules are dirty", () => {
+    const state = createBatchState();
+    state.routing.reasoningEffortOverrideRules = [{ when: {}, overrideEffort: "high" }];
+    state.routing.codexReasoningEffortPreference = "medium";
+    const dirty = new Set([
+      "routing.reasoningEffortOverrideRules",
+      "routing.codexReasoningEffortPreference",
+    ]);
+
+    const draft = buildPatchDraftFromFormState(state, dirty);
+
+    // Rules should be present
+    const d = draft as typeof draft & {
+      reasoning_effort_override_rules?: unknown;
+      codex_reasoning_effort_preference?: unknown;
+    };
+    expect(d.reasoning_effort_override_rules).toEqual({
+      set: [{ when: {}, overrideEffort: "high" }],
+    });
+    // Legacy effort must NOT be co-emitted
+    expect(d.codex_reasoning_effort_preference).toBeUndefined();
+  });
+
+  it("does not co-emit anthropic_adaptive_thinking when rules are dirty", () => {
+    const state = createBatchState();
+    state.routing.reasoningEffortOverrideRules = [];
+    state.routing.anthropicAdaptiveThinking = { effort: "high", modelMatchMode: "all", models: [] };
+    const dirty = new Set([
+      "routing.reasoningEffortOverrideRules",
+      "routing.anthropicAdaptiveThinking",
+    ]);
+
+    const draft = buildPatchDraftFromFormState(state, dirty);
+
+    const d = draft as typeof draft & {
+      reasoning_effort_override_rules?: unknown;
+      anthropic_adaptive_thinking?: unknown;
+    };
+    expect(d.reasoning_effort_override_rules).toEqual({ set: [] });
+    // Legacy adaptive must NOT be co-emitted
+    expect(d.anthropic_adaptive_thinking).toBeUndefined();
+  });
+
+  it("includes codex_reasoning_effort_preference when rules are NOT dirty", () => {
+    const state = createBatchState();
+    state.routing.codexReasoningEffortPreference = "medium";
+    const dirty = new Set(["routing.codexReasoningEffortPreference"]);
+
+    const draft = buildPatchDraftFromFormState(state, dirty);
+
+    const d = draft as typeof draft & {
+      codex_reasoning_effort_preference?: unknown;
+    };
+    expect(d.codex_reasoning_effort_preference).toEqual({ set: "medium" });
+  });
+
+  it("includes anthropic_adaptive_thinking when rules are NOT dirty", () => {
+    const state = createBatchState();
+    state.routing.anthropicAdaptiveThinking = { effort: "high", modelMatchMode: "all", models: [] };
+    const dirty = new Set(["routing.anthropicAdaptiveThinking"]);
+
+    const draft = buildPatchDraftFromFormState(state, dirty);
+
+    const d = draft as typeof draft & {
+      anthropic_adaptive_thinking?: unknown;
+    };
+    expect(d.anthropic_adaptive_thinking).toEqual({
+      set: { effort: "high", modelMatchMode: "all", models: [] },
+    });
+  });
+});
+
+// ---- Server validator regression ----
+import { validateProviderReasoningEffortOverrideMutation } from "@/lib/provider-patch-contract";
+
+describe("Server validator regression - form payloads must pass", () => {
+  it("rules-only payload passes validator (codex)", () => {
+    const result = validateProviderReasoningEffortOverrideMutation({
+      providerType: "codex",
+      hasRulesField: true,
+      rules: [{ when: {}, overrideEffort: "high" }],
+      hasLegacyFields: false,
+      existingRules: null,
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("rules-only payload passes validator (claude)", () => {
+    const result = validateProviderReasoningEffortOverrideMutation({
+      providerType: "claude",
+      hasRulesField: true,
+      rules: [{ when: {}, overrideEffort: "high" }],
+      hasLegacyFields: false,
+      existingRules: null,
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("rules-null payload passes validator when clearing existing rules", () => {
+    const result = validateProviderReasoningEffortOverrideMutation({
+      providerType: "codex",
+      hasRulesField: true,
+      rules: null,
+      hasLegacyFields: false,
+      existingRules: [{ when: {}, overrideEffort: "high" }],
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("legacy-only payload passes validator when rules were never set", () => {
+    const result = validateProviderReasoningEffortOverrideMutation({
+      providerType: "codex",
+      hasRulesField: false,
+      rules: undefined,
+      hasLegacyFields: true,
+      existingRules: null,
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("REJECTS rules + legacy co-emission", () => {
+    const result = validateProviderReasoningEffortOverrideMutation({
+      providerType: "codex",
+      hasRulesField: true,
+      rules: [{ when: {}, overrideEffort: "high" }],
+      hasLegacyFields: true,
+      existingRules: null,
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it("REJECTS legacy-only when existing rules are non-null", () => {
+    const result = validateProviderReasoningEffortOverrideMutation({
+      providerType: "codex",
+      hasRulesField: false,
+      rules: undefined,
+      hasLegacyFields: true,
+      existingRules: [{ when: {}, overrideEffort: "high" }],
+    });
+    expect(result.ok).toBe(false);
+  });
 });
