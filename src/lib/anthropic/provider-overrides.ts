@@ -1,13 +1,26 @@
-import type { AnthropicAdaptiveThinkingConfig } from "@/types/provider";
+import { evaluateReasoningEffortOverride } from "@/lib/reasoning-effort-override";
+import type {
+  AnthropicAdaptiveThinkingConfig,
+  ReasoningEffortOverrideResult,
+  ReasoningEffortOverrideRule,
+} from "@/types/provider";
 import type { ProviderParameterOverrideSpecialSetting } from "@/types/special-settings";
 
 type AnthropicProviderOverrideConfig = {
-  id?: number;
-  name?: string;
-  providerType?: string;
-  anthropicMaxTokensPreference?: string | null;
-  anthropicThinkingBudgetPreference?: string | null;
-  anthropicAdaptiveThinking?: AnthropicAdaptiveThinkingConfig | null;
+  readonly id?: number;
+  readonly name?: string;
+  readonly providerType?: string;
+  readonly anthropicMaxTokensPreference?: string | null;
+  readonly anthropicThinkingBudgetPreference?: string | null;
+  readonly anthropicAdaptiveThinking?: AnthropicAdaptiveThinkingConfig | null;
+  readonly reasoningEffortOverrideRules?: readonly ReasoningEffortOverrideRule[] | null;
+};
+
+export type AnthropicProviderOverrideContext = {
+  readonly originalModel: string | null;
+  readonly executionModel: string | null;
+  readonly originalReasoningEffort: string | null;
+  readonly reasoningEffortOverrideRules?: readonly ReasoningEffortOverrideRule[] | null;
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -29,58 +42,95 @@ function normalizeNumericPreference(value: string | null | undefined): number | 
   return parsed;
 }
 
-/**
- * Apply Anthropic provider overrides to request body.
- *
- * Conventions:
- * - providerType !== "claude" && providerType !== "claude-auth" -> no processing
- * - Preference value null/undefined/"inherit" means "follow client"
- * - Overrides only affect:
- *   - max_tokens
- *   - thinking.type / thinking.budget_tokens
- */
-export function applyAnthropicProviderOverrides(
-  provider: AnthropicProviderOverrideConfig,
-  request: Record<string, unknown>
-): Record<string, unknown> {
-  if (provider.providerType !== "claude" && provider.providerType !== "claude-auth") {
-    return request;
-  }
+function extractRawEffort(request: Record<string, unknown>): string | null {
+  const outputConfig = isPlainObject(request.output_config) ? request.output_config : null;
+  return typeof outputConfig?.effort === "string" ? outputConfig.effort : null;
+}
 
+function resolveRuleState(
+  provider: AnthropicProviderOverrideConfig,
+  request: Record<string, unknown>,
+  context: AnthropicProviderOverrideContext | undefined
+): {
+  readonly conditionalRulesConfigured: boolean;
+  readonly ruleEvaluation: ReasoningEffortOverrideResult | null;
+  readonly originalReasoningEffort: string | null;
+} {
+  const rules =
+    context && Object.hasOwn(context, "reasoningEffortOverrideRules")
+      ? context.reasoningEffortOverrideRules
+      : provider.reasoningEffortOverrideRules;
+  const conditionalRulesConfigured = rules !== null && rules !== undefined;
+  const fallbackModel = typeof request.model === "string" ? request.model : null;
+  const originalModel = context ? context.originalModel : fallbackModel;
+  const executionModel = context ? context.executionModel : fallbackModel;
+  const originalReasoningEffort = context
+    ? context.originalReasoningEffort
+    : extractRawEffort(request);
+
+  return {
+    conditionalRulesConfigured,
+    ruleEvaluation: conditionalRulesConfigured
+      ? evaluateReasoningEffortOverride(rules, {
+          originalModel,
+          executionModel,
+          originalReasoningEffort,
+        })
+      : null,
+    originalReasoningEffort,
+  };
+}
+
+function applyAdaptiveThinking(ensureCloned: () => Record<string, unknown>, effort: string): void {
+  const target = ensureCloned();
+  target.thinking = { type: "adaptive" };
+  const existingOutputConfig = isPlainObject(target.output_config) ? target.output_config : {};
+  target.output_config = { ...existingOutputConfig, effort };
+}
+
+function applyAnthropicProviderOverridesInternal(
+  provider: AnthropicProviderOverrideConfig,
+  request: Record<string, unknown>,
+  ruleEvaluation: ReasoningEffortOverrideResult | null
+): Record<string, unknown> {
   let output: Record<string, unknown> = request;
   const ensureCloned = () => {
     if (output === request) {
       output = { ...request };
     }
+    return output;
   };
 
   const maxTokens = normalizeNumericPreference(provider.anthropicMaxTokensPreference);
   if (maxTokens !== null) {
-    ensureCloned();
-    output.max_tokens = maxTokens;
+    ensureCloned().max_tokens = maxTokens;
   }
 
-  // Step 1: Try adaptive thinking (independent of budgetPreference)
-  const adaptiveConfig = provider.anthropicAdaptiveThinking;
-  if (adaptiveConfig) {
-    const modelId = typeof request.model === "string" ? request.model : null;
-    const isMatch =
-      adaptiveConfig.modelMatchMode === "all" ||
-      (modelId !== null &&
-        adaptiveConfig.models.some((m) => modelId === m || modelId.startsWith(`${m}-`)));
-    if (isMatch) {
-      ensureCloned();
-      output.thinking = { type: "adaptive" };
-      const existingOutputConfig = isPlainObject(output.output_config) ? output.output_config : {};
-      output.output_config = { ...existingOutputConfig, effort: adaptiveConfig.effort };
+  if (ruleEvaluation) {
+    if (ruleEvaluation.shouldOverride) {
+      applyAdaptiveThinking(ensureCloned, ruleEvaluation.overriddenEffort);
       return output;
+    }
+  } else {
+    const adaptiveConfig = provider.anthropicAdaptiveThinking;
+    if (adaptiveConfig) {
+      const modelId = typeof request.model === "string" ? request.model : null;
+      const isMatch =
+        adaptiveConfig.modelMatchMode === "all" ||
+        (modelId !== null &&
+          adaptiveConfig.models.some(
+            (model) => modelId === model || modelId.startsWith(`${model}-`)
+          ));
+      if (isMatch) {
+        applyAdaptiveThinking(ensureCloned, adaptiveConfig.effort);
+        return output;
+      }
     }
   }
 
-  // Step 2: Fall through to thinking budget override
   const thinkingBudget = normalizeNumericPreference(provider.anthropicThinkingBudgetPreference);
   if (thinkingBudget !== null) {
-    ensureCloned();
+    const target = ensureCloned();
     const existingThinking = isPlainObject(output.thinking) ? output.thinking : {};
     let budgetTokens = thinkingBudget;
     const currentMaxTokens = typeof output.max_tokens === "number" ? output.max_tokens : null;
@@ -99,15 +149,39 @@ export function applyAnthropicProviderOverrides(
       type: "enabled",
       budget_tokens: budgetTokens,
     };
-    output.thinking = nextThinking;
+    target.thinking = nextThinking;
   }
 
   return output;
 }
 
+/**
+ * Apply Anthropic provider overrides to request body.
+ *
+ * Conventions:
+ * - providerType !== "claude" && providerType !== "claude-auth" -> no processing
+ * - Preference value null/undefined/"inherit" means "follow client"
+ * - Overrides only affect:
+ *   - max_tokens
+ *   - thinking.type / thinking.budget_tokens
+ */
+export function applyAnthropicProviderOverrides(
+  provider: AnthropicProviderOverrideConfig,
+  request: Record<string, unknown>,
+  context?: AnthropicProviderOverrideContext
+): Record<string, unknown> {
+  if (provider.providerType !== "claude" && provider.providerType !== "claude-auth") {
+    return request;
+  }
+
+  const { ruleEvaluation } = resolveRuleState(provider, request, context);
+  return applyAnthropicProviderOverridesInternal(provider, request, ruleEvaluation);
+}
+
 export function applyAnthropicProviderOverridesWithAudit(
   provider: AnthropicProviderOverrideConfig,
-  request: Record<string, unknown>
+  request: Record<string, unknown>,
+  context?: AnthropicProviderOverrideContext
 ): { request: Record<string, unknown>; audit: ProviderParameterOverrideSpecialSetting | null } {
   if (provider.providerType !== "claude" && provider.providerType !== "claude-auth") {
     return { request, audit: null };
@@ -116,8 +190,13 @@ export function applyAnthropicProviderOverridesWithAudit(
   const maxTokens = normalizeNumericPreference(provider.anthropicMaxTokensPreference);
   const hasAdaptiveConfig = provider.anthropicAdaptiveThinking != null;
   const thinkingBudget = normalizeNumericPreference(provider.anthropicThinkingBudgetPreference);
+  const ruleState = resolveRuleState(provider, request, context);
 
-  const hit = maxTokens !== null || thinkingBudget !== null || hasAdaptiveConfig;
+  const hit =
+    maxTokens !== null ||
+    thinkingBudget !== null ||
+    hasAdaptiveConfig ||
+    ruleState.conditionalRulesConfigured;
 
   if (!hit) {
     return { request, audit: null };
@@ -128,7 +207,11 @@ export function applyAnthropicProviderOverridesWithAudit(
   const beforeThinkingType = toAuditValue(beforeThinking?.type);
   const beforeThinkingBudgetTokens = toAuditValue(beforeThinking?.budget_tokens);
 
-  const nextRequest = applyAnthropicProviderOverrides(provider, request);
+  const nextRequest = applyAnthropicProviderOverridesInternal(
+    provider,
+    request,
+    ruleState.ruleEvaluation
+  );
 
   const afterMaxTokens = toAuditValue(nextRequest.max_tokens);
   const afterThinking = isPlainObject(nextRequest.thinking) ? nextRequest.thinking : null;
@@ -140,7 +223,9 @@ export function applyAnthropicProviderOverridesWithAudit(
     : null;
   const beforeOutputConfig = isPlainObject(request.output_config) ? request.output_config : null;
   const afterOutputConfigEffort = toAuditValue(afterOutputConfig?.effort);
-  const beforeOutputConfigEffort = toAuditValue(beforeOutputConfig?.effort);
+  const beforeOutputConfigEffort = context
+    ? toAuditValue(ruleState.originalReasoningEffort)
+    : toAuditValue(beforeOutputConfig?.effort);
 
   const changes: ProviderParameterOverrideSpecialSetting["changes"] = [
     {
@@ -178,6 +263,7 @@ export function applyAnthropicProviderOverridesWithAudit(
     hit: true,
     changed: changes.some((c) => c.changed),
     changes,
+    ...(ruleState.ruleEvaluation ? { ruleEvaluation: ruleState.ruleEvaluation } : {}),
   };
 
   return { request: nextRequest, audit };

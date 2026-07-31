@@ -1152,3 +1152,254 @@ describe("Anthropic Provider Overrides", () => {
     });
   });
 });
+
+describe("Anthropic conditional reasoning effort overrides", () => {
+  it("should apply the first matching rule using raw snapshots and preserve output config siblings", () => {
+    const provider = {
+      providerType: "claude",
+      anthropicAdaptiveThinking: {
+        effort: "low" as const,
+        modelMatchMode: "all" as const,
+        models: [],
+      },
+      reasoningEffortOverrideRules: [
+        {
+          when: {
+            originalModel: { matchType: "exact" as const, pattern: "claude-opus-4-6" },
+            executionModel: { matchType: "prefix" as const, pattern: "redirected/" },
+            originalReasoningEffort: "medium",
+          },
+          overrideEffort: "max",
+        },
+        { when: {}, overrideEffort: "high" },
+      ],
+    };
+    const input: Record<string, unknown> = {
+      model: "already-mutated-model",
+      messages: [],
+      thinking: { type: "enabled", budget_tokens: 4096 },
+      output_config: { effort: "medium", preserve: "value" },
+    };
+    const context = {
+      originalModel: "CLAUDE-OPUS-4-6",
+      executionModel: "redirected/provider-model",
+      originalReasoningEffort: "medium",
+    } as const;
+
+    const output = applyAnthropicProviderOverrides(provider, input, context);
+
+    expect(output.thinking).toEqual({ type: "adaptive" });
+    expect((output.thinking as Record<string, unknown>).budget_tokens).toBeUndefined();
+    expect(output.output_config).toEqual({ effort: "max", preserve: "value" });
+    expect(input).toEqual({
+      model: "already-mutated-model",
+      messages: [],
+      thinking: { type: "enabled", budget_tokens: 4096 },
+      output_config: { effort: "medium", preserve: "value" },
+    });
+  });
+
+  it("should preserve the provider rules when the context only contains snapshots", () => {
+    const provider = {
+      providerType: "claude",
+      reasoningEffortOverrideRules: [{ when: {}, overrideEffort: "high" }],
+    };
+
+    const output = applyAnthropicProviderOverrides(
+      provider,
+      { model: "claude-opus-4-6", output_config: { effort: "low" } },
+      {
+        originalModel: "claude-opus-4-6",
+        executionModel: "claude-opus-4-6",
+        originalReasoningEffort: "low",
+      }
+    );
+
+    expect(output.output_config).toEqual({ effort: "high" });
+  });
+
+  it("should let an explicitly supplied empty context rule list disable legacy adaptive thinking", () => {
+    const provider = {
+      providerType: "claude",
+      anthropicAdaptiveThinking: {
+        effort: "high" as const,
+        modelMatchMode: "all" as const,
+        models: [],
+      },
+      reasoningEffortOverrideRules: [],
+    };
+
+    const output = applyAnthropicProviderOverrides(
+      provider,
+      { model: "claude-opus-4-6" },
+      {
+        originalModel: "claude-opus-4-6",
+        executionModel: "claude-opus-4-6",
+        originalReasoningEffort: null,
+        reasoningEffortOverrideRules: [],
+      }
+    );
+
+    expect(output).toEqual({ model: "claude-opus-4-6" });
+  });
+
+  it("should distinguish an explicit null original effort from a string effort", () => {
+    const provider = {
+      providerType: "claude",
+      reasoningEffortOverrideRules: [
+        { when: { originalReasoningEffort: null }, overrideEffort: "low" },
+      ],
+    };
+
+    const output = applyAnthropicProviderOverrides(
+      provider,
+      { model: "claude-opus-4-6", output_config: { effort: "medium" } },
+      {
+        originalModel: "claude-opus-4-6",
+        executionModel: "claude-opus-4-6",
+        originalReasoningEffort: null,
+      }
+    );
+
+    expect(output.output_config).toEqual({ effort: "low" });
+  });
+
+  it("should use the second rule when the first rule does not match", () => {
+    const provider = {
+      providerType: "claude",
+      reasoningEffortOverrideRules: [
+        {
+          when: {
+            originalModel: { matchType: "exact" as const, pattern: "other-model" },
+          },
+          overrideEffort: "low",
+        },
+        { when: {}, overrideEffort: "high" },
+      ],
+    };
+
+    const result = applyAnthropicProviderOverridesWithAudit(
+      provider,
+      { model: "claude-opus-4-6", output_config: { effort: "medium" } },
+      {
+        originalModel: "claude-opus-4-6",
+        executionModel: "claude-opus-4-6",
+        originalReasoningEffort: "medium",
+      }
+    );
+
+    expect(result.request.output_config).toEqual({ effort: "high" });
+    expect(result.audit?.ruleEvaluation).toEqual({
+      shouldOverride: true,
+      overriddenEffort: "high",
+      matchedIndex: 1,
+    });
+  });
+
+  it("should suppress adaptive effort on a non-match while retaining the independent budget path", () => {
+    const provider = {
+      providerType: "claude",
+      anthropicThinkingBudgetPreference: "10240",
+      anthropicAdaptiveThinking: {
+        effort: "high" as const,
+        modelMatchMode: "all" as const,
+        models: [],
+      },
+      reasoningEffortOverrideRules: [
+        {
+          when: {
+            originalModel: { matchType: "exact" as const, pattern: "other-model" },
+          },
+          overrideEffort: "max",
+        },
+      ],
+    };
+
+    const result = applyAnthropicProviderOverridesWithAudit(
+      provider,
+      { model: "claude-opus-4-6", max_tokens: 32000 },
+      {
+        originalModel: "claude-opus-4-6",
+        executionModel: "claude-opus-4-6",
+        originalReasoningEffort: null,
+      }
+    );
+
+    expect(result.request.thinking).toEqual({ type: "enabled", budget_tokens: 10240 });
+    expect(result.request.output_config).toBeUndefined();
+    expect(result.audit?.ruleEvaluation).toEqual({
+      shouldOverride: false,
+      overriddenEffort: null,
+    });
+  });
+
+  it("should not throw or revive adaptive thinking for malformed request fields", () => {
+    const provider = {
+      providerType: "claude",
+      anthropicAdaptiveThinking: {
+        effort: "high" as const,
+        modelMatchMode: "all" as const,
+        models: [],
+      },
+      reasoningEffortOverrideRules: [],
+    };
+    const input: Record<string, unknown> = {
+      model: 123,
+      output_config: [],
+      thinking: [],
+    };
+
+    const result = applyAnthropicProviderOverridesWithAudit(provider, input);
+
+    expect(result.request).toEqual(input);
+    expect(result.audit?.ruleEvaluation).toEqual({
+      shouldOverride: false,
+      overriddenEffort: null,
+    });
+  });
+
+  it("should match case-variant migrated exact and prefix rules", () => {
+    const provider = {
+      providerType: "claude",
+      reasoningEffortOverrideRules: [
+        {
+          when: {
+            originalModel: { matchType: "exact" as const, pattern: "claude-opus-4-6" },
+          },
+          overrideEffort: "high",
+        },
+        {
+          when: {
+            originalModel: { matchType: "prefix" as const, pattern: "claude-opus-4-6-" },
+          },
+          overrideEffort: "max",
+        },
+      ],
+    };
+
+    const exact = applyAnthropicProviderOverrides(provider, { model: "CLAUDE-OPUS-4-6" });
+    const versioned = applyAnthropicProviderOverrides(provider, {
+      model: "CLAUDE-OPUS-4-6-20250514",
+    });
+
+    expect(exact.output_config).toEqual({ effort: "high" });
+    expect(versioned.output_config).toEqual({ effort: "max" });
+  });
+
+  it("should retain legacy adaptive behavior when persisted rules are null", () => {
+    const provider = {
+      providerType: "claude",
+      anthropicAdaptiveThinking: {
+        effort: "high" as const,
+        modelMatchMode: "all" as const,
+        models: [],
+      },
+      reasoningEffortOverrideRules: null,
+    };
+
+    const output = applyAnthropicProviderOverrides(provider, { model: "claude-opus-4-6" });
+
+    expect(output.thinking).toEqual({ type: "adaptive" });
+    expect(output.output_config).toEqual({ effort: "high" });
+  });
+});
