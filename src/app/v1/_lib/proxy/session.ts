@@ -75,6 +75,20 @@ export interface ProxyRequestPayload {
   imageRequestMetadata?: OpenAIImageRequestMetadata | null;
 }
 
+function extractRawReasoningEffort(value: unknown): string | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+
+  for (const [key, candidate] of Object.entries(value)) {
+    if (key === "effort") {
+      return typeof candidate === "string" ? candidate : null;
+    }
+  }
+
+  return null;
+}
+
 interface RequestBodyResult {
   requestMessage: Record<string, unknown>;
   requestBodyLog: string;
@@ -134,6 +148,10 @@ export class ProxySession {
 
   // 模型重定向追踪：保存原始模型名（重定向前）
   private originalModelName: string | null = null;
+
+  private readonly rawIntakeModel: string | null;
+  private readonly rawResponsesReasoningEffort: string | null;
+  private readonly rawMessagesReasoningEffort: string | null;
 
   // 原始 URL 路径（用于 Gemini 模型重定向重置）
   private originalUrlPathname: string | null = null;
@@ -216,6 +234,9 @@ export class ProxySession {
     userAgent: string | null;
     context: Context;
     clientAbortSignal: AbortSignal | null;
+    rawIntakeModel: string | null;
+    rawResponsesReasoningEffort: string | null;
+    rawMessagesReasoningEffort: string | null;
   }) {
     this.startTime = init.startTime;
     this.method = init.method;
@@ -227,6 +248,9 @@ export class ProxySession {
     this.userAgent = init.userAgent;
     this.context = init.context;
     this.clientAbortSignal = init.clientAbortSignal;
+    this.rawIntakeModel = init.rawIntakeModel;
+    this.rawResponsesReasoningEffort = init.rawResponsesReasoningEffort;
+    this.rawMessagesReasoningEffort = init.rawMessagesReasoningEffort;
     this.userName = "unknown";
     this.authState = null;
     this.provider = null;
@@ -270,11 +294,14 @@ export class ProxySession {
       typeof (bodyResult.requestMessage as Record<string, unknown>).request === "object" ||
       modelFromPath !== null;
 
-    const resolvedModel =
-      modelFromBody ??
-      modelFromImageRequest ??
-      modelFromPath ??
-      (isLikelyGeminiRequest ? "gemini-2.5-flash" : null);
+    const rawIntakeModel = modelFromBody ?? modelFromImageRequest ?? modelFromPath;
+    const resolvedModel = rawIntakeModel ?? (isLikelyGeminiRequest ? "gemini-2.5-flash" : null);
+    const rawResponsesReasoningEffort = extractRawReasoningEffort(
+      bodyResult.requestMessage.reasoning
+    );
+    const rawMessagesReasoningEffort = extractRawReasoningEffort(
+      bodyResult.requestMessage.output_config
+    );
 
     const isLargeRequestBody =
       (bodyResult.contentLength !== null &&
@@ -315,6 +342,9 @@ export class ProxySession {
       userAgent,
       context: c,
       clientAbortSignal,
+      rawIntakeModel,
+      rawResponsesReasoningEffort,
+      rawMessagesReasoningEffort,
     });
   }
 
@@ -738,6 +768,18 @@ export class ProxySession {
     return this.originalModelName ?? this.request.model;
   }
 
+  getRawIntakeModel(): string | null {
+    return this.rawIntakeModel;
+  }
+
+  getRawResponsesReasoningEffort(): string | null {
+    return this.rawResponsesReasoningEffort;
+  }
+
+  getRawMessagesReasoningEffort(): string | null {
+    return this.rawMessagesReasoningEffort;
+  }
+
   /**
    * 获取当前模型（可能已重定向，用于转发）
    */
@@ -881,7 +923,7 @@ export class ProxySession {
     }
 
     const text = typeof blockObj.text === "string" ? blockObj.text.trim() : "";
-    if (!text || text.toLowerCase() !== "warmup") {
+    if (text?.toLowerCase() !== "warmup") {
       return false;
     }
 

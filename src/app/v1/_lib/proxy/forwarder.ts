@@ -41,7 +41,7 @@ import {
 import { updateMessageRequestDetails } from "@/repository/message";
 import type { CacheTtlPreference, CacheTtlResolved } from "@/types/cache";
 import type { ProviderChainItem } from "@/types/message";
-import type { Provider } from "@/types/provider";
+import type { Provider, ReasoningEffortOverrideRule } from "@/types/provider";
 import type {
   ClaudeMetadataUserIdInjectionSpecialSetting,
   SpecialSetting,
@@ -208,6 +208,7 @@ type StreamingHedgeAttempt = {
   firstByteTimeoutMs: number;
   sequence: number;
   requestAttemptCount: number;
+  applyProviderOverrides: boolean;
   reactiveRectifierRetryState: ReactiveRectifierRetryState;
   settled: boolean;
   thresholdTriggered: boolean;
@@ -537,6 +538,22 @@ type ClaudeMetadataUserIdInjectionResult = {
   message: Record<string, unknown>;
   audit: ClaudeMetadataUserIdInjectionSpecialSetting;
 };
+
+type ProviderWithReasoningEffortOverrideRules = Provider & {
+  readonly reasoningEffortOverrideRules: readonly ReasoningEffortOverrideRule[] | null;
+};
+
+function hasReasoningEffortOverrideRules(
+  provider: Provider
+): provider is ProviderWithReasoningEffortOverrideRules {
+  return Object.hasOwn(provider, "reasoningEffortOverrideRules");
+}
+
+function getReasoningEffortOverrideRules(
+  provider: Provider
+): readonly ReasoningEffortOverrideRule[] | null {
+  return hasReasoningEffortOverrideRules(provider) ? provider.reasoningEffortOverrideRules : null;
+}
 
 async function persistSpecialSettings(session: ProxySession): Promise<void> {
   const specialSettings = session.getSpecialSettings();
@@ -1233,6 +1250,7 @@ export class ProxyForwarder {
         thinkingEffortConflictRetried: false,
         geminiFunctionIdRetried: false,
       };
+      let applyProviderOverrides = true;
 
       const requestPath = session.requestUrl.pathname;
       const providerVendorId = currentProvider.providerVendorId ?? 0;
@@ -1430,6 +1448,8 @@ export class ProxyForwarder {
           endpointId: activeEndpoint.endpointId,
           endpointUrl: sanitizeUrl(activeEndpoint.baseUrl),
         };
+        const shouldApplyProviderOverrides = applyProviderOverrides;
+        applyProviderOverrides = false;
 
         try {
           const response = await ProxyForwarder.doForward(
@@ -1437,7 +1457,9 @@ export class ProxyForwarder {
             currentProvider,
             activeEndpoint.baseUrl,
             endpointAudit,
-            attemptCount
+            attemptCount,
+            false,
+            shouldApplyProviderOverrides
           );
 
           // ========== 空响应检测（仅非流式）==========
@@ -2351,7 +2373,8 @@ export class ProxyForwarder {
     baseUrl: string,
     endpointAudit?: { endpointId: number | null; endpointUrl: string },
     attemptNumber?: number,
-    deferDetailSnapshotPersistence: boolean = false
+    deferDetailSnapshotPersistence: boolean = false,
+    applyProviderOverrides: boolean = true
   ): Promise<Response> {
     if (!provider) {
       throw new Error("Provider is required");
@@ -2543,10 +2566,16 @@ export class ProxyForwarder {
       // --- STANDARD HANDLING ---
       if (!ProxyForwarder.getEndpointPolicy(session).bypassForwarderPreprocessing) {
         // Codex 供应商级参数覆写（默认 inherit=遵循客户端）
-        if (provider.providerType === "codex") {
+        if (applyProviderOverrides && provider.providerType === "codex") {
           const { request: overridden, audit } = applyCodexProviderOverridesWithAudit(
             provider,
-            session.request.message as Record<string, unknown>
+            session.request.message as Record<string, unknown>,
+            {
+              originalModel: session.getRawIntakeModel(),
+              executionModel: session.getCurrentModel(),
+              originalReasoningEffort: session.getRawResponsesReasoningEffort(),
+              reasoningEffortOverrideRules: getReasoningEffortOverrideRules(provider),
+            }
           );
           session.request.message = overridden;
 
@@ -2611,39 +2640,47 @@ export class ProxyForwarder {
             }
           }
 
-          const { request: anthropicOverridden, audit: anthropicAudit } =
-            applyAnthropicProviderOverridesWithAudit(
-              provider,
-              session.request.message as Record<string, unknown>
-            );
-          session.request.message = anthropicOverridden;
+          if (applyProviderOverrides) {
+            const { request: anthropicOverridden, audit: anthropicAudit } =
+              applyAnthropicProviderOverridesWithAudit(
+                provider,
+                session.request.message as Record<string, unknown>,
+                {
+                  originalModel: session.getRawIntakeModel(),
+                  executionModel: session.getCurrentModel(),
+                  originalReasoningEffort: session.getRawMessagesReasoningEffort(),
+                  reasoningEffortOverrideRules: getReasoningEffortOverrideRules(provider),
+                }
+              );
+            session.request.message = anthropicOverridden;
 
-          if (anthropicAudit) {
-            session.addSpecialSetting(anthropicAudit);
-            const specialSettings = session.getSpecialSettings();
+            if (anthropicAudit) {
+              session.addSpecialSetting(anthropicAudit);
+              const specialSettings = session.getSpecialSettings();
 
-            if (session.sessionId && session.shouldPersistSessionDebugArtifacts()) {
-              await SessionManager.storeSessionSpecialSettings(
-                session.sessionId,
-                specialSettings,
-                session.requestSequence
-              ).catch((err) => {
-                logger.error("[ProxyForwarder] Failed to store Anthropic special settings", {
-                  error: err,
-                  sessionId: session.sessionId,
+              if (session.sessionId && session.shouldPersistSessionDebugArtifacts()) {
+                await SessionManager.storeSessionSpecialSettings(
+                  session.sessionId,
+                  specialSettings,
+                  session.requestSequence
+                ).catch((err) => {
+                  logger.error("[ProxyForwarder] Failed to store Anthropic special settings", {
+                    error: err,
+                    sessionId: session.sessionId,
+                  });
                 });
-              });
-            }
+              }
 
-            if (session.messageContext?.id) {
-              await updateMessageRequestDetails(session.messageContext.id, {
-                specialSettings,
-              }).catch((err) => {
-                logger.error("[ProxyForwarder] Failed to persist Anthropic special settings", {
-                  error: err,
-                  messageRequestId: session.messageContext?.id,
+              if (session.messageContext?.id) {
+                await updateMessageRequestDetails(session.messageContext.id, {
+                  specialSettings,
+                }).catch((err) => {
+                  logger.error("[ProxyForwarder] Failed to persist Anthropic special settings", {
+                    error: err,
+                    messageRequestId: session.messageContext?.id,
+                  });
                 });
-              });
+              }
             }
           }
         }
@@ -4095,6 +4132,8 @@ export class ProxyForwarder {
         attempt.firstByteTimeoutMs > 0
           ? { ...attempt.provider, firstByteTimeoutStreamingMs: 0 }
           : attempt.provider;
+      const applyProviderOverrides = attempt.applyProviderOverrides;
+      attempt.applyProviderOverrides = false;
 
       void ProxyForwarder.doForward(
         attempt.session,
@@ -4102,7 +4141,8 @@ export class ProxyForwarder {
         attempt.baseUrl,
         attempt.endpointAudit,
         attempt.requestAttemptCount,
-        true
+        true,
+        applyProviderOverrides
       )
         .then(async (response) => {
           if (settled || winnerCommitted || attempt.settled) {
@@ -4592,6 +4632,7 @@ export class ProxyForwarder {
           provider.firstByteTimeoutStreamingMs > 0 ? provider.firstByteTimeoutStreamingMs : 0,
         sequence: launchedProviderCount,
         requestAttemptCount: 1,
+        applyProviderOverrides: true,
         reactiveRectifierRetryState: {
           thinkingSignatureRetried: false,
           thinkingBudgetRetried: false,
