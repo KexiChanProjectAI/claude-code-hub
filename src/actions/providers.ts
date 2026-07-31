@@ -30,9 +30,15 @@ import { PROVIDER_MODEL_REDIRECT_RULE_LIST_SCHEMA } from "@/lib/provider-model-r
 import { normalizeProviderModelRedirectRules } from "@/lib/provider-model-redirects";
 import {
   buildProviderBatchApplyUpdates,
+  hasLegacyReasoningEffortOverrideFields,
   hasProviderBatchPatchChanges,
+  hasProviderReasoningEffortOverrideRulesField,
   normalizeProviderBatchPatchDraft,
   PROVIDER_PATCH_ERROR_CODES,
+  type ProviderBatchApplyUpdatesWithReasoningEffortRules,
+  type ProviderBatchPatchWithReasoningEffortRules,
+  validateProviderReasoningEffortOverrideBatch,
+  validateProviderReasoningEffortOverrideMutation,
 } from "@/lib/provider-patch-contract";
 import {
   executeProviderTest,
@@ -63,6 +69,7 @@ import { extractZodErrorCode, formatZodError } from "@/lib/utils/zod-i18n";
 import { validateProviderUrlForConnectivity } from "@/lib/validation/provider-url";
 import { CreateProviderSchema, UpdateProviderSchema } from "@/lib/validation/schemas";
 import { restoreProvidersBatch } from "@/repository";
+import type { ProviderWithReasoningEffortOverrideRules } from "@/repository/_shared/transformers";
 import {
   type BatchProviderUpdates,
   createProvider,
@@ -96,15 +103,13 @@ import type {
   CodexReasoningSummaryPreference,
   CodexServiceTierPreference,
   CodexTextVerbosityPreference,
-  Provider,
-  ProviderBatchApplyUpdates,
-  ProviderBatchPatch,
   ProviderBatchPatchField,
   ProviderDisplay,
   ProviderModelRedirectRule,
   ProviderPatchOperation,
   ProviderStatisticsMap,
   ProviderType,
+  ReasoningEffortOverrideRule,
 } from "@/types/provider";
 import type { ActionResult } from "./types";
 
@@ -376,6 +381,7 @@ export async function getProviders(): Promise<ProviderDisplay[]> {
         anthropicMaxTokensPreference: provider.anthropicMaxTokensPreference,
         anthropicThinkingBudgetPreference: provider.anthropicThinkingBudgetPreference,
         anthropicAdaptiveThinking: provider.anthropicAdaptiveThinking,
+        reasoningEffortOverrideRules: provider.reasoningEffortOverrideRules ?? null,
         geminiGoogleSearchPreference: provider.geminiGoogleSearchPreference,
         tpm: provider.tpm,
         rpm: provider.rpm,
@@ -561,6 +567,7 @@ export async function addProvider(data: {
   anthropic_max_tokens_preference?: AnthropicMaxTokensPreference | null;
   anthropic_thinking_budget_preference?: AnthropicThinkingBudgetPreference | null;
   anthropic_adaptive_thinking?: AnthropicAdaptiveThinkingConfig | null;
+  reasoning_effort_override_rules?: ReasoningEffortOverrideRule[] | null;
   max_retry_attempts?: number | null;
   circuit_breaker_failure_threshold?: number;
   circuit_breaker_open_duration?: number;
@@ -601,6 +608,16 @@ export async function addProvider(data: {
     }
 
     const validated = CreateProviderSchema.parse(data);
+    const reasoningValidation = validateProviderReasoningEffortOverrideMutation({
+      providerType: validated.provider_type,
+      hasRulesField: hasProviderReasoningEffortOverrideRulesField(data),
+      rules: validated.reasoning_effort_override_rules,
+      hasLegacyFields: hasLegacyReasoningEffortOverrideFields(data),
+      existingRules: null,
+    });
+    if (!reasoningValidation.ok) {
+      return { ok: false, error: reasoningValidation.error, errorCode: "INVALID_INPUT" };
+    }
     logger.trace("addProvider:validated", { name: validated.name });
 
     // 获取 favicon URL
@@ -778,6 +795,7 @@ export async function editProvider(
     anthropic_max_tokens_preference?: AnthropicMaxTokensPreference | null;
     anthropic_thinking_budget_preference?: AnthropicThinkingBudgetPreference | null;
     anthropic_adaptive_thinking?: AnthropicAdaptiveThinkingConfig | null;
+    reasoning_effort_override_rules?: ReasoningEffortOverrideRule[] | null;
     max_retry_attempts?: number | null;
     circuit_breaker_failure_threshold?: number;
     circuit_breaker_open_duration?: number;
@@ -848,6 +866,17 @@ export async function editProvider(
     const currentProvider = await findProviderById(providerId);
     if (!currentProvider) {
       return { ok: false, error: "供应商不存在" };
+    }
+
+    const reasoningValidation = validateProviderReasoningEffortOverrideMutation({
+      providerType: validated.provider_type ?? currentProvider.providerType,
+      hasRulesField: hasProviderReasoningEffortOverrideRulesField(data),
+      rules: validated.reasoning_effort_override_rules,
+      hasLegacyFields: hasLegacyReasoningEffortOverrideFields(data),
+      existingRules: currentProvider.reasoningEffortOverrideRules,
+    });
+    if (!reasoningValidation.ok) {
+      return { ok: false, error: reasoningValidation.error, errorCode: "INVALID_INPUT" };
     }
 
     const preimageFields: Record<string, unknown> = {};
@@ -1314,6 +1343,10 @@ const PROVIDER_BATCH_PREVIEW_TTL_SECONDS = 60;
 const PROVIDER_PATCH_UNDO_TTL_SECONDS = 10;
 const PROVIDER_DELETE_UNDO_TTL_SECONDS = 60;
 
+type ProviderBatchPatchFieldWithReasoningEffortRules =
+  | ProviderBatchPatchField
+  | "reasoning_effort_override_rules";
+
 const ProviderBatchPatchProviderIdsSchema = z
   .array(z.number().int().positive())
   .min(1)
@@ -1354,7 +1387,7 @@ const UndoProviderDeleteSchema = z
 export interface ProviderBatchPreviewRow {
   providerId: number;
   providerName: string;
-  field: ProviderBatchPatchField;
+  field: ProviderBatchPatchFieldWithReasoningEffortRules;
   status: "changed" | "skipped";
   before: unknown;
   after: unknown;
@@ -1366,7 +1399,7 @@ export interface PreviewProviderBatchPatchResult {
   previewRevision: string;
   previewExpiresAt: string;
   providerIds: number[];
-  changedFields: ProviderBatchPatchField[];
+  changedFields: ProviderBatchPatchFieldWithReasoningEffortRules[];
   rows: ProviderBatchPreviewRow[];
   summary: {
     providerCount: number;
@@ -1415,9 +1448,9 @@ interface ProviderBatchPatchPreviewSnapshot {
   previewToken: string;
   previewRevision: string;
   providerIds: number[];
-  patch: ProviderBatchPatch;
+  patch: ProviderBatchPatchWithReasoningEffortRules;
   patchSerialized: string;
-  changedFields: ProviderBatchPatchField[];
+  changedFields: ProviderBatchPatchFieldWithReasoningEffortRules[];
   rows: ProviderBatchPreviewRow[];
   applied: boolean;
   appliedResultByIdempotencyKey: Record<string, ApplyProviderBatchPatchResult>;
@@ -1428,7 +1461,7 @@ interface ProviderPatchUndoSnapshot {
   operationId: string;
   providerIds: number[];
   preimage: Record<number, Record<string, unknown>>;
-  patch: ProviderBatchPatch;
+  patch: ProviderBatchPatchWithReasoningEffortRules;
 }
 
 interface ProviderDeleteUndoSnapshot {
@@ -1451,7 +1484,10 @@ const providerDeleteUndoStore = new RedisKVStore<ProviderDeleteUndoSnapshot>({
 });
 type ProviderPatchActionError = Extract<ActionResult, { ok: false }>;
 
-const SINGLE_EDIT_PREIMAGE_FIELD_TO_PROVIDER_KEY: Record<string, keyof Provider> = {
+const SINGLE_EDIT_PREIMAGE_FIELD_TO_PROVIDER_KEY: Record<
+  string,
+  keyof ProviderWithReasoningEffortOverrideRules
+> = {
   name: "name",
   url: "url",
   is_enabled: "isEnabled",
@@ -1490,6 +1526,7 @@ const SINGLE_EDIT_PREIMAGE_FIELD_TO_PROVIDER_KEY: Record<string, keyof Provider>
   anthropic_max_tokens_preference: "anthropicMaxTokensPreference",
   anthropic_thinking_budget_preference: "anthropicThinkingBudgetPreference",
   anthropic_adaptive_thinking: "anthropicAdaptiveThinking",
+  reasoning_effort_override_rules: "reasoningEffortOverrideRules",
   gemini_google_search_preference: "geminiGoogleSearchPreference",
   max_retry_attempts: "maxRetryAttempts",
   circuit_breaker_failure_threshold: "circuitBreakerFailureThreshold",
@@ -1511,7 +1548,7 @@ const SINGLE_EDIT_PREIMAGE_FIELD_TO_PROVIDER_KEY: Record<string, keyof Provider>
   cc: "cc",
 };
 
-const EMPTY_PROVIDER_BATCH_PATCH: ProviderBatchPatch = (() => {
+const EMPTY_PROVIDER_BATCH_PATCH: ProviderBatchPatchWithReasoningEffortRules = (() => {
   const normalized = normalizeProviderBatchPatchDraft({});
   if (!normalized.ok) {
     throw new Error("Failed to initialize empty provider batch patch");
@@ -1544,8 +1581,10 @@ function dedupeProviderIds(providerIds: number[]): number[] {
   return [...new Set(providerIds)].sort((a, b) => a - b);
 }
 
-function getChangedPatchFields(patch: ProviderBatchPatch): ProviderBatchPatchField[] {
-  return (Object.keys(patch) as ProviderBatchPatchField[]).filter(
+function getChangedPatchFields(
+  patch: ProviderBatchPatchWithReasoningEffortRules
+): ProviderBatchPatchFieldWithReasoningEffortRules[] {
+  return (Object.keys(patch) as ProviderBatchPatchFieldWithReasoningEffortRules[]).filter(
     (field) => patch[field].mode !== "no_change"
   );
 }
@@ -1593,7 +1632,7 @@ function buildNoChangesError(): ProviderPatchActionError {
 }
 
 function mapApplyUpdatesToRepositoryFormat(
-  applyUpdates: ProviderBatchApplyUpdates
+  applyUpdates: ProviderBatchApplyUpdatesWithReasoningEffortRules
 ): BatchProviderUpdates {
   const result: BatchProviderUpdates = {};
   if (applyUpdates.is_enabled !== undefined) {
@@ -1628,6 +1667,9 @@ function mapApplyUpdatesToRepositoryFormat(
   }
   if (applyUpdates.anthropic_adaptive_thinking !== undefined) {
     result.anthropicAdaptiveThinking = applyUpdates.anthropic_adaptive_thinking;
+  }
+  if (applyUpdates.reasoning_effort_override_rules !== undefined) {
+    result.reasoningEffortOverrideRules = applyUpdates.reasoning_effort_override_rules;
   }
   if (applyUpdates.preserve_client_ip !== undefined) {
     result.preserveClientIp = applyUpdates.preserve_client_ip;
@@ -1746,7 +1788,10 @@ function mapApplyUpdatesToRepositoryFormat(
   return result;
 }
 
-const PATCH_FIELD_TO_PROVIDER_KEY: Record<ProviderBatchPatchField, keyof Provider> = {
+const PATCH_FIELD_TO_PROVIDER_KEY: Record<
+  ProviderBatchPatchFieldWithReasoningEffortRules,
+  keyof ProviderWithReasoningEffortOverrideRules
+> = {
   is_enabled: "isEnabled",
   priority: "priority",
   weight: "weight",
@@ -1758,6 +1803,7 @@ const PATCH_FIELD_TO_PROVIDER_KEY: Record<ProviderBatchPatchField, keyof Provide
   blocked_clients: "blockedClients",
   anthropic_thinking_budget_preference: "anthropicThinkingBudgetPreference",
   anthropic_adaptive_thinking: "anthropicAdaptiveThinking",
+  reasoning_effort_override_rules: "reasoningEffortOverrideRules",
   preserve_client_ip: "preserveClientIp",
   disable_session_reuse: "disableSessionReuse",
   active_time_start: "activeTimeStart",
@@ -1796,7 +1842,9 @@ const PATCH_FIELD_TO_PROVIDER_KEY: Record<ProviderBatchPatchField, keyof Provide
   mcp_passthrough_url: "mcpPassthroughUrl",
 };
 
-const PATCH_FIELD_CLEAR_VALUE: Partial<Record<ProviderBatchPatchField, unknown>> = {
+const PATCH_FIELD_CLEAR_VALUE: Partial<
+  Record<ProviderBatchPatchFieldWithReasoningEffortRules, unknown>
+> = {
   allowed_clients: [],
   blocked_clients: [],
   anthropic_thinking_budget_preference: "inherit",
@@ -1810,17 +1858,18 @@ const PATCH_FIELD_CLEAR_VALUE: Partial<Record<ProviderBatchPatchField, unknown>>
   codex_service_tier_preference: "inherit",
   anthropic_max_tokens_preference: "inherit",
   gemini_google_search_preference: "inherit",
+  reasoning_effort_override_rules: null,
   mcp_passthrough_type: "none",
 };
 
-const CLAUDE_ONLY_FIELDS: ReadonlySet<ProviderBatchPatchField> = new Set([
+const CLAUDE_ONLY_FIELDS: ReadonlySet<ProviderBatchPatchFieldWithReasoningEffortRules> = new Set([
   "anthropic_thinking_budget_preference",
   "anthropic_adaptive_thinking",
   "anthropic_max_tokens_preference",
   "context_1m_preference",
 ]);
 
-const CODEX_ONLY_FIELDS: ReadonlySet<ProviderBatchPatchField> = new Set([
+const CODEX_ONLY_FIELDS: ReadonlySet<ProviderBatchPatchFieldWithReasoningEffortRules> = new Set([
   "codex_reasoning_effort_preference",
   "codex_reasoning_summary_preference",
   "codex_text_verbosity_preference",
@@ -1829,7 +1878,7 @@ const CODEX_ONLY_FIELDS: ReadonlySet<ProviderBatchPatchField> = new Set([
   "codex_service_tier_preference",
 ]);
 
-const GEMINI_ONLY_FIELDS: ReadonlySet<ProviderBatchPatchField> = new Set([
+const GEMINI_ONLY_FIELDS: ReadonlySet<ProviderBatchPatchFieldWithReasoningEffortRules> = new Set([
   "gemini_google_search_preference",
 ]);
 
@@ -1889,7 +1938,7 @@ function filterRepositoryUpdatesByProviderType(
 }
 
 function computePreviewAfterValue(
-  field: ProviderBatchPatchField,
+  field: ProviderBatchPatchFieldWithReasoningEffortRules,
   operation: ProviderPatchOperation<unknown>
 ): unknown {
   if (operation.mode === "set") {
@@ -1909,9 +1958,9 @@ function computePreviewAfterValue(
 }
 
 function generatePreviewRows(
-  providers: Provider[],
-  patch: ProviderBatchPatch,
-  changedFields: ProviderBatchPatchField[]
+  providers: ProviderWithReasoningEffortOverrideRules[],
+  patch: ProviderBatchPatchWithReasoningEffortRules,
+  changedFields: ProviderBatchPatchFieldWithReasoningEffortRules[]
 ): ProviderBatchPreviewRow[] {
   const rows: ProviderBatchPreviewRow[] = [];
 
@@ -1999,6 +2048,13 @@ export async function previewProviderBatchPatch(
     const allProviders = await findAllProvidersFresh();
     const providerIdSet = new Set(providerIds);
     const matchedProviders = allProviders.filter((p) => providerIdSet.has(p.id));
+    const reasoningValidation = validateProviderReasoningEffortOverrideBatch({
+      patch: normalizedPatch.data,
+      providers: matchedProviders,
+    });
+    if (!reasoningValidation.ok) {
+      return { ok: false, error: reasoningValidation.error, errorCode: "INVALID_INPUT" };
+    }
     const rows = generatePreviewRows(matchedProviders, normalizedPatch.data, changedFields);
     const skipCount = rows.filter((r) => r.status === "skipped").length;
 
@@ -2123,6 +2179,13 @@ export async function applyProviderBatchPatch(
     const allProviders = await findAllProvidersFresh();
     const effectiveIdSet = new Set(effectiveProviderIds);
     const matchedProviders = allProviders.filter((p) => effectiveIdSet.has(p.id));
+    const reasoningValidation = validateProviderReasoningEffortOverrideBatch({
+      patch: normalizedPatch.data,
+      providers: matchedProviders,
+    });
+    if (!reasoningValidation.ok) {
+      return { ok: false, error: reasoningValidation.error, errorCode: "INVALID_INPUT" };
+    }
     const changedFields = getChangedPatchFields(normalizedPatch.data);
     const preimage: Record<number, Record<string, unknown>> = {};
     for (const provider of matchedProviders) {
@@ -2396,6 +2459,7 @@ export interface BatchUpdateProvidersParams {
     codex_image_generation_preference?: CodexImageGenerationPreference | null;
     anthropic_thinking_budget_preference?: AnthropicThinkingBudgetPreference | null;
     anthropic_adaptive_thinking?: AnthropicAdaptiveThinkingConfig | null;
+    reasoning_effort_override_rules?: ReasoningEffortOverrideRule[] | null;
   };
 }
 
@@ -2416,6 +2480,28 @@ export async function batchUpdateProviders(
 
     if (providerIds.length > BATCH_OPERATION_MAX_SIZE) {
       return { ok: false, error: `单次批量操作最多支持 ${BATCH_OPERATION_MAX_SIZE} 个供应商` };
+    }
+
+    const hasRulesField = hasProviderReasoningEffortOverrideRulesField(updates);
+    const hasLegacyFields = hasLegacyReasoningEffortOverrideFields(updates);
+    if (hasRulesField || hasLegacyFields) {
+      const currentProviders = await findAllProvidersFresh();
+      const providerIdSet = new Set(providerIds);
+      const selectedProviders = currentProviders.filter((provider) =>
+        providerIdSet.has(provider.id)
+      );
+      for (const provider of selectedProviders) {
+        const reasoningValidation = validateProviderReasoningEffortOverrideMutation({
+          providerType: provider.providerType,
+          hasRulesField,
+          rules: updates.reasoning_effort_override_rules,
+          hasLegacyFields,
+          existingRules: provider.reasoningEffortOverrideRules,
+        });
+        if (!reasoningValidation.ok) {
+          return { ok: false, error: reasoningValidation.error, errorCode: "INVALID_INPUT" };
+        }
+      }
     }
 
     const hasUpdates = Object.values(updates).some((v) => v !== undefined);
@@ -2504,6 +2590,9 @@ export async function batchUpdateProviders(
     }
     if (updates.anthropic_adaptive_thinking !== undefined) {
       repositoryUpdates.anthropicAdaptiveThinking = updates.anthropic_adaptive_thinking;
+    }
+    if (updates.reasoning_effort_override_rules !== undefined) {
+      repositoryUpdates.reasoningEffortOverrideRules = updates.reasoning_effort_override_rules;
     }
 
     const updatedCount = await updateProvidersBatch(providerIds, repositoryUpdates);

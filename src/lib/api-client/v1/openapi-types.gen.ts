@@ -4461,6 +4461,23 @@ export interface operations {
                             anthropicThinkingBudgetPreference: string | null;
                             /** @description Anthropic adaptive thinking config. */
                             anthropicAdaptiveThinking?: unknown;
+                            /** @description Ordered conditional reasoning effort override rules. Null preserves legacy fallback; an empty list disables it. */
+                            reasoningEffortOverrideRules: {
+                                when: {
+                                    originalModel?: {
+                                        /** @enum {string} */
+                                        matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                        pattern: string;
+                                    };
+                                    executionModel?: {
+                                        /** @enum {string} */
+                                        matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                        pattern: string;
+                                    };
+                                    originalReasoningEffort?: string | null;
+                                };
+                                overrideEffort: string;
+                            }[] | null;
                             /** @description Gemini Google Search preference. */
                             geminiGoogleSearchPreference: string | null;
                             /** @description Deprecated. Mirrors statistics.todayCost when include=statistics is requested; otherwise defaults to '0'. */
@@ -4788,6 +4805,23 @@ export interface operations {
                     anthropic_thinking_budget_preference?: string;
                     /** @description Anthropic adaptive thinking config. */
                     anthropic_adaptive_thinking?: unknown;
+                    /** @description Ordered conditional reasoning effort override rules. Null preserves legacy fallback; an empty list disables it. */
+                    reasoning_effort_override_rules?: {
+                        when: {
+                            originalModel?: {
+                                /** @enum {string} */
+                                matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                pattern: string;
+                            };
+                            executionModel?: {
+                                /** @enum {string} */
+                                matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                pattern: string;
+                            };
+                            originalReasoningEffort?: string | null;
+                        };
+                        overrideEffort: string;
+                    }[] | null;
                     /** @description Gemini Google Search preference. */
                     gemini_google_search_preference?: string;
                 };
@@ -4926,6 +4960,23 @@ export interface operations {
                         anthropicThinkingBudgetPreference: string | null;
                         /** @description Anthropic adaptive thinking config. */
                         anthropicAdaptiveThinking?: unknown;
+                        /** @description Ordered conditional reasoning effort override rules. Null preserves legacy fallback; an empty list disables it. */
+                        reasoningEffortOverrideRules: {
+                            when: {
+                                originalModel?: {
+                                    /** @enum {string} */
+                                    matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                    pattern: string;
+                                };
+                                executionModel?: {
+                                    /** @enum {string} */
+                                    matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                    pattern: string;
+                                };
+                                originalReasoningEffort?: string | null;
+                            };
+                            overrideEffort: string;
+                        }[] | null;
                         /** @description Gemini Google Search preference. */
                         geminiGoogleSearchPreference: string | null;
                         /** @description Deprecated. Mirrors statistics.todayCost when include=statistics is requested; otherwise defaults to '0'. */
@@ -5248,6 +5299,23 @@ export interface operations {
                         anthropicThinkingBudgetPreference: string | null;
                         /** @description Anthropic adaptive thinking config. */
                         anthropicAdaptiveThinking?: unknown;
+                        /** @description Ordered conditional reasoning effort override rules. Null preserves legacy fallback; an empty list disables it. */
+                        reasoningEffortOverrideRules: {
+                            when: {
+                                originalModel?: {
+                                    /** @enum {string} */
+                                    matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                    pattern: string;
+                                };
+                                executionModel?: {
+                                    /** @enum {string} */
+                                    matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                    pattern: string;
+                                };
+                                originalReasoningEffort?: string | null;
+                            };
+                            overrideEffort: string;
+                        }[] | null;
                         /** @description Gemini Google Search preference. */
                         geminiGoogleSearchPreference: string | null;
                         /** @description Deprecated. Mirrors statistics.todayCost when include=statistics is requested; otherwise defaults to '0'. */
@@ -5750,6 +5818,23 @@ export interface operations {
                     anthropic_thinking_budget_preference?: string;
                     /** @description Anthropic adaptive thinking config. */
                     anthropic_adaptive_thinking?: unknown;
+                    /** @description Ordered conditional reasoning effort override rules. Null preserves legacy fallback; an empty list disables it. */
+                    reasoning_effort_override_rules?: {
+                        when: {
+                            originalModel?: {
+                                /** @enum {string} */
+                                matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                pattern: string;
+                            };
+                            executionModel?: {
+                                /** @enum {string} */
+                                matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                pattern: string;
+                            };
+                            originalReasoningEffort?: string | null;
+                        };
+                        overrideEffort: string;
+                    }[] | null;
                     /** @description Gemini Google Search preference. */
                     gemini_google_search_preference?: string;
                     /** @description Provider API key. Write-only. */
@@ -5894,6 +5979,23 @@ export interface operations {
                         anthropicThinkingBudgetPreference: string | null;
                         /** @description Anthropic adaptive thinking config. */
                         anthropicAdaptiveThinking?: unknown;
+                        /** @description Ordered conditional reasoning effort override rules. Null preserves legacy fallback; an empty list disables it. */
+                        reasoningEffortOverrideRules: {
+                            when: {
+                                originalModel?: {
+                                    /** @enum {string} */
+                                    matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                    pattern: string;
+                                };
+                                executionModel?: {
+                                    /** @enum {string} */
+                                    matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                    pattern: string;
+                                };
+                                originalReasoningEffort?: string | null;
+                            };
+                            overrideEffort: string;
+                        }[] | null;
                         /** @description Gemini Google Search preference. */
                         geminiGoogleSearchPreference: string | null;
                         /** @description Deprecated. Mirrors statistics.todayCost when include=statistics is requested; otherwise defaults to '0'. */
@@ -7722,6 +7824,23 @@ export interface operations {
                         anthropic_thinking_budget_preference?: string | null;
                         /** @description Anthropic adaptive thinking config. */
                         anthropic_adaptive_thinking?: unknown;
+                        /** @description Ordered conditional reasoning effort override rules. Null clears to legacy fallback. */
+                        reasoning_effort_override_rules?: {
+                            when: {
+                                originalModel?: {
+                                    /** @enum {string} */
+                                    matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                    pattern: string;
+                                };
+                                executionModel?: {
+                                    /** @enum {string} */
+                                    matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                    pattern: string;
+                                };
+                                originalReasoningEffort?: string | null;
+                            };
+                            overrideEffort: string;
+                        }[] | null;
                     };
                 };
             };
@@ -8270,6 +8389,32 @@ export interface operations {
                      * @default {}
                      */
                     patch?: {
+                        /** @description Conditional reasoning effort rules patch. Use set, clear, or no_change. */
+                        reasoning_effort_override_rules?: {
+                            set: {
+                                when: {
+                                    originalModel?: {
+                                        /** @enum {string} */
+                                        matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                        pattern: string;
+                                    };
+                                    executionModel?: {
+                                        /** @enum {string} */
+                                        matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                        pattern: string;
+                                    };
+                                    originalReasoningEffort?: string | null;
+                                };
+                                overrideEffort: string;
+                            }[];
+                        } | {
+                            /** @enum {boolean} */
+                            clear: true;
+                        } | {
+                            /** @enum {boolean} */
+                            no_change: true;
+                        };
+                    } & {
                         [key: string]: unknown;
                     };
                 };
@@ -8461,6 +8606,32 @@ export interface operations {
                      * @default {}
                      */
                     patch?: {
+                        /** @description Conditional reasoning effort rules patch. Use set, clear, or no_change. */
+                        reasoning_effort_override_rules?: {
+                            set: {
+                                when: {
+                                    originalModel?: {
+                                        /** @enum {string} */
+                                        matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                        pattern: string;
+                                    };
+                                    executionModel?: {
+                                        /** @enum {string} */
+                                        matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                        pattern: string;
+                                    };
+                                    originalReasoningEffort?: string | null;
+                                };
+                                overrideEffort: string;
+                            }[];
+                        } | {
+                            /** @enum {boolean} */
+                            clear: true;
+                        } | {
+                            /** @enum {boolean} */
+                            no_change: true;
+                        };
+                    } & {
                         [key: string]: unknown;
                     };
                     /** @description Optional idempotency key. */

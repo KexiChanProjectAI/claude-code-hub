@@ -1,15 +1,18 @@
+import safeRegex from "safe-regex";
 import { z } from "zod";
 import {
   CODEX_IMAGE_GENERATION_PREFERENCE_VALUES,
   PROVIDER_DEFAULTS,
   PROVIDER_KEY_MAX_LENGTH,
   PROVIDER_LIMITS,
+  PROVIDER_RULE_LIMITS,
   PROVIDER_TIMEOUT_LIMITS,
 } from "@/lib/constants/provider.constants";
 import { USER_LIMITS } from "@/lib/constants/user.constants";
 import { normalizeCustomHeadersRecord } from "@/lib/custom-headers";
 import { PROVIDER_ALLOWED_MODEL_RULES_SCHEMA } from "@/lib/provider-allowed-model-schema";
 import { PROVIDER_MODEL_REDIRECT_RULES_SCHEMA } from "@/lib/provider-model-redirect-schema";
+import { resolveProviderPatternRegex } from "@/lib/provider-pattern-regex";
 import {
   MAX_PUBLIC_STATUS_RANGE_HOURS,
   PUBLIC_STATUS_INTERVAL_OPTIONS,
@@ -78,6 +81,83 @@ const ANTHROPIC_ADAPTIVE_THINKING_CONFIG = z
   })
   .nullable()
   .optional();
+
+const REASONING_EFFORT_OVERRIDE_MATCH_TYPE = z.enum([
+  "exact",
+  "prefix",
+  "suffix",
+  "contains",
+  "regex",
+]);
+
+export const REASONING_EFFORT_OVERRIDE_MODEL_PREDICATE_SCHEMA = z
+  .object({
+    matchType: REASONING_EFFORT_OVERRIDE_MATCH_TYPE,
+    pattern: z
+      .string()
+      .trim()
+      .min(1, "Reasoning effort override pattern cannot be empty")
+      .max(
+        PROVIDER_RULE_LIMITS.MAX_TEXT_LENGTH,
+        `Reasoning effort override pattern is too long (max ${PROVIDER_RULE_LIMITS.MAX_TEXT_LENGTH} characters)`
+      ),
+  })
+  .strict()
+  .superRefine((predicate, ctx) => {
+    if (predicate.matchType !== "regex") return;
+
+    const compiled = resolveProviderPatternRegex(predicate.pattern);
+    if (!compiled) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Reasoning effort override regex is invalid",
+        path: ["pattern"],
+      });
+      return;
+    }
+
+    try {
+      if (!safeRegex(compiled.source)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Reasoning effort override regex has potential ReDoS risk",
+          path: ["pattern"],
+        });
+      }
+    } catch {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Reasoning effort override regex has potential ReDoS risk",
+        path: ["pattern"],
+      });
+    }
+  });
+
+export const REASONING_EFFORT_OVERRIDE_RULE_WHEN_SCHEMA = z
+  .object({
+    originalModel: REASONING_EFFORT_OVERRIDE_MODEL_PREDICATE_SCHEMA.optional(),
+    executionModel: REASONING_EFFORT_OVERRIDE_MODEL_PREDICATE_SCHEMA.optional(),
+    originalReasoningEffort: z
+      .string()
+      .max(PROVIDER_RULE_LIMITS.MAX_TEXT_LENGTH)
+      .nullable()
+      .optional(),
+  })
+  .strict();
+
+export const REASONING_EFFORT_OVERRIDE_RULE_SCHEMA = z
+  .object({
+    when: REASONING_EFFORT_OVERRIDE_RULE_WHEN_SCHEMA,
+    overrideEffort: z.string().min(1).max(PROVIDER_RULE_LIMITS.MAX_TEXT_LENGTH),
+  })
+  .strict();
+
+export const REASONING_EFFORT_OVERRIDE_RULE_LIST_SCHEMA = z
+  .array(REASONING_EFFORT_OVERRIDE_RULE_SCHEMA)
+  .max(50, "Reasoning effort override rules cannot exceed 50 entries");
+
+export const REASONING_EFFORT_OVERRIDE_RULES_SCHEMA =
+  REASONING_EFFORT_OVERRIDE_RULE_LIST_SCHEMA.nullable().optional();
 
 // Gemini (generateContent API) Google Search preference
 // - 'inherit': follow client request (default)
@@ -577,6 +657,7 @@ export const CreateProviderSchema = z
     anthropic_thinking_budget_preference:
       ANTHROPIC_THINKING_BUDGET_PREFERENCE.optional().default("inherit"),
     anthropic_adaptive_thinking: ANTHROPIC_ADAPTIVE_THINKING_CONFIG,
+    reasoning_effort_override_rules: REASONING_EFFORT_OVERRIDE_RULES_SCHEMA,
     gemini_google_search_preference: GEMINI_GOOGLE_SEARCH_PREFERENCE.optional().default("inherit"),
     max_retry_attempts: z.coerce
       .number()
@@ -816,6 +897,7 @@ export const UpdateProviderSchema = z
     anthropic_max_tokens_preference: ANTHROPIC_MAX_TOKENS_PREFERENCE.optional(),
     anthropic_thinking_budget_preference: ANTHROPIC_THINKING_BUDGET_PREFERENCE.optional(),
     anthropic_adaptive_thinking: ANTHROPIC_ADAPTIVE_THINKING_CONFIG,
+    reasoning_effort_override_rules: REASONING_EFFORT_OVERRIDE_RULES_SCHEMA,
     gemini_google_search_preference: GEMINI_GOOGLE_SEARCH_PREFERENCE.optional(),
     max_retry_attempts: z.coerce
       .number()

@@ -1,4 +1,5 @@
 import { normalizeProviderGroupTag } from "@/lib/utils/provider-group";
+import { REASONING_EFFORT_OVERRIDE_RULE_LIST_SCHEMA } from "@/lib/validation/schemas";
 import type {
   ProviderBatchApplyUpdates,
   ProviderBatchPatch,
@@ -6,6 +7,8 @@ import type {
   ProviderBatchPatchField,
   ProviderPatchDraftInput,
   ProviderPatchOperation,
+  ProviderType,
+  ReasoningEffortOverrideRule,
 } from "@/types/provider";
 import { PROVIDER_ALLOWED_MODEL_RULE_INPUT_LIST_SCHEMA } from "./provider-allowed-model-schema";
 import { PROVIDER_MODEL_REDIRECT_RULE_LIST_SCHEMA } from "./provider-model-redirect-schema";
@@ -17,16 +20,157 @@ export const PROVIDER_PATCH_ERROR_CODES = {
 export type ProviderPatchErrorCode =
   (typeof PROVIDER_PATCH_ERROR_CODES)[keyof typeof PROVIDER_PATCH_ERROR_CODES];
 
+type ProviderBatchPatchFieldWithReasoningEffortRules =
+  | ProviderBatchPatchField
+  | "reasoning_effort_override_rules";
+
 interface ProviderPatchError {
   code: ProviderPatchErrorCode;
-  field: ProviderBatchPatchField | "__root__";
+  field: ProviderBatchPatchFieldWithReasoningEffortRules | "__root__";
   message: string;
 }
 
 type ProviderPatchResult<T> = { ok: true; data: T } | { ok: false; error: ProviderPatchError };
 
+export type ProviderBatchPatchWithReasoningEffortRules = ProviderBatchPatch & {
+  reasoning_effort_override_rules: ProviderPatchOperation<ReasoningEffortOverrideRule[]>;
+};
+
+type ProviderBatchPatchDraftWithReasoningEffortRules = ProviderBatchPatchDraft & {
+  reasoning_effort_override_rules?: ProviderPatchDraftInput<ReasoningEffortOverrideRule[]>;
+};
+
+export type ProviderBatchApplyUpdatesWithReasoningEffortRules = ProviderBatchApplyUpdates & {
+  reasoning_effort_override_rules?: ReasoningEffortOverrideRule[] | null;
+};
+
+export type ProviderReasoningEffortOverrideMutationInput = {
+  providerType: ProviderType;
+  hasRulesField: boolean;
+  rules: ReasoningEffortOverrideRule[] | null | undefined;
+  hasLegacyFields: boolean;
+  existingRules: ReasoningEffortOverrideRule[] | null | undefined;
+};
+
+export type ProviderReasoningEffortOverrideValidationResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+export type ProviderReasoningEffortOverrideBatchProvider = {
+  providerType: ProviderType;
+  reasoningEffortOverrideRules: ReasoningEffortOverrideRule[] | null;
+};
+
+const CODEX_REASONING_EFFORT_OVERRIDE_TARGETS = new Set([
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+]);
+const ANTHROPIC_REASONING_EFFORT_OVERRIDE_TARGETS = new Set([
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+]);
+
+export function hasProviderReasoningEffortOverrideRulesField(input: object): boolean {
+  return (
+    Object.hasOwn(input, "reasoning_effort_override_rules") &&
+    Reflect.get(input, "reasoning_effort_override_rules") !== undefined
+  );
+}
+
+export function hasLegacyReasoningEffortOverrideFields(input: object): boolean {
+  return (
+    (Object.hasOwn(input, "codex_reasoning_effort_preference") &&
+      Reflect.get(input, "codex_reasoning_effort_preference") !== undefined) ||
+    (Object.hasOwn(input, "anthropic_adaptive_thinking") &&
+      Reflect.get(input, "anthropic_adaptive_thinking") !== undefined)
+  );
+}
+
+export function validateProviderReasoningEffortOverrideMutation(
+  input: ProviderReasoningEffortOverrideMutationInput
+): ProviderReasoningEffortOverrideValidationResult {
+  if (input.hasRulesField && input.hasLegacyFields) {
+    return {
+      ok: false,
+      error:
+        "reasoning_effort_override_rules cannot be combined with codex_reasoning_effort_preference or anthropic_adaptive_thinking",
+    };
+  }
+
+  if (!input.hasRulesField && input.hasLegacyFields && input.existingRules != null) {
+    return {
+      ok: false,
+      error:
+        "Legacy reasoning effort fields cannot overwrite an existing reasoning_effort_override_rules configuration",
+    };
+  }
+
+  if (!input.hasRulesField) {
+    return { ok: true };
+  }
+
+  const allowedTargets =
+    input.providerType === "codex"
+      ? CODEX_REASONING_EFFORT_OVERRIDE_TARGETS
+      : input.providerType === "claude" || input.providerType === "claude-auth"
+        ? ANTHROPIC_REASONING_EFFORT_OVERRIDE_TARGETS
+        : null;
+
+  if (allowedTargets === null) {
+    return {
+      ok: false,
+      error:
+        "reasoning_effort_override_rules is only supported for codex, claude, and claude-auth providers",
+    };
+  }
+
+  if (input.rules) {
+    const invalidTarget = input.rules.find((rule) => !allowedTargets.has(rule.overrideEffort));
+    if (invalidTarget) {
+      return {
+        ok: false,
+        error: `Invalid reasoning effort override target for ${input.providerType}: ${invalidTarget.overrideEffort}`,
+      };
+    }
+  }
+
+  return { ok: true };
+}
+
+export function validateProviderReasoningEffortOverrideBatch(input: {
+  patch: ProviderBatchPatchWithReasoningEffortRules;
+  providers: readonly ProviderReasoningEffortOverrideBatchProvider[];
+}): ProviderReasoningEffortOverrideValidationResult {
+  const rulesOperation = input.patch.reasoning_effort_override_rules;
+  const hasRulesField = rulesOperation.mode !== "no_change";
+  const rules = rulesOperation.mode === "set" ? rulesOperation.value : null;
+  const hasLegacyFields =
+    input.patch.codex_reasoning_effort_preference.mode !== "no_change" ||
+    input.patch.anthropic_adaptive_thinking.mode !== "no_change";
+
+  for (const provider of input.providers) {
+    const result = validateProviderReasoningEffortOverrideMutation({
+      providerType: provider.providerType,
+      hasRulesField,
+      rules,
+      hasLegacyFields,
+      existingRules: provider.reasoningEffortOverrideRules,
+    });
+    if (!result.ok) return result;
+  }
+
+  return { ok: true };
+}
+
 const PATCH_INPUT_KEYS = new Set(["set", "clear", "no_change"]);
-const PATCH_FIELDS: ProviderBatchPatchField[] = [
+const PATCH_FIELDS: ProviderBatchPatchFieldWithReasoningEffortRules[] = [
   "is_enabled",
   "priority",
   "weight",
@@ -38,6 +182,7 @@ const PATCH_FIELDS: ProviderBatchPatchField[] = [
   "blocked_clients",
   "anthropic_thinking_budget_preference",
   "anthropic_adaptive_thinking",
+  "reasoning_effort_override_rules",
   // Routing
   "active_time_start",
   "active_time_end",
@@ -82,7 +227,7 @@ const PATCH_FIELDS: ProviderBatchPatchField[] = [
 ];
 const PATCH_FIELD_SET = new Set(PATCH_FIELDS);
 
-const CLEARABLE_FIELDS: Record<ProviderBatchPatchField, boolean> = {
+const CLEARABLE_FIELDS: Record<ProviderBatchPatchFieldWithReasoningEffortRules, boolean> = {
   is_enabled: false,
   priority: false,
   weight: false,
@@ -94,6 +239,7 @@ const CLEARABLE_FIELDS: Record<ProviderBatchPatchField, boolean> = {
   blocked_clients: true,
   anthropic_thinking_budget_preference: true,
   anthropic_adaptive_thinking: true,
+  reasoning_effort_override_rules: true,
   // Routing
   active_time_start: true,
   active_time_end: true,
@@ -208,7 +354,10 @@ function isMaxTokensPreference(value: unknown): boolean {
   return parsed > 0;
 }
 
-function isValidSetValue(field: ProviderBatchPatchField, value: unknown): boolean {
+function isValidSetValue(
+  field: ProviderBatchPatchFieldWithReasoningEffortRules,
+  value: unknown
+): boolean {
   switch (field) {
     case "is_enabled":
     case "preserve_client_ip":
@@ -294,6 +443,8 @@ function isValidSetValue(field: ProviderBatchPatchField, value: unknown): boolea
       return Array.isArray(value) && value.every((v) => typeof v === "string");
     case "anthropic_adaptive_thinking":
       return isAdaptiveThinkingConfig(value);
+    case "reasoning_effort_override_rules":
+      return REASONING_EFFORT_OVERRIDE_RULE_LIST_SCHEMA.safeParse(value).success;
     default:
       return false;
   }
@@ -304,7 +455,7 @@ function createNoChangePatch<T>(): ProviderPatchOperation<T> {
 }
 
 function createInvalidPatchShapeError(
-  field: ProviderBatchPatchField,
+  field: ProviderBatchPatchFieldWithReasoningEffortRules,
   message: string
 ): ProviderPatchResult<never> {
   return {
@@ -333,7 +484,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function normalizePatchField<T>(
-  field: ProviderBatchPatchField,
+  field: ProviderBatchPatchFieldWithReasoningEffortRules,
   input: ProviderPatchDraftInput<T>
 ): ProviderPatchResult<ProviderPatchOperation<T>> {
   if (input === undefined) {
@@ -385,6 +536,14 @@ function normalizePatchField<T>(
       return { ok: true, data: { mode: "set", value: parsedAllowedModels.data as T } };
     }
 
+    if (field === "reasoning_effort_override_rules") {
+      const parsedRules = REASONING_EFFORT_OVERRIDE_RULE_LIST_SCHEMA.safeParse(input.set);
+      if (!parsedRules.success) {
+        return createInvalidPatchShapeError(field, "set mode value is invalid for this field");
+      }
+      return { ok: true, data: { mode: "set", value: parsedRules.data as T } };
+    }
+
     return { ok: true, data: { mode: "set", value: input.set as T } };
   }
 
@@ -401,13 +560,13 @@ function normalizePatchField<T>(
 
 export function normalizeProviderBatchPatchDraft(
   draft: unknown
-): ProviderPatchResult<ProviderBatchPatch> {
+): ProviderPatchResult<ProviderBatchPatchWithReasoningEffortRules> {
   if (!isRecord(draft) || Array.isArray(draft)) {
     return createInvalidRootPatchShapeError("Patch draft must be an object");
   }
 
   const unknownFields = Object.keys(draft).filter(
-    (key) => !PATCH_FIELD_SET.has(key as ProviderBatchPatchField)
+    (key) => !PATCH_FIELD_SET.has(key as ProviderBatchPatchFieldWithReasoningEffortRules)
   );
   if (unknownFields.length > 0) {
     return createInvalidRootPatchShapeError(
@@ -415,7 +574,7 @@ export function normalizeProviderBatchPatchDraft(
     );
   }
 
-  const typedDraft = draft as ProviderBatchPatchDraft;
+  const typedDraft = draft as ProviderBatchPatchDraftWithReasoningEffortRules;
 
   const isEnabled = normalizePatchField("is_enabled", typedDraft.is_enabled);
   if (!isEnabled.ok) return isEnabled;
@@ -455,6 +614,12 @@ export function normalizeProviderBatchPatchDraft(
     typedDraft.anthropic_adaptive_thinking
   );
   if (!adaptiveThinking.ok) return adaptiveThinking;
+
+  const reasoningEffortOverrideRules = normalizePatchField(
+    "reasoning_effort_override_rules",
+    typedDraft.reasoning_effort_override_rules
+  );
+  if (!reasoningEffortOverrideRules.ok) return reasoningEffortOverrideRules;
 
   // Routing
   const activeTimeStart = normalizePatchField("active_time_start", typedDraft.active_time_start);
@@ -649,6 +814,7 @@ export function normalizeProviderBatchPatchDraft(
       blocked_clients: blockedClients.data,
       anthropic_thinking_budget_preference: thinkingBudget.data,
       anthropic_adaptive_thinking: adaptiveThinking.data,
+      reasoning_effort_override_rules: reasoningEffortOverrideRules.data,
       // Routing
       active_time_start: activeTimeStart.data,
       active_time_end: activeTimeEnd.data,
@@ -695,8 +861,8 @@ export function normalizeProviderBatchPatchDraft(
 }
 
 function applyPatchField<T>(
-  updates: ProviderBatchApplyUpdates,
-  field: ProviderBatchPatchField,
+  updates: ProviderBatchApplyUpdatesWithReasoningEffortRules,
+  field: ProviderBatchPatchFieldWithReasoningEffortRules,
   patch: ProviderPatchOperation<T>
 ): ProviderPatchResult<void> {
   if (patch.mode === "no_change") {
@@ -743,6 +909,9 @@ function applyPatchField<T>(
       case "anthropic_adaptive_thinking":
         updates.anthropic_adaptive_thinking =
           patch.value as ProviderBatchApplyUpdates["anthropic_adaptive_thinking"];
+        return { ok: true, data: undefined };
+      case "reasoning_effort_override_rules":
+        updates.reasoning_effort_override_rules = patch.value as ReasoningEffortOverrideRule[];
         return { ok: true, data: undefined };
       // Routing
       case "active_time_start":
@@ -908,6 +1077,9 @@ function applyPatchField<T>(
     case "anthropic_adaptive_thinking":
       updates.anthropic_adaptive_thinking = null;
       return { ok: true, data: undefined };
+    case "reasoning_effort_override_rules":
+      updates.reasoning_effort_override_rules = null;
+      return { ok: true, data: undefined };
     // Routing - active time clear to null
     case "active_time_start":
       updates.active_time_start = null;
@@ -984,11 +1156,13 @@ function applyPatchField<T>(
 }
 
 export function buildProviderBatchApplyUpdates(
-  patch: ProviderBatchPatch
-): ProviderPatchResult<ProviderBatchApplyUpdates> {
-  const updates: ProviderBatchApplyUpdates = {};
+  patch: ProviderBatchPatchWithReasoningEffortRules
+): ProviderPatchResult<ProviderBatchApplyUpdatesWithReasoningEffortRules> {
+  const updates: ProviderBatchApplyUpdatesWithReasoningEffortRules = {};
 
-  const operations: Array<[ProviderBatchPatchField, ProviderPatchOperation<unknown>]> = [
+  const operations: Array<
+    [ProviderBatchPatchFieldWithReasoningEffortRules, ProviderPatchOperation<unknown>]
+  > = [
     ["is_enabled", patch.is_enabled],
     ["priority", patch.priority],
     ["weight", patch.weight],
@@ -1000,6 +1174,7 @@ export function buildProviderBatchApplyUpdates(
     ["blocked_clients", patch.blocked_clients],
     ["anthropic_thinking_budget_preference", patch.anthropic_thinking_budget_preference],
     ["anthropic_adaptive_thinking", patch.anthropic_adaptive_thinking],
+    ["reasoning_effort_override_rules", patch.reasoning_effort_override_rules],
     // Routing
     ["active_time_start", patch.active_time_start],
     ["active_time_end", patch.active_time_end],
@@ -1056,7 +1231,9 @@ export function buildProviderBatchApplyUpdates(
   return { ok: true, data: updates };
 }
 
-export function hasProviderBatchPatchChanges(patch: ProviderBatchPatch): boolean {
+export function hasProviderBatchPatchChanges(
+  patch: ProviderBatchPatchWithReasoningEffortRules
+): boolean {
   return (
     patch.is_enabled.mode !== "no_change" ||
     patch.priority.mode !== "no_change" ||
@@ -1069,6 +1246,7 @@ export function hasProviderBatchPatchChanges(patch: ProviderBatchPatch): boolean
     patch.blocked_clients.mode !== "no_change" ||
     patch.anthropic_thinking_budget_preference.mode !== "no_change" ||
     patch.anthropic_adaptive_thinking.mode !== "no_change" ||
+    patch.reasoning_effort_override_rules.mode !== "no_change" ||
     // Routing
     patch.active_time_start.mode !== "no_change" ||
     patch.active_time_end.mode !== "no_change" ||
@@ -1115,7 +1293,7 @@ export function hasProviderBatchPatchChanges(patch: ProviderBatchPatch): boolean
 
 export function prepareProviderBatchApplyUpdates(
   draft: unknown
-): ProviderPatchResult<ProviderBatchApplyUpdates> {
+): ProviderPatchResult<ProviderBatchApplyUpdatesWithReasoningEffortRules> {
   const normalized = normalizeProviderBatchPatchDraft(draft);
   if (!normalized.ok) {
     return normalized;

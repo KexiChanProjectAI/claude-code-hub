@@ -42,19 +42,51 @@ import {
   ProviderUndoBodySchema,
   ProviderUnifiedTestSchema,
   type ProviderUpdateInput,
+  ProviderUpdateObjectSchema,
   ProviderUpdateSchema,
 } from "@/lib/api/v1/schemas/providers";
-import type { ProviderDisplay, ProviderStatistics, ProviderStatisticsMap } from "@/types/provider";
+import {
+  hasLegacyReasoningEffortOverrideFields,
+  hasProviderReasoningEffortOverrideRulesField,
+  normalizeProviderBatchPatchDraft,
+  validateProviderReasoningEffortOverrideBatch,
+  validateProviderReasoningEffortOverrideMutation,
+} from "@/lib/provider-patch-contract";
+import { REASONING_EFFORT_OVERRIDE_RULE_LIST_SCHEMA } from "@/lib/validation/schemas";
+import type {
+  ProviderDisplay,
+  ProviderStatistics,
+  ProviderStatisticsMap,
+  ReasoningEffortOverrideRule,
+} from "@/types/provider";
 
 const InternalProviderTypeSchema = z.enum(INTERNAL_PROVIDER_TYPE_VALUES);
 const InternalProviderListQuerySchema = ProviderListQuerySchema.extend({
   providerType: InternalProviderTypeSchema.optional(),
 });
-const InternalProviderUpdateSchema = ProviderUpdateSchema.extend({
+const InternalProviderUpdateSchema = ProviderUpdateObjectSchema.extend({
   provider_type: InternalProviderTypeSchema.optional(),
 });
 type InternalProviderUpdateInput = z.infer<typeof InternalProviderUpdateSchema>;
 type ProviderUpdatePayload = ProviderUpdateInput | InternalProviderUpdateInput;
+
+function getProviderReasoningEffortOverrideRules(
+  provider: ProviderDisplay
+): ReasoningEffortOverrideRule[] | null {
+  const value = Reflect.get(provider, "reasoningEffortOverrideRules");
+  if (value === null) return null;
+  const parsed = REASONING_EFFORT_OVERRIDE_RULE_LIST_SCHEMA.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+function reasoningEffortValidationError(c: Context, error: string): Response {
+  return createProblemResponse({
+    status: 400,
+    instance: new URL(c.req.url).pathname,
+    errorCode: "request.validation_failed",
+    detail: error,
+  });
+}
 const InternalProviderTypeQuerySchema = ProviderTypeQuerySchema.extend({
   providerType: InternalProviderTypeSchema,
 });
@@ -117,6 +149,14 @@ export async function createProvider(c: Context): Promise<Response> {
       detail: "Redacted placeholders cannot be used when creating providers.",
     });
   }
+  const reasoningValidation = validateProviderReasoningEffortOverrideMutation({
+    providerType: body.data.provider_type ?? "claude",
+    hasRulesField: hasProviderReasoningEffortOverrideRulesField(body.data),
+    rules: body.data.reasoning_effort_override_rules,
+    hasLegacyFields: hasLegacyReasoningEffortOverrideFields(body.data),
+    existingRules: null,
+  });
+  if (!reasoningValidation.ok) return reasoningEffortValidationError(c, reasoningValidation.error);
   const providerActions = await import("@/actions/providers");
   const result = await callAction(
     c,
@@ -152,6 +192,14 @@ export async function updateProvider(c: Context): Promise<Response> {
   const existing = await findVisibleProvider(c, id);
   if (existing instanceof Response) return existing;
   if (!existing) return providerNotFound(c);
+  const reasoningValidation = validateProviderReasoningEffortOverrideMutation({
+    providerType: body.data.provider_type ?? existing.providerType,
+    hasRulesField: hasProviderReasoningEffortOverrideRulesField(body.data),
+    rules: body.data.reasoning_effort_override_rules,
+    hasLegacyFields: hasLegacyReasoningEffortOverrideFields(body.data),
+    existingRules: getProviderReasoningEffortOverrideRules(existing),
+  });
+  if (!reasoningValidation.ok) return reasoningEffortValidationError(c, reasoningValidation.error);
   if (body.data.key !== undefined && hasLegacyRedactedWritePlaceholders(body.data.key)) {
     return createProblemResponse({
       status: 422,
@@ -354,6 +402,16 @@ export async function batchUpdateProviders(c: Context): Promise<Response> {
   if (body instanceof Response) return body;
   const visibilityError = await ensureVisibleProviderIds(c, body.providerIds);
   if (visibilityError) return visibilityError;
+  const reasoningValidationErrorResponse = await validateDirectBatchReasoningEffortMutation(
+    c,
+    body.providerIds,
+    {
+      hasRulesField: hasProviderReasoningEffortOverrideRulesField(body.updates),
+      rules: body.updates.reasoning_effort_override_rules,
+      hasLegacyFields: hasLegacyReasoningEffortOverrideFields(body.updates),
+    }
+  );
+  if (reasoningValidationErrorResponse) return reasoningValidationErrorResponse;
   const providerActions = await import("@/actions/providers");
   return actionJson(
     c,
@@ -388,6 +446,12 @@ export async function previewBatchPatch(c: Context): Promise<Response> {
   if (body instanceof Response) return body;
   const visibilityError = await ensureVisibleProviderIds(c, body.providerIds);
   if (visibilityError) return visibilityError;
+  const reasoningValidationErrorResponse = await validatePatchBatchReasoningEffortMutation(
+    c,
+    body.providerIds,
+    body.patch
+  );
+  if (reasoningValidationErrorResponse) return reasoningValidationErrorResponse;
   const providerActions = await import("@/actions/providers");
   return actionJson(
     c,
@@ -400,6 +464,15 @@ export async function applyBatchPatch(c: Context): Promise<Response> {
   if (body instanceof Response) return body;
   const visibilityError = await ensureVisibleProviderIds(c, body.providerIds);
   if (visibilityError) return visibilityError;
+  const effectiveProviderIds = body.providerIds.filter(
+    (id) => !body.excludeProviderIds?.includes(id)
+  );
+  const reasoningValidationErrorResponse = await validatePatchBatchReasoningEffortMutation(
+    c,
+    effectiveProviderIds,
+    body.patch
+  );
+  if (reasoningValidationErrorResponse) return reasoningValidationErrorResponse;
   const providerActions = await import("@/actions/providers");
   return actionJson(
     c,
@@ -557,6 +630,59 @@ async function ensureVisibleProviderIds(c: Context, ids: number[]): Promise<Resp
   return ids.every((id) => visibleIds.has(id)) ? null : providerNotFound(c);
 }
 
+async function validateDirectBatchReasoningEffortMutation(
+  c: Context,
+  providerIds: number[],
+  input: {
+    hasRulesField: boolean;
+    rules: ReasoningEffortOverrideRule[] | null | undefined;
+    hasLegacyFields: boolean;
+  }
+): Promise<Response | null> {
+  const providers = await loadVisibleProviders(c);
+  if (providers instanceof Response) return providers;
+
+  const providerIdSet = new Set(providerIds);
+  for (const provider of providers) {
+    if (!providerIdSet.has(provider.id)) continue;
+    const result = validateProviderReasoningEffortOverrideMutation({
+      providerType: provider.providerType,
+      hasRulesField: input.hasRulesField,
+      rules: input.rules,
+      hasLegacyFields: input.hasLegacyFields,
+      existingRules: getProviderReasoningEffortOverrideRules(provider),
+    });
+    if (!result.ok) return reasoningEffortValidationError(c, result.error);
+  }
+
+  return null;
+}
+
+async function validatePatchBatchReasoningEffortMutation(
+  c: Context,
+  providerIds: number[],
+  patch: unknown
+): Promise<Response | null> {
+  const normalized = normalizeProviderBatchPatchDraft(patch);
+  if (!normalized.ok) return reasoningEffortValidationError(c, normalized.error.message);
+
+  const providers = await loadVisibleProviders(c);
+  if (providers instanceof Response) return providers;
+
+  const providerIdSet = new Set(providerIds);
+  const candidates = providers
+    .filter((provider) => providerIdSet.has(provider.id))
+    .map((provider) => ({
+      providerType: provider.providerType,
+      reasoningEffortOverrideRules: getProviderReasoningEffortOverrideRules(provider),
+    }));
+  const result = validateProviderReasoningEffortOverrideBatch({
+    patch: normalized.data,
+    providers: candidates,
+  });
+  return result.ok ? null : reasoningEffortValidationError(c, result.error);
+}
+
 async function findCreatedProvider(
   c: Context,
   input: { name: string; url: string; provider_type?: string }
@@ -662,6 +788,7 @@ function sanitizeProvider(
     anthropicMaxTokensPreference: provider.anthropicMaxTokensPreference,
     anthropicThinkingBudgetPreference: provider.anthropicThinkingBudgetPreference,
     anthropicAdaptiveThinking: provider.anthropicAdaptiveThinking,
+    reasoningEffortOverrideRules: getProviderReasoningEffortOverrideRules(provider),
     geminiGoogleSearchPreference: provider.geminiGoogleSearchPreference,
     todayTotalCostUsd: statistics?.todayCost ?? provider.todayTotalCostUsd,
     todayCallCount: statistics?.todayCalls ?? provider.todayCallCount,

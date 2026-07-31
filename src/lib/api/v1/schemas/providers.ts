@@ -4,12 +4,94 @@ import {
   CODEX_IMAGE_GENERATION_PREFERENCE_VALUES,
   PROVIDER_KEY_MAX_LENGTH,
 } from "@/lib/constants/provider.constants";
+import {
+  hasLegacyReasoningEffortOverrideFields,
+  hasProviderReasoningEffortOverrideRulesField,
+  validateProviderReasoningEffortOverrideMutation,
+} from "@/lib/provider-patch-contract";
+import {
+  REASONING_EFFORT_OVERRIDE_RULE_LIST_SCHEMA,
+  REASONING_EFFORT_OVERRIDE_RULES_SCHEMA,
+} from "@/lib/validation/schemas";
 import { ProviderTypeSchema } from "./_common";
 
 export const HIDDEN_PROVIDER_TYPES = new Set(HIDDEN_PROVIDER_TYPE_VALUES);
 
 const NullableStringSchema = z.string().nullable();
 const CodexImageGenerationPreferenceSchema = z.enum(CODEX_IMAGE_GENERATION_PREFERENCE_VALUES);
+
+const ReasoningEffortOverrideBatchPatchInputSchema = z.union([
+  z.object({ set: REASONING_EFFORT_OVERRIDE_RULE_LIST_SCHEMA }).strict(),
+  z.object({ clear: z.literal(true) }).strict(),
+  z.object({ no_change: z.literal(true) }).strict(),
+]);
+
+const ProviderBatchPatchDraftSchema = z
+  .object({
+    reasoning_effort_override_rules:
+      ReasoningEffortOverrideBatchPatchInputSchema.optional().describe(
+        "Conditional reasoning effort rules patch. Use set, clear, or no_change."
+      ),
+  })
+  .catchall(z.unknown())
+  .default({});
+
+function validateReasoningEffortOverrideSchemaMutation(
+  data: {
+    provider_type?: unknown;
+    reasoning_effort_override_rules?: unknown;
+    codex_reasoning_effort_preference?: unknown;
+    anthropic_adaptive_thinking?: unknown;
+  },
+  ctx: z.RefinementCtx
+): void {
+  const hasRulesField = hasProviderReasoningEffortOverrideRulesField(data);
+  const hasLegacyFields = hasLegacyReasoningEffortOverrideFields(data);
+  if (!hasRulesField && !hasLegacyFields) return;
+
+  const providerType = data.provider_type;
+  if (
+    providerType !== "claude" &&
+    providerType !== "claude-auth" &&
+    providerType !== "codex" &&
+    providerType !== "gemini" &&
+    providerType !== "gemini-cli" &&
+    providerType !== "openai-compatible"
+  ) {
+    if (hasRulesField && hasLegacyFields) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "reasoning_effort_override_rules cannot be combined with legacy reasoning effort fields",
+        path: ["reasoning_effort_override_rules"],
+      });
+    }
+    return;
+  }
+
+  const parsedRules = REASONING_EFFORT_OVERRIDE_RULE_LIST_SCHEMA.safeParse(
+    data.reasoning_effort_override_rules
+  );
+
+  const result = validateProviderReasoningEffortOverrideMutation({
+    providerType,
+    hasRulesField,
+    rules: parsedRules.success
+      ? parsedRules.data
+      : data.reasoning_effort_override_rules === null
+        ? null
+        : undefined,
+    hasLegacyFields,
+    existingRules: null,
+  });
+  if (!result.ok) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: result.error,
+      path: ["reasoning_effort_override_rules"],
+    });
+  }
+}
 
 export const ProviderListQuerySchema = z.object({
   q: z.string().trim().optional().describe("Case-insensitive provider search text."),
@@ -127,6 +209,9 @@ export const ProviderSummarySchema = z
       .unknown()
       .nullable()
       .describe("Anthropic adaptive thinking config."),
+    reasoningEffortOverrideRules: REASONING_EFFORT_OVERRIDE_RULE_LIST_SCHEMA.nullable().describe(
+      "Ordered conditional reasoning effort override rules. Null preserves legacy fallback; an empty list disables it."
+    ),
     geminiGoogleSearchPreference: z
       .string()
       .nullable()
@@ -231,6 +316,9 @@ const ProviderBatchUpdateFieldsSchema = z
       .nullable()
       .optional()
       .describe("Anthropic adaptive thinking config."),
+    reasoning_effort_override_rules: REASONING_EFFORT_OVERRIDE_RULES_SCHEMA.describe(
+      "Ordered conditional reasoning effort override rules. Null clears to legacy fallback."
+    ),
   })
   .strict();
 
@@ -251,7 +339,7 @@ export const ProviderUndoBodySchema = z
 export const ProviderBatchPatchPreviewSchema = z
   .object({
     providerIds: z.array(z.number().int().positive()).min(1).max(500).describe("Provider ids."),
-    patch: z.record(z.string(), z.unknown()).default({}).describe("Batch patch draft."),
+    patch: ProviderBatchPatchDraftSchema.describe("Batch patch draft."),
   })
   .strict();
 
@@ -260,7 +348,7 @@ export const ProviderBatchPatchApplySchema = z
     previewToken: z.string().trim().min(1).describe("Preview token."),
     previewRevision: z.string().trim().min(1).describe("Preview revision."),
     providerIds: z.array(z.number().int().positive()).min(1).max(500).describe("Provider ids."),
-    patch: z.record(z.string(), z.unknown()).default({}).describe("Batch patch draft."),
+    patch: ProviderBatchPatchDraftSchema.describe("Batch patch draft."),
     idempotencyKey: z
       .string()
       .trim()
@@ -351,7 +439,7 @@ const TimeOfDaySchema = z
   .regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/)
   .describe("Time of day in HH:mm format.");
 
-export const ProviderCreateSchema = z
+const ProviderCreateObjectSchema = z
   .object({
     name: z.string().trim().min(1).max(64).describe("Provider display name."),
     url: z.string().trim().url().max(255).describe("Provider upstream base URL."),
@@ -366,7 +454,7 @@ export const ProviderCreateSchema = z
       .nullable()
       .optional()
       .describe("Per-group priority overrides."),
-    provider_type: ProviderTypeSchema.optional().default("claude"),
+    provider_type: ProviderTypeSchema.optional(),
     preserve_client_ip: z.boolean().optional().describe("Whether client IP is preserved upstream."),
     disable_session_reuse: z
       .boolean()
@@ -501,6 +589,9 @@ export const ProviderCreateSchema = z
       .nullable()
       .optional()
       .describe("Anthropic adaptive thinking config."),
+    reasoning_effort_override_rules: REASONING_EFFORT_OVERRIDE_RULES_SCHEMA.describe(
+      "Ordered conditional reasoning effort override rules. Null preserves legacy fallback; an empty list disables it."
+    ),
     gemini_google_search_preference: z
       .string()
       .optional()
@@ -509,7 +600,14 @@ export const ProviderCreateSchema = z
   .strict()
   .describe("Provider create request. Hidden provider types and deprecated fields are rejected.");
 
-export const ProviderUpdateSchema = ProviderCreateSchema.omit({ key: true })
+export const ProviderCreateSchema = ProviderCreateObjectSchema.extend({
+  provider_type: ProviderTypeSchema.default("claude"),
+})
+  .strict()
+  .superRefine(validateReasoningEffortOverrideSchemaMutation)
+  .describe("Provider create request. Hidden provider types and deprecated fields are rejected.");
+
+export const ProviderUpdateObjectSchema = ProviderCreateObjectSchema.omit({ key: true })
   .extend({
     key: z
       .string()
@@ -520,8 +618,11 @@ export const ProviderUpdateSchema = ProviderCreateSchema.omit({ key: true })
     provider_type: ProviderTypeSchema.optional(),
   })
   .partial()
-  .strict()
-  .describe("Provider update request. Hidden provider types and deprecated fields are rejected.");
+  .strict();
+
+export const ProviderUpdateSchema = ProviderUpdateObjectSchema.superRefine(
+  validateReasoningEffortOverrideSchemaMutation
+).describe("Provider update request. Hidden provider types and deprecated fields are rejected.");
 
 export type ProviderSummaryResponse = z.infer<typeof ProviderSummarySchema>;
 export type ProviderListQuery = z.infer<typeof ProviderListQuerySchema>;
