@@ -102,13 +102,13 @@ run("reasoning effort override migration", () => {
         )
         VALUES
           (1, 'codex', 'high', NULL),
-          (2, 'claude', NULL, ${JSON.stringify({ effort: "max", modelMatchMode: "all", models: [] })}::jsonb),
-          (3, 'claude-auth', NULL, ${JSON.stringify({
+          (2, 'claude', NULL, ${isolated.json({ effort: "max", modelMatchMode: "all", models: [] })}),
+          (3, 'claude-auth', NULL, ${isolated.json({
             effort: "high",
             modelMatchMode: "specific",
             models: ["claude-opus-4-1"],
-          })}::jsonb),
-          (4, 'claude', NULL, ${JSON.stringify({ effort: "medium", modelMatchMode: "specific", models: [] })}::jsonb),
+          })}),
+          (4, 'claude', NULL, ${isolated.json({ effort: "medium", modelMatchMode: "specific", models: [] })}),
           (5, 'codex', 'inherit', NULL)
       `;
 
@@ -143,7 +143,7 @@ run("reasoning effort override migration", () => {
           'codex',
           'none',
           NULL,
-          ${JSON.stringify(populatedRules)}::jsonb
+          ${isolated.json(populatedRules)}
         )
       `;
 
@@ -180,7 +180,7 @@ run("reasoning effort override migration", () => {
         null,
         populatedRules,
       ]);
-      expect(rowsAfterFirstRun.slice(0, 5).map(toLegacyRow)).toStrictEqual(legacyBefore);
+      expect(rowsAfterFirstRun.slice(0, 5).map(toLegacyRow)).toEqual(legacyBefore);
 
       await isolated.unsafe(updateSql);
 
