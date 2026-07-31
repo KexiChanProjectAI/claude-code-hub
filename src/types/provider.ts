@@ -54,6 +54,43 @@ export interface AnthropicAdaptiveThinkingConfig {
 
 export type ProviderModelRedirectMatchType = "exact" | "prefix" | "suffix" | "contains" | "regex";
 
+export type ReasoningEffortOverrideModelPredicate = {
+  readonly matchType: ProviderModelRedirectMatchType;
+  readonly pattern: string;
+};
+
+export type ReasoningEffortOverrideRuleWhen = {
+  readonly originalModel?: ReasoningEffortOverrideModelPredicate;
+  readonly executionModel?: ReasoningEffortOverrideModelPredicate;
+  readonly originalReasoningEffort?: string | null;
+};
+
+export type ReasoningEffortOverrideRule = {
+  readonly when: ReasoningEffortOverrideRuleWhen;
+  readonly overrideEffort: string;
+};
+
+export type ReasoningEffortOverrideInput = {
+  readonly originalModel: string | null;
+  readonly executionModel: string | null;
+  readonly originalReasoningEffort: string | null;
+};
+
+export type ReasoningEffortOverrideNoMatchResult = {
+  readonly shouldOverride: false;
+  readonly overriddenEffort: null;
+};
+
+export type ReasoningEffortOverrideMatchResult = {
+  readonly shouldOverride: true;
+  readonly overriddenEffort: string;
+  readonly matchedIndex: number;
+};
+
+export type ReasoningEffortOverrideResult =
+  | ReasoningEffortOverrideNoMatchResult
+  | ReasoningEffortOverrideMatchResult;
+
 export interface ProviderModelRedirectRule {
   matchType: ProviderModelRedirectMatchType;
   source: string;

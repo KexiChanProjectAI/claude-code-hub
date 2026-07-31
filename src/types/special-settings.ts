@@ -1,3 +1,5 @@
+import type { ReasoningEffortOverrideResult } from "./provider";
+
 /**
  * 特殊设置（通用审计字段）
  *
@@ -42,6 +44,7 @@ export type ProviderParameterOverrideSpecialSetting = {
     after: SpecialSettingChangeValue;
     changed: boolean;
   }>;
+  ruleEvaluation?: ReasoningEffortOverrideResult;
 };
 
 export type ResponseFixerSpecialSetting = {
