@@ -483,4 +483,289 @@ describe("Codex 供应商级参数覆写", () => {
       changed: false,
     });
   });
+
+  it("条件规则应使用原始模型、当前执行模型和原始 effort，而不是已覆写请求体", () => {
+    const provider = {
+      providerType: "codex",
+      codexReasoningEffortPreference: "high",
+    };
+    const input: Record<string, unknown> = {
+      model: "already-overridden-model",
+      input: [],
+      reasoning: { effort: "low", summary: "auto", extra: "keep" },
+    };
+    const context = {
+      originalModel: "raw-client-model",
+      executionModel: "redirected-execution-model",
+      originalReasoningEffort: "low",
+      reasoningEffortOverrideRules: [
+        {
+          when: {
+            originalModel: { matchType: "exact", pattern: "raw-client-model" },
+            executionModel: { matchType: "exact", pattern: "redirected-execution-model" },
+            originalReasoningEffort: "low",
+          },
+          overrideEffort: "medium",
+        },
+      ],
+    };
+
+    const output = applyCodexProviderOverrides(provider as any, input, context);
+
+    expect(output.reasoning).toEqual({ effort: "medium", summary: "auto", extra: "keep" });
+    expect(input.reasoning).toEqual({ effort: "low", summary: "auto", extra: "keep" });
+  });
+
+  it("条件规则应按声明顺序使用首条匹配规则", () => {
+    const provider = { providerType: "codex" };
+    const input: Record<string, unknown> = {
+      model: "gpt-5.5",
+      input: [],
+      reasoning: { effort: "low" },
+    };
+    const context = {
+      originalModel: "gpt-5.5",
+      executionModel: "gpt-5.5",
+      originalReasoningEffort: "low",
+      reasoningEffortOverrideRules: [
+        { when: {}, overrideEffort: "minimal" },
+        { when: {}, overrideEffort: "high" },
+      ],
+    };
+
+    const output = applyCodexProviderOverrides(provider as any, input, context);
+
+    expect((output.reasoning as any).effort).toBe("minimal");
+  });
+
+  it("executionModel 条件应以重定向后的执行模型为准", () => {
+    const provider = { providerType: "codex" };
+    const input: Record<string, unknown> = {
+      model: "original-model",
+      input: [],
+      reasoning: { effort: "low" },
+    };
+    const context = {
+      originalModel: "original-model",
+      executionModel: "redirected-model",
+      originalReasoningEffort: "low",
+      reasoningEffortOverrideRules: [
+        {
+          when: {
+            executionModel: { matchType: "exact", pattern: "original-model" },
+          },
+          overrideEffort: "minimal",
+        },
+        {
+          when: {
+            executionModel: { matchType: "exact", pattern: "redirected-model" },
+          },
+          overrideEffort: "high",
+        },
+      ],
+    };
+
+    const output = applyCodexProviderOverrides(provider as any, input, context);
+
+    expect((output.reasoning as any).effort).toBe("high");
+  });
+
+  it("原始 effort 缺失时，显式 null 条件应匹配并保留 reasoning 兄弟字段", () => {
+    const provider = { providerType: "codex" };
+    const input: Record<string, unknown> = {
+      model: "gpt-5.5",
+      input: [],
+      reasoning: { summary: "auto", extra: "keep" },
+    };
+    const context = {
+      originalModel: "gpt-5.5",
+      executionModel: "gpt-5.5",
+      originalReasoningEffort: null,
+      reasoningEffortOverrideRules: [
+        { when: { originalReasoningEffort: null }, overrideEffort: "high" },
+      ],
+    };
+
+    const output = applyCodexProviderOverrides(provider as any, input, context);
+
+    expect(output.reasoning).toEqual({ effort: "high", summary: "auto", extra: "keep" });
+  });
+
+  it("规则为 null 时，应保持 codexReasoningEffortPreference 的静态回退", () => {
+    const provider = {
+      providerType: "codex",
+      codexReasoningEffortPreference: "high",
+    };
+    const input: Record<string, unknown> = {
+      model: "gpt-5.5",
+      input: [],
+      reasoning: { effort: "low", summary: "auto" },
+    };
+    const context = {
+      originalModel: "gpt-5.5",
+      executionModel: "gpt-5.5",
+      originalReasoningEffort: "low",
+      reasoningEffortOverrideRules: null,
+    };
+
+    const output = applyCodexProviderOverrides(provider as any, input, context);
+
+    expect((output.reasoning as any).effort).toBe("high");
+  });
+
+  it("规则为空数组时，应显式禁用静态 effort 覆写并保持客户端 effort", () => {
+    const provider = {
+      providerType: "codex",
+      codexReasoningEffortPreference: "high",
+    };
+    const input: Record<string, unknown> = {
+      model: "gpt-5.5",
+      input: [],
+      reasoning: { effort: "low", summary: "auto" },
+    };
+    const context = {
+      originalModel: "gpt-5.5",
+      executionModel: "gpt-5.5",
+      originalReasoningEffort: "low",
+      reasoningEffortOverrideRules: [],
+    };
+
+    const output = applyCodexProviderOverrides(provider as any, input, context);
+
+    expect(output).toBe(input);
+    expect((output.reasoning as any).effort).toBe("low");
+  });
+
+  it("条件规则的 none 目标应作为真实 effort 写入请求", () => {
+    const provider = {
+      providerType: "codex",
+      codexReasoningEffortPreference: "high",
+    };
+    const input: Record<string, unknown> = {
+      model: "gpt-5.5",
+      input: [],
+      reasoning: { effort: "low" },
+    };
+    const context = {
+      originalModel: "gpt-5.5",
+      executionModel: "gpt-5.5",
+      originalReasoningEffort: "low",
+      reasoningEffortOverrideRules: [{ when: {}, overrideEffort: "none" }],
+    };
+
+    const output = applyCodexProviderOverrides(provider as any, input, context);
+
+    expect((output.reasoning as any).effort).toBe("none");
+  });
+
+  it("规则无匹配时，应保持客户端 effort 且不创建覆写副本", () => {
+    const provider = {
+      providerType: "codex",
+      codexReasoningEffortPreference: "high",
+    };
+    const input: Record<string, unknown> = {
+      model: "gpt-5.5",
+      input: [],
+      reasoning: { effort: "low", summary: "auto" },
+    };
+    const context = {
+      originalModel: "gpt-5.5",
+      executionModel: "gpt-5.5",
+      originalReasoningEffort: "low",
+      reasoningEffortOverrideRules: [
+        {
+          when: { originalModel: { matchType: "exact", pattern: "different-model" } },
+          overrideEffort: "high",
+        },
+      ],
+    };
+
+    const output = applyCodexProviderOverrides(provider as any, input, context);
+
+    expect(output).toBe(input);
+    expect(output).toEqual(input);
+  });
+
+  it("运行时上下文 malformed 时，应安全返回 no-match 且不回退到静态 effort", () => {
+    const provider = {
+      providerType: "codex",
+      codexReasoningEffortPreference: "high",
+    };
+    const input: Record<string, unknown> = {
+      model: "gpt-5.5",
+      input: [],
+      reasoning: { effort: "low" },
+    };
+    const malformedContext = {
+      originalModel: 123,
+      executionModel: "gpt-5.5",
+      originalReasoningEffort: "low",
+      reasoningEffortOverrideRules: [{ when: {}, overrideEffort: "medium" }],
+    };
+
+    const output = applyCodexProviderOverrides(provider as any, input, malformedContext as any);
+
+    expect(output).toBe(input);
+    expect((output.reasoning as any).effort).toBe("low");
+  });
+
+  it("规则审计应附带 evaluator 结果且不改变既有 changes 语义", () => {
+    const provider = {
+      id: 3,
+      name: "codex-provider",
+      providerType: "codex",
+    };
+    const input: Record<string, unknown> = {
+      model: "gpt-5.5",
+      input: [],
+      reasoning: { effort: "low", summary: "auto" },
+    };
+    const context = {
+      originalModel: "gpt-5.5",
+      executionModel: "redirected-model",
+      originalReasoningEffort: "low",
+      reasoningEffortOverrideRules: [{ when: {}, overrideEffort: "high" }],
+    };
+
+    const result = applyCodexProviderOverridesWithAudit(provider as any, input, context);
+
+    expect(result.audit?.ruleEvaluation).toEqual({
+      shouldOverride: true,
+      overriddenEffort: "high",
+      matchedIndex: 0,
+    });
+    expect(result.audit?.changes.find((change) => change.path === "reasoning.effort")).toEqual({
+      path: "reasoning.effort",
+      before: "low",
+      after: "high",
+      changed: true,
+    });
+  });
+
+  it("条件目标与客户端 effort 相同时，审计不应误标记 changes", () => {
+    const provider = { id: 4, name: "codex-provider", providerType: "codex" };
+    const input: Record<string, unknown> = {
+      model: "gpt-5.5",
+      input: [],
+      reasoning: { effort: "high" },
+    };
+    const context = {
+      originalModel: "gpt-5.5",
+      executionModel: "gpt-5.5",
+      originalReasoningEffort: "high",
+      reasoningEffortOverrideRules: [{ when: {}, overrideEffort: "high" }],
+    };
+
+    const result = applyCodexProviderOverridesWithAudit(provider as any, input, context);
+    const effortChange = result.audit?.changes.find((change) => change.path === "reasoning.effort");
+
+    expect(result.audit?.hit).toBe(true);
+    expect(result.audit?.changed).toBe(false);
+    expect(effortChange).toEqual({
+      path: "reasoning.effort",
+      before: "high",
+      after: "high",
+      changed: false,
+    });
+  });
 });

@@ -1,3 +1,4 @@
+import { evaluateReasoningEffortOverride } from "@/lib/reasoning-effort-override";
 import type {
   CodexImageGenerationPreference,
   CodexParallelToolCallsPreference,
@@ -5,6 +6,8 @@ import type {
   CodexReasoningSummaryPreference,
   CodexServiceTierPreference,
   CodexTextVerbosityPreference,
+  ReasoningEffortOverrideResult,
+  ReasoningEffortOverrideRule,
 } from "@/types/provider";
 import type { ProviderParameterOverrideSpecialSetting } from "@/types/special-settings";
 
@@ -18,6 +21,18 @@ type CodexProviderOverrideConfig = {
   codexParallelToolCallsPreference?: CodexParallelToolCallsPreference | null;
   codexImageGenerationPreference?: CodexImageGenerationPreference | null;
   codexServiceTierPreference?: CodexServiceTierPreference | null;
+};
+
+export type CodexReasoningEffortOverrideContext = {
+  readonly originalModel: string | null;
+  readonly executionModel: string | null;
+  readonly originalReasoningEffort: string | null;
+  readonly reasoningEffortOverrideRules: readonly ReasoningEffortOverrideRule[] | null;
+};
+
+type ReasoningEffortResolution = {
+  readonly effort: string | null;
+  readonly ruleEvaluation: ReasoningEffortOverrideResult | null;
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -49,6 +64,39 @@ function normalizeImageGenerationPreference(
 ): boolean | null {
   if (!value || value === "inherit") return null;
   return value === "true";
+}
+
+function resolveReasoningEffort(
+  provider: CodexProviderOverrideConfig,
+  context?: CodexReasoningEffortOverrideContext | null
+): ReasoningEffortResolution {
+  const legacyEffort = normalizeStringPreference(provider.codexReasoningEffortPreference);
+  if (context === undefined) {
+    return { effort: legacyEffort, ruleEvaluation: null };
+  }
+
+  if (!isPlainObject(context)) {
+    return {
+      effort: null,
+      ruleEvaluation: evaluateReasoningEffortOverride(null, null),
+    };
+  }
+
+  const rules = context.reasoningEffortOverrideRules;
+  if (rules === null) {
+    return { effort: legacyEffort, ruleEvaluation: null };
+  }
+
+  const ruleEvaluation = evaluateReasoningEffortOverride(rules, {
+    originalModel: context.originalModel,
+    executionModel: context.executionModel,
+    originalReasoningEffort: context.originalReasoningEffort,
+  });
+
+  return {
+    effort: ruleEvaluation.shouldOverride ? ruleEvaluation.overriddenEffort : null,
+    ruleEvaluation,
+  };
 }
 
 function isImageGenerationTool(value: unknown): value is Record<string, unknown> {
@@ -192,27 +240,11 @@ function applyImageGenerationToolChoicePreference(
   }
 }
 
-/**
- * 根据供应商配置对 Codex（Responses API）请求体进行覆写。
- *
- * 约定：
- * - providerType !== "codex" 时不做任何处理
- * - 偏好值为 null/undefined/"inherit" 表示“遵循客户端”
- * - 覆写仅影响以下字段：
- *   - parallel_tool_calls
- *   - tools / tool_choice 中与 image_generation 相关的能力声明
- *   - reasoning.effort / reasoning.summary
- *   - service_tier
- *   - text.verbosity
- */
-export function applyCodexProviderOverrides(
+function applyCodexProviderOverridesWithEffort(
   provider: CodexProviderOverrideConfig,
-  request: Record<string, unknown>
+  request: Record<string, unknown>,
+  reasoningEffort: string | null
 ): Record<string, unknown> {
-  if (provider.providerType !== "codex") {
-    return request;
-  }
-
   let output: Record<string, unknown> = request;
   const ensureCloned = () => {
     if (output === request) {
@@ -238,7 +270,6 @@ export function applyCodexProviderOverrides(
     hasAvailableTools: Array.isArray(output.tools) && output.tools.length > 0,
   });
 
-  const reasoningEffort = normalizeStringPreference(provider.codexReasoningEffortPreference);
   const reasoningSummary = normalizeStringPreference(provider.codexReasoningSummaryPreference);
   if (reasoningEffort !== null || reasoningSummary !== null) {
     const target = ensureCloned();
@@ -269,9 +300,38 @@ export function applyCodexProviderOverrides(
   return output;
 }
 
+/**
+ * 根据供应商配置对 Codex（Responses API）请求体进行覆写。
+ *
+ * 约定：
+ * - providerType !== "codex" 时不做任何处理
+ * - 偏好值为 null/undefined/"inherit" 表示“遵循客户端”
+ * - reasoningEffortOverrideContext 未提供，或其规则为 null 时使用静态 effort 回退
+ * - 非 null 规则由 evaluator 决定 reasoning.effort，空数组显式禁用静态 effort 回退
+ * - 覆写仅影响以下字段：
+ *   - parallel_tool_calls
+ *   - tools / tool_choice 中与 image_generation 相关的能力声明
+ *   - reasoning.effort / reasoning.summary
+ *   - service_tier
+ *   - text.verbosity
+ */
+export function applyCodexProviderOverrides(
+  provider: CodexProviderOverrideConfig,
+  request: Record<string, unknown>,
+  reasoningEffortOverrideContext?: CodexReasoningEffortOverrideContext | null
+): Record<string, unknown> {
+  if (provider.providerType !== "codex") {
+    return request;
+  }
+
+  const reasoningEffort = resolveReasoningEffort(provider, reasoningEffortOverrideContext);
+  return applyCodexProviderOverridesWithEffort(provider, request, reasoningEffort.effort);
+}
+
 export function applyCodexProviderOverridesWithAudit(
   provider: CodexProviderOverrideConfig,
-  request: Record<string, unknown>
+  request: Record<string, unknown>,
+  reasoningEffortOverrideContext?: CodexReasoningEffortOverrideContext | null
 ): { request: Record<string, unknown>; audit: ProviderParameterOverrideSpecialSetting | null } {
   if (provider.providerType !== "codex") {
     return { request, audit: null };
@@ -280,7 +340,11 @@ export function applyCodexProviderOverridesWithAudit(
   const parallelToolCalls = normalizeParallelToolCallsPreference(
     provider.codexParallelToolCallsPreference
   );
-  const reasoningEffort = normalizeStringPreference(provider.codexReasoningEffortPreference);
+  const reasoningEffortResolution = resolveReasoningEffort(
+    provider,
+    reasoningEffortOverrideContext
+  );
+  const reasoningEffort = reasoningEffortResolution.effort;
   const reasoningSummary = normalizeStringPreference(provider.codexReasoningSummaryPreference);
   const textVerbosity = normalizeStringPreference(provider.codexTextVerbosityPreference);
   const imageGeneration = normalizeImageGenerationPreference(
@@ -312,7 +376,7 @@ export function applyCodexProviderOverridesWithAudit(
   const beforeTextVerbosity = toAuditValue(beforeText?.verbosity);
   const beforeToolChoice = summarizeImageGenerationToolChoice(request.tool_choice);
 
-  const nextRequest = applyCodexProviderOverrides(provider, request);
+  const nextRequest = applyCodexProviderOverridesWithEffort(provider, request, reasoningEffort);
 
   const afterServiceTier = toAuditValue(nextRequest.service_tier);
 
@@ -379,6 +443,9 @@ export function applyCodexProviderOverridesWithAudit(
     hit: true,
     changed: changes.some((c) => c.changed),
     changes,
+    ...(reasoningEffortResolution.ruleEvaluation
+      ? { ruleEvaluation: reasoningEffortResolution.ruleEvaluation }
+      : {}),
   };
 
   return { request: nextRequest, audit };
