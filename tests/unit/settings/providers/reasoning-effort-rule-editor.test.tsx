@@ -44,9 +44,34 @@ vi.mock("@/components/ui/input", () => ({
 }));
 
 vi.mock("@/components/ui/select", () => ({
-  Select: ({ children, value }: any) => <div data-value={value}>{children}</div>,
+  Select: ({ children, value, onValueChange, disabled }: any) => (
+    <div
+      data-value={value}
+      data-testid="select-mock"
+      data-disabled={disabled ? "true" : undefined}
+      onClick={() => {
+        /* noop */
+      }}
+    >
+      {children}
+      {/* Expose onValueChange via data attribute for testing */}
+      <input
+        type="hidden"
+        data-onvaluechange="true"
+        ref={(el: HTMLInputElement | null) => {
+          if (el) {
+            (el as any).__onValueChange = onValueChange;
+          }
+        }}
+      />
+    </div>
+  ),
   SelectContent: ({ children }: any) => <div>{children}</div>,
-  SelectItem: ({ children, value }: any) => <div data-value={value}>{children}</div>,
+  SelectItem: ({ children, value }: any) => (
+    <div data-value={value} role="option">
+      {children}
+    </div>
+  ),
   SelectTrigger: ({ children, className, ...rest }: any) => (
     <div className={className} {...rest}>
       {children}
@@ -93,6 +118,22 @@ function createRule(overrides?: Partial<ReasoningEffortOverrideRule>): Reasoning
     overrideEffort: "medium",
     ...overrides,
   };
+}
+
+/** Find a Select mock and trigger its onValueChange callback */
+function triggerSelectValue(container: HTMLElement, selectIndex: number, newValue: string) {
+  const selectMocks = container.querySelectorAll("[data-testid='select-mock']");
+  const select = selectMocks[selectIndex] as HTMLElement & {
+    __onValueChange?: (v: string) => void;
+  };
+  if (!select) return;
+  // Access onValueChange via the hidden input's ref
+  const hiddenInput = select.querySelector("[data-onvaluechange]") as any;
+  if (hiddenInput?.__onValueChange) {
+    act(() => {
+      hiddenInput.__onValueChange(newValue);
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -257,6 +298,519 @@ describe("ReasoningEffortRuleEditor", () => {
     );
     const ruleRow = container.querySelector("[role='listitem']");
     expect(ruleRow?.className).not.toContain("border-primary/30");
+    unmount();
+  });
+
+  // ---- Comprehensive coverage tests ----
+
+  it("reorders rules when move up is clicked on second rule", () => {
+    const onChange = vi.fn();
+    const rules = [
+      createRule({ overrideEffort: "low" }),
+      createRule({ overrideEffort: "high" }),
+      createRule({ overrideEffort: "medium" }),
+    ];
+    const { container, unmount } = renderNode(
+      <ReasoningEffortRuleEditor rules={rules} onChange={onChange} providerType="codex" />
+    );
+    const moveUpButtons = Array.from(container.querySelectorAll("button")).filter(
+      (btn) => btn.getAttribute("aria-label") === "sections.routing.effortRules.moveUp"
+    );
+    // Click move up on second rule (index 1)
+    act(() => {
+      moveUpButtons[1].click();
+    });
+    expect(onChange).toHaveBeenCalledWith([
+      { when: {}, overrideEffort: "high" },
+      { when: {}, overrideEffort: "low" },
+      { when: {}, overrideEffort: "medium" },
+    ]);
+    unmount();
+  });
+
+  it("move up on first rule is a no-op", () => {
+    const onChange = vi.fn();
+    const rules = [createRule({ overrideEffort: "low" }), createRule({ overrideEffort: "high" })];
+    const { container, unmount } = renderNode(
+      <ReasoningEffortRuleEditor rules={rules} onChange={onChange} providerType="codex" />
+    );
+    const moveUpButtons = Array.from(container.querySelectorAll("button")).filter(
+      (btn) => btn.getAttribute("aria-label") === "sections.routing.effortRules.moveUp"
+    );
+    act(() => {
+      moveUpButtons[0].click();
+    });
+    // Should not be called - boundary check in handleMoveRule
+    expect(onChange).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it("move down on last rule is a no-op", () => {
+    const onChange = vi.fn();
+    const rules = [createRule({ overrideEffort: "low" }), createRule({ overrideEffort: "high" })];
+    const { container, unmount } = renderNode(
+      <ReasoningEffortRuleEditor rules={rules} onChange={onChange} providerType="codex" />
+    );
+    const moveDownButtons = Array.from(container.querySelectorAll("button")).filter(
+      (btn) => btn.getAttribute("aria-label") === "sections.routing.effortRules.moveDown"
+    );
+    act(() => {
+      moveDownButtons[1].click();
+    });
+    expect(onChange).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it("removes a non-first rule from multi-rule list", () => {
+    const onChange = vi.fn();
+    const rules = [
+      createRule({ overrideEffort: "low" }),
+      createRule({ overrideEffort: "high" }),
+      createRule({ overrideEffort: "medium" }),
+    ];
+    const { container, unmount } = renderNode(
+      <ReasoningEffortRuleEditor rules={rules} onChange={onChange} providerType="codex" />
+    );
+    const removeButtons = Array.from(container.querySelectorAll("button")).filter(
+      (btn) => btn.getAttribute("aria-label") === "sections.routing.effortRules.removeRule"
+    );
+    act(() => {
+      removeButtons[1].click();
+    });
+    expect(onChange).toHaveBeenCalledWith([
+      { when: {}, overrideEffort: "low" },
+      { when: {}, overrideEffort: "medium" },
+    ]);
+    unmount();
+  });
+
+  it("toggles execution model condition on and off", () => {
+    const onChange = vi.fn();
+    const rules = [createRule()];
+    const { container, unmount } = renderNode(
+      <ReasoningEffortRuleEditor rules={rules} onChange={onChange} providerType="codex" />
+    );
+    // Get all add/remove condition buttons
+    const condButtons = Array.from(container.querySelectorAll("button")).filter((btn) => {
+      const text = btn.textContent ?? "";
+      return (
+        text.includes("sections.routing.effortRules.addCondition") ||
+        text.includes("sections.routing.effortRules.removeCondition")
+      );
+    });
+    // Second button is execution model (index 1)
+    act(() => {
+      condButtons[1].click();
+    });
+    expect(onChange).toHaveBeenCalledWith([
+      {
+        when: { executionModel: { matchType: "exact", pattern: "" } },
+        overrideEffort: "medium",
+      },
+    ]);
+    unmount();
+  });
+
+  it("toggles execution model condition off when already enabled", () => {
+    const onChange = vi.fn();
+    const rules = [
+      createRule({
+        when: { executionModel: { matchType: "exact", pattern: "test" } },
+      }),
+    ];
+    const { container, unmount } = renderNode(
+      <ReasoningEffortRuleEditor rules={rules} onChange={onChange} providerType="codex" />
+    );
+    const condButtons = Array.from(container.querySelectorAll("button")).filter((btn) => {
+      const text = btn.textContent ?? "";
+      return (
+        text.includes("sections.routing.effortRules.addCondition") ||
+        text.includes("sections.routing.effortRules.removeCondition")
+      );
+    });
+    // Second pair is execution model (index 1)
+    act(() => {
+      condButtons[1].click();
+    });
+    // Should delete executionModel from when
+    expect(onChange).toHaveBeenCalledWith([{ when: {}, overrideEffort: "medium" }]);
+    unmount();
+  });
+
+  it("changes original model matchType via Select", () => {
+    const onChange = vi.fn();
+    const rules = [
+      createRule({
+        when: { originalModel: { matchType: "exact", pattern: "test" } },
+      }),
+    ];
+    const { container, unmount } = renderNode(
+      <ReasoningEffortRuleEditor rules={rules} onChange={onChange} providerType="codex" />
+    );
+    // First select is target effort, second is original model matchType
+    triggerSelectValue(container, 1, "prefix");
+    expect(onChange).toHaveBeenCalledWith([
+      {
+        when: { originalModel: { matchType: "prefix", pattern: "test" } },
+        overrideEffort: "medium",
+      },
+    ]);
+    unmount();
+  });
+
+  it("changes original model pattern via Input", () => {
+    const onChange = vi.fn();
+    const rules = [
+      createRule({
+        when: { originalModel: { matchType: "exact", pattern: "" } },
+      }),
+    ];
+    const { container, unmount } = renderNode(
+      <ReasoningEffortRuleEditor rules={rules} onChange={onChange} providerType="codex" />
+    );
+    const patternInput = container.querySelector(
+      "[data-testid='original-model-pattern-0']"
+    ) as HTMLInputElement;
+    act(() => {
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value"
+      )!.set!;
+      nativeInputValueSetter.call(patternInput, "claude-opus-4-6");
+      patternInput.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(onChange).toHaveBeenCalledWith([
+      {
+        when: { originalModel: { matchType: "exact", pattern: "claude-opus-4-6" } },
+        overrideEffort: "medium",
+      },
+    ]);
+    unmount();
+  });
+
+  it("changes execution model matchType via Select", () => {
+    const onChange = vi.fn();
+    const rules = [
+      createRule({
+        when: { executionModel: { matchType: "exact", pattern: "test" } },
+      }),
+    ];
+    const { container, unmount } = renderNode(
+      <ReasoningEffortRuleEditor rules={rules} onChange={onChange} providerType="codex" />
+    );
+    // Selects: 0=target effort, 1=original model matchType (only if present), then execution model matchType
+    // Since rule has executionModel but not originalModel, the Select order is:
+    // 0=target effort, 1=execution model matchType
+    triggerSelectValue(container, 1, "suffix");
+    expect(onChange).toHaveBeenCalledWith([
+      {
+        when: { executionModel: { matchType: "suffix", pattern: "test" } },
+        overrideEffort: "medium",
+      },
+    ]);
+    unmount();
+  });
+
+  it("changes execution model pattern via Input", () => {
+    const onChange = vi.fn();
+    const rules = [
+      createRule({
+        when: { executionModel: { matchType: "exact", pattern: "" } },
+      }),
+    ];
+    const { container, unmount } = renderNode(
+      <ReasoningEffortRuleEditor rules={rules} onChange={onChange} providerType="codex" />
+    );
+    const patternInput = container.querySelector(
+      "[data-testid='execution-model-pattern-0']"
+    ) as HTMLInputElement;
+    act(() => {
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value"
+      )!.set!;
+      nativeInputValueSetter.call(patternInput, "gpt-4o");
+      patternInput.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(onChange).toHaveBeenCalledWith([
+      {
+        when: { executionModel: { matchType: "exact", pattern: "gpt-4o" } },
+        overrideEffort: "medium",
+      },
+    ]);
+    unmount();
+  });
+
+  it("sets original effort mode to missing (null)", () => {
+    const onChange = vi.fn();
+    const rules = [createRule()];
+    const { container, unmount } = renderNode(
+      <ReasoningEffortRuleEditor rules={rules} onChange={onChange} providerType="codex" />
+    );
+    // Selects: 0=target effort, 1=effort mode (next after model selects)
+    triggerSelectValue(container, 1, "missing");
+    expect(onChange).toHaveBeenCalledWith([
+      { when: { originalReasoningEffort: null }, overrideEffort: "medium" },
+    ]);
+    unmount();
+  });
+
+  it("sets original effort mode to specific with a value", () => {
+    const onChange = vi.fn();
+    const rules = [createRule()];
+    const { container, unmount } = renderNode(
+      <ReasoningEffortRuleEditor rules={rules} onChange={onChange} providerType="codex" />
+    );
+    triggerSelectValue(container, 1, "specific");
+    expect(onChange).toHaveBeenCalledWith([
+      { when: { originalReasoningEffort: "" }, overrideEffort: "medium" },
+    ]);
+    unmount();
+  });
+
+  it("sets original effort mode to any (deletes key)", () => {
+    const onChange = vi.fn();
+    const rules = [createRule({ when: { originalReasoningEffort: null } })];
+    const { container, unmount } = renderNode(
+      <ReasoningEffortRuleEditor rules={rules} onChange={onChange} providerType="codex" />
+    );
+    triggerSelectValue(container, 1, "any");
+    expect(onChange).toHaveBeenCalledWith([{ when: {}, overrideEffort: "medium" }]);
+    unmount();
+  });
+
+  it("types a specific original effort value", () => {
+    const onChange = vi.fn();
+    const rules = [createRule({ when: { originalReasoningEffort: "" } })];
+    const { container, unmount } = renderNode(
+      <ReasoningEffortRuleEditor rules={rules} onChange={onChange} providerType="codex" />
+    );
+    const effortInput = container.querySelector(
+      "[data-testid='original-effort-value-0']"
+    ) as HTMLInputElement;
+    act(() => {
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value"
+      )!.set!;
+      nativeInputValueSetter.call(effortInput, "high");
+      effortInput.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(onChange).toHaveBeenCalledWith([
+      { when: { originalReasoningEffort: "high" }, overrideEffort: "medium" },
+    ]);
+    unmount();
+  });
+
+  it("changes target effort via Select", () => {
+    const onChange = vi.fn();
+    const rules = [createRule()];
+    const { container, unmount } = renderNode(
+      <ReasoningEffortRuleEditor rules={rules} onChange={onChange} providerType="codex" />
+    );
+    // First select is target effort
+    triggerSelectValue(container, 0, "xhigh");
+    expect(onChange).toHaveBeenCalledWith([{ when: {}, overrideEffort: "xhigh" }]);
+    unmount();
+  });
+
+  it("shows different target effort options for claude provider", () => {
+    const onChange = vi.fn();
+    const rules = [createRule()];
+    const { container, unmount } = renderNode(
+      <ReasoningEffortRuleEditor rules={rules} onChange={onChange} providerType="claude" />
+    );
+    // Verify claude-specific options are rendered
+    const options = container.querySelectorAll("[role='option']");
+    const optionValues = Array.from(options).map((opt) => opt.getAttribute("data-value"));
+    // Should include "max" (claude-specific) and NOT include "none" or "minimal" (codex-specific)
+    expect(optionValues).toContain("max");
+    expect(optionValues).not.toContain("none");
+    expect(optionValues).not.toContain("minimal");
+    unmount();
+  });
+
+  it("shows codex-specific target effort options for codex provider", () => {
+    const onChange = vi.fn();
+    const rules = [createRule()];
+    const { container, unmount } = renderNode(
+      <ReasoningEffortRuleEditor rules={rules} onChange={onChange} providerType="codex" />
+    );
+    const options = container.querySelectorAll("[role='option']");
+    const optionValues = Array.from(options).map((opt) => opt.getAttribute("data-value"));
+    expect(optionValues).toContain("none");
+    expect(optionValues).toContain("minimal");
+    expect(optionValues).not.toContain("max");
+    unmount();
+  });
+
+  it("marks rule with executionModel pattern valid as complete", () => {
+    const onChange = vi.fn();
+    const rules = [
+      createRule({
+        when: { executionModel: { matchType: "prefix", pattern: "gpt-" } },
+        overrideEffort: "high",
+      }),
+    ];
+    const { container, unmount } = renderNode(
+      <ReasoningEffortRuleEditor rules={rules} onChange={onChange} providerType="codex" />
+    );
+    const ruleRow = container.querySelector("[role='listitem']");
+    expect(ruleRow?.className).toContain("border-primary/30");
+    unmount();
+  });
+
+  it("marks rule with empty executionModel pattern as invalid", () => {
+    const onChange = vi.fn();
+    const rules = [
+      createRule({
+        when: { executionModel: { matchType: "exact", pattern: "" } },
+        overrideEffort: "high",
+      }),
+    ];
+    const { container, unmount } = renderNode(
+      <ReasoningEffortRuleEditor rules={rules} onChange={onChange} providerType="codex" />
+    );
+    const ruleRow = container.querySelector("[role='listitem']");
+    expect(ruleRow?.className).not.toContain("border-primary/30");
+    unmount();
+  });
+
+  it("marks rule with invalid target effort as incomplete", () => {
+    const onChange = vi.fn();
+    const rules = [createRule({ overrideEffort: "invalid-value" })];
+    const { container, unmount } = renderNode(
+      <ReasoningEffortRuleEditor rules={rules} onChange={onChange} providerType="codex" />
+    );
+    const ruleRow = container.querySelector("[role='listitem']");
+    expect(ruleRow?.className).not.toContain("border-primary/30");
+    unmount();
+  });
+
+  it("shows max-rules-reached message when at 50 rules", () => {
+    const onChange = vi.fn();
+    const rules = Array.from({ length: 50 }, () => createRule());
+    const { container, unmount } = renderNode(
+      <ReasoningEffortRuleEditor rules={rules} onChange={onChange} providerType="codex" />
+    );
+    expect(container.textContent).toContain("sections.routing.effortRules.maxRulesReached");
+    unmount();
+  });
+
+  it("disables buttons when disabled with full rule state", () => {
+    const onChange = vi.fn();
+    const rules = [
+      createRule({
+        when: {
+          originalModel: { matchType: "exact", pattern: "test" },
+          executionModel: { matchType: "prefix", pattern: "gpt-" },
+          originalReasoningEffort: "high",
+        },
+      }),
+    ];
+    const { container, unmount } = renderNode(
+      <ReasoningEffortRuleEditor rules={rules} onChange={onChange} providerType="codex" disabled />
+    );
+    // All buttons should be disabled
+    const allButtons = container.querySelectorAll("button");
+    for (const btn of allButtons) {
+      expect(btn).toHaveProperty("disabled", true);
+    }
+    unmount();
+  });
+
+  it("does not render original effort value input when mode is not specific", () => {
+    const onChange = vi.fn();
+    const rules = [createRule()];
+    const { container, unmount } = renderNode(
+      <ReasoningEffortRuleEditor rules={rules} onChange={onChange} providerType="codex" />
+    );
+    const effortInput = container.querySelector("[data-testid='original-effort-value-0']");
+    expect(effortInput).toBeNull();
+    unmount();
+  });
+
+  it("renders original effort value input when mode is specific", () => {
+    const onChange = vi.fn();
+    const rules = [createRule({ when: { originalReasoningEffort: "medium" } })];
+    const { container, unmount } = renderNode(
+      <ReasoningEffortRuleEditor rules={rules} onChange={onChange} providerType="codex" />
+    );
+    const effortInput = container.querySelector("[data-testid='original-effort-value-0']");
+    expect(effortInput).not.toBeNull();
+    expect((effortInput as HTMLInputElement).value).toBe("medium");
+    unmount();
+  });
+
+  it("renders original effort value input with empty string when value is empty string", () => {
+    const onChange = vi.fn();
+    const rules = [createRule({ when: { originalReasoningEffort: "" } })];
+    const { container, unmount } = renderNode(
+      <ReasoningEffortRuleEditor rules={rules} onChange={onChange} providerType="codex" />
+    );
+    const effortInput = container.querySelector(
+      "[data-testid='original-effort-value-0']"
+    ) as HTMLInputElement;
+    expect(effortInput).not.toBeNull();
+    expect(effortInput.value).toBe("");
+    unmount();
+  });
+
+  it("add button is disabled when disabled prop is true", () => {
+    const onChange = vi.fn();
+    const { container, unmount } = renderNode(
+      <ReasoningEffortRuleEditor rules={null} onChange={onChange} providerType="codex" disabled />
+    );
+    const addButtons = Array.from(container.querySelectorAll("button")).filter((btn) =>
+      btn.textContent?.includes("sections.routing.effortRules.addRule")
+    );
+    if (addButtons.length > 0) {
+      expect(addButtons[0]).toHaveProperty("disabled", true);
+    }
+    unmount();
+  });
+
+  it("toggle original model button is disabled when disabled", () => {
+    const onChange = vi.fn();
+    const rules = [createRule()];
+    const { container, unmount } = renderNode(
+      <ReasoningEffortRuleEditor rules={rules} onChange={onChange} providerType="codex" disabled />
+    );
+    const condButtons = Array.from(container.querySelectorAll("button")).filter((btn) => {
+      const text = btn.textContent ?? "";
+      return (
+        text.includes("sections.routing.effortRules.addCondition") ||
+        text.includes("sections.routing.effortRules.removeCondition")
+      );
+    });
+    for (const btn of condButtons) {
+      expect(btn).toHaveProperty("disabled", true);
+    }
+    unmount();
+  });
+
+  it("toggles original model off when already enabled", () => {
+    const onChange = vi.fn();
+    const rules = [
+      createRule({
+        when: { originalModel: { matchType: "exact", pattern: "test" } },
+      }),
+    ];
+    const { container, unmount } = renderNode(
+      <ReasoningEffortRuleEditor rules={rules} onChange={onChange} providerType="codex" />
+    );
+    const condButtons = Array.from(container.querySelectorAll("button")).filter((btn) => {
+      const text = btn.textContent ?? "";
+      return (
+        text.includes("sections.routing.effortRules.addCondition") ||
+        text.includes("sections.routing.effortRules.removeCondition")
+      );
+    });
+    // First button is original model removeCondition
+    act(() => {
+      condButtons[0].click();
+    });
+    expect(onChange).toHaveBeenCalledWith([{ when: {}, overrideEffort: "medium" }]);
     unmount();
   });
 });
