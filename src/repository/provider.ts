@@ -17,9 +17,10 @@ import type {
   CreateProviderData,
   Provider,
   ProviderModelRedirectRule,
+  ReasoningEffortOverrideRule,
   UpdateProviderData,
 } from "@/types/provider";
-import { toProvider } from "./_shared/transformers";
+import { type ProviderWithReasoningEffortOverrideRules, toProvider } from "./_shared/transformers";
 import {
   ensureProviderEndpointExistsForUrl,
   getOrCreateProviderVendorIdFromUrls,
@@ -28,6 +29,13 @@ import {
 } from "./provider-endpoints";
 
 type ProviderTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+type ProviderReasoningEffortOverrideInput = {
+  reasoning_effort_override_rules?: ReasoningEffortOverrideRule[] | null;
+};
+
+type CreateProviderInput = CreateProviderData & ProviderReasoningEffortOverrideInput;
+type UpdateProviderInput = UpdateProviderData & ProviderReasoningEffortOverrideInput;
 
 const PROVIDER_RESTORE_MAX_AGE_MS = 60_000;
 const ENDPOINT_RESTORE_TIME_TOLERANCE_MS = 1_000;
@@ -191,7 +199,9 @@ async function restoreProviderInTransaction(
   return true;
 }
 
-export async function createProvider(providerData: CreateProviderData): Promise<Provider> {
+export async function createProvider(
+  providerData: CreateProviderInput
+): Promise<ProviderWithReasoningEffortOverrideRules> {
   const dbData = {
     name: providerData.name,
     url: providerData.url,
@@ -257,6 +267,7 @@ export async function createProvider(providerData: CreateProviderData): Promise<
     anthropicMaxTokensPreference: providerData.anthropic_max_tokens_preference ?? null,
     anthropicThinkingBudgetPreference: providerData.anthropic_thinking_budget_preference ?? null,
     anthropicAdaptiveThinking: providerData.anthropic_adaptive_thinking ?? null,
+    reasoningEffortOverrideRules: providerData.reasoning_effort_override_rules ?? null,
     geminiGoogleSearchPreference: providerData.gemini_google_search_preference ?? null,
     tpm: providerData.tpm,
     rpm: providerData.rpm,
@@ -337,6 +348,7 @@ export async function createProvider(providerData: CreateProviderData): Promise<
         anthropicMaxTokensPreference: providers.anthropicMaxTokensPreference,
         anthropicThinkingBudgetPreference: providers.anthropicThinkingBudgetPreference,
         anthropicAdaptiveThinking: providers.anthropicAdaptiveThinking,
+        reasoningEffortOverrideRules: providers.reasoningEffortOverrideRules,
         geminiGoogleSearchPreference: providers.geminiGoogleSearchPreference,
         tpm: providers.tpm,
         rpm: providers.rpm,
@@ -367,7 +379,7 @@ export async function createProvider(providerData: CreateProviderData): Promise<
 export async function findProviderList(
   limit: number = 50,
   offset: number = 0
-): Promise<Provider[]> {
+): Promise<ProviderWithReasoningEffortOverrideRules[]> {
   const result = await db
     .select({
       id: providers.id,
@@ -426,6 +438,7 @@ export async function findProviderList(
       anthropicMaxTokensPreference: providers.anthropicMaxTokensPreference,
       anthropicThinkingBudgetPreference: providers.anthropicThinkingBudgetPreference,
       anthropicAdaptiveThinking: providers.anthropicAdaptiveThinking,
+      reasoningEffortOverrideRules: providers.reasoningEffortOverrideRules,
       geminiGoogleSearchPreference: providers.geminiGoogleSearchPreference,
       tpm: providers.tpm,
       rpm: providers.rpm,
@@ -456,7 +469,7 @@ export async function findProviderList(
  * - 管理后台需要保证数据新鲜度的场景
  * - 缓存刷新时的数据源
  */
-export async function findAllProvidersFresh(): Promise<Provider[]> {
+export async function findAllProvidersFresh(): Promise<ProviderWithReasoningEffortOverrideRules[]> {
   const result = await db
     .select({
       id: providers.id,
@@ -515,6 +528,7 @@ export async function findAllProvidersFresh(): Promise<Provider[]> {
       anthropicMaxTokensPreference: providers.anthropicMaxTokensPreference,
       anthropicThinkingBudgetPreference: providers.anthropicThinkingBudgetPreference,
       anthropicAdaptiveThinking: providers.anthropicAdaptiveThinking,
+      reasoningEffortOverrideRules: providers.reasoningEffortOverrideRules,
       geminiGoogleSearchPreference: providers.geminiGoogleSearchPreference,
       tpm: providers.tpm,
       rpm: providers.rpm,
@@ -549,7 +563,9 @@ export async function findAllProviders(): Promise<Provider[]> {
   return getCachedProviders(findAllProvidersFresh);
 }
 
-export async function findProviderById(id: number): Promise<Provider | null> {
+export async function findProviderById(
+  id: number
+): Promise<ProviderWithReasoningEffortOverrideRules | null> {
   const [provider] = await db
     .select({
       id: providers.id,
@@ -608,6 +624,7 @@ export async function findProviderById(id: number): Promise<Provider | null> {
       anthropicMaxTokensPreference: providers.anthropicMaxTokensPreference,
       anthropicThinkingBudgetPreference: providers.anthropicThinkingBudgetPreference,
       anthropicAdaptiveThinking: providers.anthropicAdaptiveThinking,
+      reasoningEffortOverrideRules: providers.reasoningEffortOverrideRules,
       geminiGoogleSearchPreference: providers.geminiGoogleSearchPreference,
       tpm: providers.tpm,
       rpm: providers.rpm,
@@ -626,8 +643,8 @@ export async function findProviderById(id: number): Promise<Provider | null> {
 
 export async function updateProvider(
   id: number,
-  providerData: UpdateProviderData
-): Promise<Provider | null> {
+  providerData: UpdateProviderInput
+): Promise<ProviderWithReasoningEffortOverrideRules | null> {
   if (Object.keys(providerData).length === 0) {
     return findProviderById(id);
   }
@@ -741,6 +758,8 @@ export async function updateProvider(
       providerData.anthropic_thinking_budget_preference ?? null;
   if (providerData.anthropic_adaptive_thinking !== undefined)
     dbData.anthropicAdaptiveThinking = providerData.anthropic_adaptive_thinking ?? null;
+  if (providerData.reasoning_effort_override_rules !== undefined)
+    dbData.reasoningEffortOverrideRules = providerData.reasoning_effort_override_rules ?? null;
   if (providerData.gemini_google_search_preference !== undefined)
     dbData.geminiGoogleSearchPreference = providerData.gemini_google_search_preference ?? null;
   if (providerData.tpm !== undefined) dbData.tpm = providerData.tpm;
@@ -859,6 +878,7 @@ export async function updateProvider(
         anthropicMaxTokensPreference: providers.anthropicMaxTokensPreference,
         anthropicThinkingBudgetPreference: providers.anthropicThinkingBudgetPreference,
         anthropicAdaptiveThinking: providers.anthropicAdaptiveThinking,
+        reasoningEffortOverrideRules: providers.reasoningEffortOverrideRules,
         geminiGoogleSearchPreference: providers.geminiGoogleSearchPreference,
         tpm: providers.tpm,
         rpm: providers.rpm,
@@ -1080,6 +1100,7 @@ export interface BatchProviderUpdates {
   blockedClients?: string[] | null;
   anthropicThinkingBudgetPreference?: string | null;
   anthropicAdaptiveThinking?: AnthropicAdaptiveThinkingConfig | null;
+  reasoningEffortOverrideRules?: ReasoningEffortOverrideRule[] | null;
   // Routing
   preserveClientIp?: boolean;
   disableSessionReuse?: boolean;
@@ -1167,6 +1188,9 @@ export async function updateProvidersBatch(
   }
   if (updates.anthropicAdaptiveThinking !== undefined) {
     setClauses.anthropicAdaptiveThinking = updates.anthropicAdaptiveThinking;
+  }
+  if (updates.reasoningEffortOverrideRules !== undefined) {
+    setClauses.reasoningEffortOverrideRules = updates.reasoningEffortOverrideRules;
   }
   // Routing
   if (updates.preserveClientIp !== undefined) {

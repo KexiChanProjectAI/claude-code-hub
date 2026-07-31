@@ -4,7 +4,7 @@ import { formatCostForStorage } from "@/lib/utils/currency";
 import type { Key } from "@/types/key";
 import type { MessageRequest } from "@/types/message";
 import type { ModelPrice } from "@/types/model-price";
-import type { Provider } from "@/types/provider";
+import type { Provider, ReasoningEffortOverrideRule } from "@/types/provider";
 import {
   DEFAULT_FAKE_STREAMING_WHITELIST,
   type FakeStreamingWhitelistEntry,
@@ -91,8 +91,12 @@ export function toKey(dbKey: any): Key {
   };
 }
 
+export type ProviderWithReasoningEffortOverrideRules = Provider & {
+  reasoningEffortOverrideRules: ReasoningEffortOverrideRule[] | null;
+};
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function toProvider(dbProvider: any): Provider {
+export function toProvider(dbProvider: any): ProviderWithReasoningEffortOverrideRules {
   return {
     ...dbProvider,
     providerVendorId: dbProvider?.providerVendorId ?? null,
@@ -155,6 +159,7 @@ export function toProvider(dbProvider: any): Provider {
     anthropicMaxTokensPreference: dbProvider?.anthropicMaxTokensPreference ?? null,
     anthropicThinkingBudgetPreference: dbProvider?.anthropicThinkingBudgetPreference ?? null,
     anthropicAdaptiveThinking: dbProvider?.anthropicAdaptiveThinking ?? null,
+    reasoningEffortOverrideRules: dbProvider?.reasoningEffortOverrideRules ?? null,
     geminiGoogleSearchPreference: dbProvider?.geminiGoogleSearchPreference ?? null,
     tpm: dbProvider?.tpm ?? null,
     rpm: dbProvider?.rpm ?? null,
