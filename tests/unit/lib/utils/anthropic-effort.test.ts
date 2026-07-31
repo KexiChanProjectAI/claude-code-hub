@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { applyAnthropicProviderOverridesWithAudit } from "@/lib/anthropic/provider-overrides";
 import type { SpecialSetting } from "@/types/special-settings";
 import {
   extractAnthropicEffortInfo,
@@ -194,4 +195,35 @@ describe("extractAnthropicEffortInfo", () => {
       expect(extractAnthropicEffortInfo(input)).toEqual(expected);
     });
   }
+
+  test("reads before and after effort from a rule-driven Anthropic audit", () => {
+    const result = applyAnthropicProviderOverridesWithAudit(
+      {
+        providerType: "claude",
+        reasoningEffortOverrideRules: [{ when: {}, overrideEffort: "high" }],
+      },
+      { model: "claude-opus-4-6", output_config: { effort: "medium" } },
+      {
+        originalModel: "claude-opus-4-6",
+        executionModel: "claude-opus-4-6",
+        originalReasoningEffort: "medium",
+      }
+    );
+
+    expect(
+      extractAnthropicEffortInfo([
+        {
+          type: "anthropic_effort",
+          scope: "request",
+          hit: true,
+          effort: "medium",
+        },
+        ...(result.audit ? [result.audit] : []),
+      ])
+    ).toEqual({
+      originalEffort: "medium",
+      overriddenEffort: "high",
+      isOverridden: true,
+    });
+  });
 });
