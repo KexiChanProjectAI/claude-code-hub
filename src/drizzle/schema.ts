@@ -17,7 +17,12 @@ import { relations, sql } from 'drizzle-orm';
 import type { SpecialSetting } from '@/types/special-settings';
 import type { HedgeLoserBilling, StoredCostBreakdown } from '@/types/cost-breakdown';
 import type { ResponseFixerConfig } from '@/types/system-config';
-import type { AllowedModelRuleInput, ProviderModelRedirectRule, ProviderType } from "@/types/provider";
+import type {
+  AllowedModelRuleInput,
+  ProviderModelRedirectRule,
+  ProviderType,
+  ReasoningEffortOverrideRule,
+} from "@/types/provider";
 import type { FilterOperation } from "@/lib/request-filter-types";
 import type { IpExtractionConfig } from "@/types/ip-extraction";
 import type { AuditCategory } from "@/types/audit-log";
@@ -346,6 +351,8 @@ export const providers = pgTable('providers', {
   anthropicAdaptiveThinking: jsonb('anthropic_adaptive_thinking')
     .$type<{ effort: string; modelMatchMode: string; models: string[] } | null>()
     .default(null),
+  reasoningEffortOverrideRules: jsonb('reasoning_effort_override_rules')
+    .$type<ReasoningEffortOverrideRule[] | null>(),
 
   // Gemini (generateContent API) parameter overrides (only for gemini/gemini-cli providers)
   // - 'inherit' or null: follow client request
