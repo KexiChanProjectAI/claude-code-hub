@@ -337,7 +337,7 @@ describe("Apply Provider Batch Patch Engine", () => {
     expect(publishCacheInvalidationMock).toHaveBeenCalledOnce();
   });
 
-  it("should use the immutable preview preimage without fetching providers again", async () => {
+  it("should use the immutable preview preimage while validating current providers", async () => {
     const providers = [
       makeProvider(1, { groupTag: "alpha", priority: 5 }),
       makeProvider(2, { groupTag: "beta", priority: 10 }),
@@ -346,7 +346,7 @@ describe("Apply Provider Batch Patch Engine", () => {
     const { apply } = await setupPreviewAndApply([1, 2], { group_tag: { set: "gamma" } });
 
     expect(apply.ok).toBe(true);
-    expect(findAllProvidersFreshMock).toHaveBeenCalledOnce();
+    expect(findAllProvidersFreshMock).toHaveBeenCalledTimes(2);
     expect(applyProviderBatchOperationIfUnchangedMock).toHaveBeenCalledWith(
       expect.objectContaining({
         expectedPreimages: expect.arrayContaining([
