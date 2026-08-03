@@ -256,6 +256,8 @@ describe("src/repository/_shared/transformers.ts", () => {
       expect(result.cacheCreation1hInputTokens).toBeUndefined();
       expect(result.cacheTtlApplied).toBeNull();
       expect(result.context1mApplied).toBe(false);
+      expect(result.isReplay).toBe(false);
+      expect(result.replaySourceRequestId).toBeNull();
       expect(result.createdAt).toEqual(now);
       expect(result.updatedAt).toEqual(now);
     });
@@ -273,7 +275,7 @@ describe("src/repository/_shared/transformers.ts", () => {
     it("dbSettings 缺失时返回默认值", () => {
       const result = toSystemSettings(undefined);
       expect(result.id).toBe(0);
-      expect(result.siteTitle).toBe("Claude Code Hub");
+      expect(result.siteTitle).toBe("CC Hub");
       expect(result.allowGlobalUsageView).toBe(true);
       expect(result.currencyDisplay).toBe("USD");
       expect(result.billingModelSource).toBe("original");

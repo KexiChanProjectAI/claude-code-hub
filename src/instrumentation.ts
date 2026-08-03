@@ -3,6 +3,7 @@
  * 在服务器启动时自动执行数据库迁移
  */
 
+import { findSafeDatabaseError } from "@/drizzle/admitted-client";
 import { startCacheCleanup } from "@/lib/cache/session-cache";
 import { getBenignBrokenPipeCode } from "@/lib/lifecycle/benign-errors";
 import { logger } from "@/lib/logger";
@@ -18,6 +19,10 @@ const instrumentationState = globalThis as unknown as {
   __CCH_SHUTDOWN_IN_PROGRESS__?: boolean;
   __CCH_CLOUD_PRICE_SYNC_STARTED__?: boolean;
   __CCH_CLOUD_PRICE_SYNC_INTERVAL_ID__?: ReturnType<typeof setInterval>;
+  __CCH_CACHE_EFFECTIVENESS_STARTED__?: boolean;
+  __CCH_CACHE_EFFECTIVENESS_INTERVAL_ID__?: ReturnType<typeof setInterval>;
+  __CCH_REPLAY_CLEANUP_STARTED__?: boolean;
+  __CCH_REPLAY_CLEANUP_INTERVAL_ID__?: ReturnType<typeof setInterval>;
   __CCH_API_KEY_VF_SYNC_STARTED__?: boolean;
   __CCH_API_KEY_VF_SYNC_CLEANUP__?: (() => void) | null;
   __CCH_LIFECYCLE_MARKERS_LOGGED__?: boolean;
@@ -33,7 +38,8 @@ const instrumentationState = globalThis as unknown as {
  * 处理器，并在崩溃时尝试写入 Node 诊断报告（report.*.json）。
  *
  * 必要的 node 启动参数（在 Dockerfile 中配置）：
- *   --report-on-fatalerror --report-uncaught-exception --report-directory=/app/reports
+ *   --report-on-fatalerror --report-uncaught-exception --report-exclude-env
+ *   --report-directory=/app/reports
  *
  * 这两个 process.on(...) 不会与现有的 SIGTERM / SIGINT 处理器冲突。
  */
@@ -43,15 +49,27 @@ export function registerCrashDiagnostics(): void {
   }
   instrumentationState.__CCH_CRASH_HANDLERS_REGISTERED__ = true;
 
+  const toSafeCrashError = (error: unknown): Error => {
+    const databaseError = findSafeDatabaseError(error);
+    if (databaseError) return new Error(databaseError.message);
+    return error instanceof Error ? error : new Error(String(error));
+  };
+
   const writeReport = (trigger: string, err: unknown): string | undefined => {
     try {
       const report = (
         process as NodeJS.Process & {
-          report?: { writeReport: (filename?: string, err?: unknown) => string };
+          report?: {
+            excludeEnv?: boolean;
+            writeReport: (filename?: string, err?: unknown) => string;
+          };
         }
       ).report;
       if (report?.writeReport) {
-        return report.writeReport(`report.${trigger}.${Date.now()}.json`, err as Error);
+        // Diagnostic reports are durable artifacts. Exclude the entire
+        // environment rather than maintaining an incomplete secret allowlist.
+        report.excludeEnv = true;
+        return report.writeReport(`report.${trigger}.${Date.now()}.json`, toSafeCrashError(err));
       }
     } catch {
       // 写入诊断报告失败不应再抛出
@@ -95,12 +113,13 @@ export function registerCrashDiagnostics(): void {
       return;
     }
 
-    const reportPath = writeReport("uncaughtException", err);
-    writeFatalStderr("uncaughtException", err, reportPath);
+    const safeError = toSafeCrashError(err);
+    const reportPath = writeReport("uncaughtException", safeError);
+    writeFatalStderr("uncaughtException", safeError, reportPath);
     logger.fatal("[Lifecycle] uncaughtException", {
-      error: err.message,
-      errorName: err.name,
-      stack: err.stack,
+      error: safeError.message,
+      errorName: safeError.name,
+      stack: safeError.stack,
       reportPath,
     });
     // 与 Node 默认行为一致：捕获后退出，避免后续运行在不一致状态
@@ -126,7 +145,7 @@ export function registerCrashDiagnostics(): void {
       return;
     }
 
-    const err = reason instanceof Error ? reason : new Error(String(reason));
+    const err = toSafeCrashError(reason);
     const reportPath = writeReport("unhandledRejection", err);
     writeFatalStderr("unhandledRejection", err, reportPath);
     logger.fatal("[Lifecycle] unhandledRejection", {
@@ -213,6 +232,118 @@ async function startCloudPriceSyncScheduler(): Promise<void> {
     });
   } catch (error) {
     logger.warn("[Instrumentation] Cloud price sync scheduler init failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function startRoutingTraceOutboxRecovery(): Promise<void> {
+  if (!process.env.REDIS_URL) return;
+  try {
+    const { startRoutingTraceOutboxReplayScheduler } = await import(
+      "@/repository/routing-trace-outbox"
+    );
+    await startRoutingTraceOutboxReplayScheduler();
+    logger.info("[Instrumentation] Routing trace outbox recovery started");
+  } catch (error) {
+    logger.warn("[Instrumentation] Routing trace outbox recovery failed to start", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+/**
+ * F3b：缓存效果窗口聚合定时任务（每 5 分钟，ENABLE_CACHE_EFFECTIVENESS 开启时）。
+ * 服务内部有 advisory lock 防多副本重复跑；tick 失败仅记日志。
+ */
+async function startCacheEffectivenessScheduler(): Promise<void> {
+  if (instrumentationState.__CCH_CACHE_EFFECTIVENESS_STARTED__) {
+    return;
+  }
+
+  try {
+    // 开关支持系统设置运行时覆写：调度器常驻，每 tick 异步刷新有效开关——
+    // 低流量实例没有请求路径保鲜快照，只读同步快照会一直陈旧
+    const { getProxyRuntimeSettings } = await import("@/lib/system-settings/proxy-runtime");
+    const { aggregateCacheEffectiveness } = await import("@/lib/cache-effectiveness/service");
+    const intervalMs = 5 * 60 * 1000;
+
+    instrumentationState.__CCH_CACHE_EFFECTIVENESS_INTERVAL_ID__ = setInterval(() => {
+      void (async () => {
+        const settings = await getProxyRuntimeSettings();
+        if (!settings.cacheEffectivenessEnabled) return;
+        await aggregateCacheEffectiveness();
+      })().catch((error) => {
+        logger.warn("[Instrumentation] Cache effectiveness aggregation tick failed", {
+          ...describeSchedulerError(error),
+        });
+      });
+    }, intervalMs);
+
+    instrumentationState.__CCH_CACHE_EFFECTIVENESS_STARTED__ = true;
+    logger.info("[Instrumentation] Cache effectiveness scheduler started", {
+      intervalSeconds: intervalMs / 1000,
+    });
+  } catch (error) {
+    logger.warn("[Instrumentation] Cache effectiveness scheduler init failed", {
+      ...describeSchedulerError(error),
+    });
+  }
+}
+
+export function describeSchedulerError(error: unknown): {
+  error: string;
+  errorName?: string;
+  errorCause?: string;
+  errorCauseName?: string;
+  errorCauseCode?: string | number;
+} {
+  const outerError = error instanceof Error ? error : undefined;
+  const cause = outerError?.cause;
+  const causeObject = cause && typeof cause === "object" ? cause : undefined;
+  const causeCode = causeObject && "code" in causeObject ? causeObject.code : undefined;
+  return {
+    error: outerError?.message ?? String(error),
+    errorName: outerError?.name,
+    errorCause:
+      cause instanceof Error
+        ? cause.message.slice(0, 500)
+        : cause
+          ? String(cause).slice(0, 500)
+          : undefined,
+    errorCauseName: cause instanceof Error ? cause.name : undefined,
+    errorCauseCode:
+      typeof causeCode === "string" || typeof causeCode === "number" ? causeCode : undefined,
+  };
+}
+
+/** Replay PG 持久层过期行清理：数据库就绪后立即执行，之后每 10 分钟执行。 */
+export async function startReplayCleanupScheduler(): Promise<void> {
+  if (instrumentationState.__CCH_REPLAY_CLEANUP_STARTED__) {
+    return;
+  }
+
+  try {
+    const { runReplayCleanupTick } = await import("@/lib/replay-cleanup");
+    const intervalMs = 10 * 60 * 1000;
+
+    const runTick = () => {
+      void runReplayCleanupTick().catch((error) => {
+        logger.warn("[Instrumentation] Replay cleanup tick failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    };
+
+    runTick();
+    instrumentationState.__CCH_REPLAY_CLEANUP_INTERVAL_ID__ = setInterval(runTick, intervalMs);
+
+    instrumentationState.__CCH_REPLAY_CLEANUP_STARTED__ = true;
+    logger.info("[Instrumentation] Replay cleanup scheduler started", {
+      intervalSeconds: intervalMs / 1000,
+    });
+  } catch (error) {
+    logger.warn("[Instrumentation] Replay cleanup scheduler init failed", {
       error: error instanceof Error ? error.message : String(error),
     });
   }
@@ -318,7 +449,7 @@ export async function register() {
         "@/lib/migrate"
       );
 
-      logger.info("Initializing Claude Code Hub");
+      logger.info("Initializing CC Hub");
 
       // 等待数据库连接
       const isConnected = await checkDatabaseConnection();
@@ -343,13 +474,20 @@ export async function register() {
         });
       }
 
+      await startRoutingTraceOutboxRecovery();
+
       // Ledger backfill: fire-and-forget after migration (non-blocking, idempotent)
-      import("@/lib/ledger-backfill")
-        .then(({ backfillUsageLedger }) =>
-          backfillUsageLedger().then((result) => {
-            logger.info("[Instrumentation] Ledger backfill complete", result);
-          })
-        )
+      Promise.all([import("@/lib/async-task-manager"), import("@/lib/ledger-backfill")])
+        .then(([{ AsyncTaskManager }, { backfillUsageLedger }]) => {
+          AsyncTaskManager.register(
+            "startup-ledger-backfill",
+            async (signal) => {
+              const result = await backfillUsageLedger(signal);
+              logger.info("[Instrumentation] Ledger backfill complete", result);
+            },
+            { taskType: "startup-ledger-backfill", staleTimeoutMs: Number.POSITIVE_INFINITY }
+          );
+        })
         .catch((err) => {
           logger.warn("[Instrumentation] Ledger backfill failed (non-fatal)", {
             error: err instanceof Error ? err.message : String(err),
@@ -430,6 +568,34 @@ export async function register() {
       const { scheduleNotifications } = await import("@/lib/notification/notification-queue");
       await scheduleNotifications();
 
+      const { startUserStatisticsResetQueue } = await import(
+        "@/lib/user-statistics-reset/reset-queue"
+      );
+      startUserStatisticsResetQueue();
+      (
+        globalThis as typeof globalThis & {
+          __CCH_STOP_BACKGROUND_QUEUES__?: () => Promise<void>;
+        }
+      ).__CCH_STOP_BACKGROUND_QUEUES__ = async () => {
+        const [{ stopCleanupQueue }, { stopNotificationQueue }, { stopUserStatisticsResetQueue }] =
+          await Promise.all([
+            import("@/lib/log-cleanup/cleanup-queue"),
+            import("@/lib/notification/notification-queue"),
+            import("@/lib/user-statistics-reset/reset-queue"),
+          ]);
+        const results = await Promise.allSettled([
+          stopCleanupQueue(),
+          stopNotificationQueue(),
+          stopUserStatisticsResetQueue(),
+        ]);
+        const failures = results.flatMap((result) =>
+          result.status === "rejected" ? [result.reason] : []
+        );
+        if (failures.length > 0) {
+          throw new AggregateError(failures, "Failed to stop background queues");
+        }
+      };
+
       // 初始化智能探测调度器（如果启用）
       const { startProbeScheduler, isSmartProbingEnabled } = await import(
         "@/lib/circuit-breaker-probe"
@@ -449,6 +615,11 @@ export async function register() {
           error: error instanceof Error ? error.message : String(error),
         });
       }
+
+      const { reconcilePublicStatusSiteTitleAtStartup } = await import(
+        "@/lib/public-status/startup-reconciliation"
+      );
+      await reconcilePublicStatusSiteTitleAtStartup();
 
       try {
         const { startPublicStatusRebuildScheduler } = await import("@/lib/public-status/scheduler");
@@ -480,6 +651,23 @@ export async function register() {
         });
       }
 
+      await startCacheEffectivenessScheduler();
+      await startReplayCleanupScheduler();
+
+      // F1/F3a：预热代理运行时设置快照（stream gate / affinity 的同步读取路径）
+      try {
+        const { getProxyRuntimeSettings } = await import("@/lib/system-settings/proxy-runtime");
+        void getProxyRuntimeSettings().catch((error) => {
+          logger.warn("[Instrumentation] Proxy runtime settings warmup failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
+      } catch (error) {
+        logger.warn("[Instrumentation] Proxy runtime settings warmup init failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+
       logger.info("Application ready");
     }
     // 开发环境: 执行迁移 + 初始化价格表（禁用 Bull Queue 避免 Turbopack 冲突）
@@ -491,14 +679,20 @@ export async function register() {
       const isConnected = await checkDatabaseConnection();
       if (isConnected) {
         await runMigrations();
+        await startRoutingTraceOutboxRecovery();
 
         // Ledger backfill: fire-and-forget after migration (non-blocking, idempotent)
-        import("@/lib/ledger-backfill")
-          .then(({ backfillUsageLedger }) =>
-            backfillUsageLedger().then((result) => {
-              logger.info("[Instrumentation] Ledger backfill complete", result);
-            })
-          )
+        Promise.all([import("@/lib/async-task-manager"), import("@/lib/ledger-backfill")])
+          .then(([{ AsyncTaskManager }, { backfillUsageLedger }]) => {
+            AsyncTaskManager.register(
+              "startup-ledger-backfill",
+              async (signal) => {
+                const result = await backfillUsageLedger(signal);
+                logger.info("[Instrumentation] Ledger backfill complete", result);
+              },
+              { taskType: "startup-ledger-backfill", staleTimeoutMs: Number.POSITIVE_INFINITY }
+            );
+          })
           .catch((err) => {
             logger.warn("[Instrumentation] Ledger backfill failed (non-fatal)", {
               error: err instanceof Error ? err.message : String(err),
@@ -589,6 +783,11 @@ export async function register() {
           });
         }
 
+        const { reconcilePublicStatusSiteTitleAtStartup } = await import(
+          "@/lib/public-status/startup-reconciliation"
+        );
+        await reconcilePublicStatusSiteTitleAtStartup();
+
         try {
           const { startPublicStatusRebuildScheduler } = await import(
             "@/lib/public-status/scheduler"
@@ -617,6 +816,23 @@ export async function register() {
           startEndpointProbeLogCleanup();
         } catch (error) {
           logger.warn("[Instrumentation] Failed to start endpoint probe log cleanup", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+
+        await startCacheEffectivenessScheduler();
+        await startReplayCleanupScheduler();
+
+        // F1/F3a：预热代理运行时设置快照（stream gate / affinity 的同步读取路径）
+        try {
+          const { getProxyRuntimeSettings } = await import("@/lib/system-settings/proxy-runtime");
+          void getProxyRuntimeSettings().catch((error) => {
+            logger.warn("[Instrumentation] Proxy runtime settings warmup failed", {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        } catch (error) {
+          logger.warn("[Instrumentation] Proxy runtime settings warmup init failed", {
             error: error instanceof Error ? error.message : String(error),
           });
         }

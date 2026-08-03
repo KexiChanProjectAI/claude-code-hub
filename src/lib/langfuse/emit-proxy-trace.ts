@@ -84,7 +84,8 @@ function buildLangfuseSessionSnapshot(session: ProxySession): ProxySession {
     userAgent: session.userAgent,
     provider: session.provider,
     messageContext: session.messageContext,
-    ttfbMs: session.ttfbMs,
+    ttftMs: session.ttftMs,
+    firstByteMs: session.firstByteMs,
     forwardStartTime: session.forwardStartTime,
     forwardedRequestBody,
     sessionId: session.sessionId,
@@ -126,6 +127,18 @@ export function emitProxyLangfuseTrace(
 ): void {
   if (!process.env.LANGFUSE_PUBLIC_KEY || !process.env.LANGFUSE_SECRET_KEY) return;
 
+  let responseText: string;
+  let sessionSnapshot: ProxySession;
+  try {
+    // 必须在异步 import 之前截断，避免动态加载/SDK 发送期间闭包继续强引用完整大响应。
+    responseText = truncateResponseTextForLangfuse(data.responseText);
+    sessionSnapshot = buildLangfuseSessionSnapshot(session);
+  } catch (err) {
+    logger.warn("[Langfuse] Proxy trace snapshot failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return;
+  }
   const {
     responseHeaders,
     responseText: rawResponseText,
@@ -155,8 +168,7 @@ export function emitProxyLangfuseTrace(
     }
   }
 
-  const responseText = isStreaming ? undefined : truncateResponseTextForLangfuse(rawResponseText);
-  const sessionSnapshot = buildLangfuseSessionSnapshot(session);
+  const traceResponseText = isStreaming ? undefined : responseText;
 
   enqueueLangfuseTrace({
     session: sessionSnapshot,
@@ -164,7 +176,7 @@ export function emitProxyLangfuseTrace(
     durationMs,
     statusCode,
     isStreaming,
-    ...(responseText !== undefined ? { responseText } : {}),
+    ...(traceResponseText !== undefined ? { responseText: traceResponseText } : {}),
     ...(finalResponseOutput !== undefined ? { finalResponseOutput } : {}),
     usageMetrics,
     costUsd,

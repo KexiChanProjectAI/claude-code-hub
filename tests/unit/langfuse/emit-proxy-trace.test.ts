@@ -225,4 +225,27 @@ describe("emitProxyLangfuseTrace", () => {
     expect(traceContext.responseText).toBe(expectedResponseText);
     expect(traceContext).not.toHaveProperty("finalResponseOutput");
   });
+
+  test("never lets a synchronous session snapshot failure escape", () => {
+    const session = {
+      getProviderChain() {
+        throw new Error("snapshot exploded");
+      },
+    } as unknown as ProxySession;
+
+    expect(() =>
+      emitProxyLangfuseTrace(session, {
+        responseHeaders: new Headers(),
+        responseText: "",
+        usageMetrics: null,
+        costUsd: undefined,
+        statusCode: 500,
+        durationMs: 1,
+        isStreaming: false,
+      })
+    ).not.toThrow();
+    expect(mockLoggerWarn).toHaveBeenCalledWith("[Langfuse] Proxy trace snapshot failed", {
+      error: "snapshot exploded",
+    });
+  });
 });

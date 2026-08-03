@@ -1,5 +1,5 @@
 {
-  "id": "9518d12e-d340-4442-a1cd-23871788b240",
+  "id": "60b89563-2169-4393-b823-ded5c410b455",
   "prevId": "c054c34a-98a4-4ae1-b0e5-0b663380f123",
   "version": "7",
   "dialect": "postgresql",
@@ -1931,6 +1931,154 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.provider_batch_apply_operations": {
+      "name": "provider_batch_apply_operations",
+      "schema": "",
+      "columns": {
+        "claim_key": {
+          "name": "claim_key",
+          "type": "varchar(256)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "preview_token": {
+          "name": "preview_token",
+          "type": "varchar(256)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload_fingerprint": {
+          "name": "payload_fingerprint",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "operation_id": {
+          "name": "operation_id",
+          "type": "varchar(256)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "undo_token": {
+          "name": "undo_token",
+          "type": "varchar(256)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "undo_expires_at": {
+          "name": "undo_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "undo_consumed_at": {
+          "name": "undo_consumed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "result": {
+          "name": "result",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "uniq_provider_batch_apply_operations_preview_token": {
+          "name": "uniq_provider_batch_apply_operations_preview_token",
+          "columns": [
+            {
+              "expression": "preview_token",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "uniq_provider_batch_apply_operations_operation_id": {
+          "name": "uniq_provider_batch_apply_operations_operation_id",
+          "columns": [
+            {
+              "expression": "operation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "uniq_provider_batch_apply_operations_undo_token": {
+          "name": "uniq_provider_batch_apply_operations_undo_token",
+          "columns": [
+            {
+              "expression": "undo_token",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_provider_batch_apply_operations_expires_at": {
+          "name": "idx_provider_batch_apply_operations_expires_at",
+          "columns": [
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.provider_endpoint_probe_logs": {
       "name": "provider_endpoint_probe_logs",
       "schema": "",
@@ -2855,12 +3003,6 @@
           "primaryKey": false,
           "notNull": false,
           "default": "'null'::jsonb"
-        },
-        "reasoning_effort_override_rules": {
-          "name": "reasoning_effort_override_rules",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
         },
         "gemini_google_search_preference": {
           "name": "gemini_google_search_preference",

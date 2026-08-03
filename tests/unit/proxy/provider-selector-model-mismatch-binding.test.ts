@@ -16,6 +16,7 @@ vi.mock("@/lib/vendor-type-circuit-breaker", () => vendorTypeCircuitMocks);
 
 const sessionManagerMocks = vi.hoisted(() => ({
   SessionManager: {
+    getSessionBindingSnapshot: vi.fn(),
     getSessionProvider: vi.fn(async () => null as number | null),
     clearSessionProvider: vi.fn(async () => undefined),
   },
@@ -129,7 +130,9 @@ describe("findReusable - model mismatch clears stale binding", () => {
 
     expect(result).toBeNull();
     expect(sessionManagerMocks.SessionManager.clearSessionProvider).toHaveBeenCalledWith(
-      "sess_disable_reuse"
+      "sess_disable_reuse",
+      78,
+      null
     );
   });
 
@@ -153,8 +156,45 @@ describe("findReusable - model mismatch clears stale binding", () => {
     expect(result).toBeNull();
     // Key assertion: clearSessionProvider should have been called
     expect(sessionManagerMocks.SessionManager.clearSessionProvider).toHaveBeenCalledWith(
-      "4c25cf92"
+      "4c25cf92",
+      78,
+      null
     );
+  });
+
+  test("should invalidate a cleared versioned snapshot before Discovery", async () => {
+    const { ProxyProviderResolver } = await import("@/app/v1/_lib/proxy/provider-selector");
+    const snapshot = {
+      sessionId: "versioned-model-mismatch",
+      keyId: 456,
+      providerId: 78,
+      generation: "stale-generation",
+    };
+    sessionManagerMocks.SessionManager.getSessionBindingSnapshot.mockResolvedValueOnce({
+      status: "ok",
+      snapshot,
+    });
+    providerRepositoryMocks.findProviderById.mockResolvedValueOnce(createHaikuOnlyProvider());
+    const setSessionBindingSnapshot = vi.fn();
+    const session = {
+      sessionId: snapshot.sessionId,
+      shouldReuseProvider: () => true,
+      getOriginalModel: () => "claude-opus-4-6",
+      authState: { key: { id: snapshot.keyId } },
+      getCurrentModel: () => null,
+      setSessionBindingSnapshot,
+    } as any;
+
+    const result = await (ProxyProviderResolver as any).findReusable(session);
+
+    expect(result).toBeNull();
+    expect(sessionManagerMocks.SessionManager.clearSessionProvider).toHaveBeenCalledWith(
+      snapshot.sessionId,
+      snapshot.providerId,
+      snapshot.keyId
+    );
+    expect(setSessionBindingSnapshot).toHaveBeenNthCalledWith(1, snapshot);
+    expect(setSessionBindingSnapshot).toHaveBeenNthCalledWith(2, null);
   });
 
   test("should clear stale binding when bound provider type is incompatible with request format", async () => {
@@ -176,7 +216,9 @@ describe("findReusable - model mismatch clears stale binding", () => {
 
     expect(result).toBeNull();
     expect(sessionManagerMocks.SessionManager.clearSessionProvider).toHaveBeenCalledWith(
-      "sess_response_format_mismatch"
+      "sess_response_format_mismatch",
+      94,
+      null
     );
   });
 
@@ -250,7 +292,9 @@ describe("findReusable - model mismatch clears stale binding", () => {
 
     expect(result).toBeNull();
     expect(sessionManagerMocks.SessionManager.clearSessionProvider).toHaveBeenCalledWith(
-      "sess_variant"
+      "sess_variant",
+      78,
+      null
     );
   });
 });
@@ -377,6 +421,7 @@ interface RestrictedSession {
   getProviderChain(): Array<Record<string, unknown>>;
   setLastSelectionContext(ctx: unknown): void;
   getLastSelectionContext(): unknown;
+  setSessionIdentityMetadata(metadata: unknown): void;
   setGroupCostMultiplier(value: number): void;
   recordProviderSessionRef(providerId: number): void;
   getProvidersSnapshot: () => Promise<Provider[]>;
@@ -436,6 +481,7 @@ function createRestrictedSession(opts: {
     getLastSelectionContext() {
       return lastSelectionContext;
     },
+    setSessionIdentityMetadata(_metadata: unknown) {},
     setGroupCostMultiplier(_value: number) {
       // No-op: ensure() calls this when authState has a group, but our tests
       // use authState=null so this branch is never reached.
@@ -495,7 +541,9 @@ describe("ProxyProviderResolver.ensure - sticky-session client restriction regre
 
     // 1) The stale binding is cleared.
     expect(sessionManagerMocks.SessionManager.clearSessionProvider).toHaveBeenCalledWith(
-      "sess_restricted_a"
+      "sess_restricted_a",
+      78,
+      null
     );
 
     // 2) The bound provider is recorded as client_restriction_filtered with the
@@ -577,7 +625,9 @@ describe("ProxyProviderResolver.ensure - sticky-session client restriction regre
 
     // 3) The stale binding was still cleared.
     expect(sessionManagerMocks.SessionManager.clearSessionProvider).toHaveBeenCalledWith(
-      "sess_restricted_b"
+      "sess_restricted_b",
+      78,
+      null
     );
 
     // 4) The previously-bound provider is NOT left attached to the session.

@@ -102,7 +102,8 @@ function createMockSession(overrides: Record<string, unknown> = {}) {
       user: { id: 7, name: "testuser" },
       key: { name: "default-key" },
     },
-    ttfbMs: 200,
+    ttftMs: 200,
+    firstByteMs: 200,
     forwardStartTime: startTime + 5,
     forwardedRequestBody: null,
     getEndpoint: () => "/v1/messages",
@@ -236,12 +237,30 @@ describe("traceProxyRequest", () => {
     expect(llmCall[1].output).toEqual(responseBody);
   });
 
-  test("should pass raw headers without redaction", async () => {
+  test("redacts credential headers and preserves benign headers at the Langfuse boundary", async () => {
     const { traceProxyRequest } = await import("@/lib/langfuse/trace-proxy-request");
+    const authorizationSecret = "Bearer request-authorization-secret";
+    const apiKeySecret = "request-api-key-secret";
+    const cookieSecret = "request-cookie-secret";
+    const setCookieSecret = "response-set-cookie-secret";
 
     await traceProxyRequest({
-      session: createMockSession(),
-      responseHeaders: new Headers({ "x-api-key": "secret-mock" }),
+      session: createMockSession({
+        headers: new Headers({
+          authorization: authorizationSecret,
+          cookie: cookieSecret,
+          "content-type": "application/json",
+          "x-api-key": apiKeySecret,
+          "x-cch-future-marker": "future-internal-canary",
+          "x-cch-responses-ws-session": "ws-session-canary",
+          "x-request-id": "request-123",
+        }),
+      }),
+      responseHeaders: new Headers({
+        "content-type": "text/event-stream",
+        "set-cookie": setCookieSecret,
+        "x-response-id": "response-456",
+      }),
       durationMs: 500,
       statusCode: 200,
       isStreaming: false,
@@ -251,9 +270,36 @@ describe("traceProxyRequest", () => {
       (c: unknown[]) => c[0] === "llm-call"
     );
     const metadata = llmCall[1].metadata;
-    expect(metadata.requestHeaders["x-api-key"]).toBe("test-mock-key-not-real");
-    expect(metadata.requestHeaders["content-type"]).toBe("application/json");
-    expect(metadata.responseHeaders["x-api-key"]).toBe("secret-mock");
+    expect(metadata.requestHeaders).toEqual({
+      authorization: "[REDACTED]",
+      cookie: "[REDACTED]",
+      "content-type": "application/json",
+      "x-api-key": "[REDACTED]",
+      "x-request-id": "request-123",
+    });
+    expect(metadata.responseHeaders).toEqual({
+      "content-type": "text/event-stream",
+      "set-cookie": "[REDACTED]",
+      "x-response-id": "response-456",
+    });
+
+    const serializedSdkArguments = JSON.stringify({
+      rootObservation: mockStartObservation.mock.calls,
+      propagatedAttributes: mockPropagateAttributes.mock.calls,
+      childObservations: mockRootSpan.startObservation.mock.calls,
+      generationUpdates: mockGenerationUpdate.mock.calls,
+      generationEnds: mockGenerationEnd.mock.calls,
+      guardEnds: mockGuardSpanEnd.mock.calls,
+      eventEnds: mockEventEnd.mock.calls,
+      traceIo: mockSetTraceIO.mock.calls,
+      rootEnds: mockSpanEnd.mock.calls,
+    });
+    for (const secret of [authorizationSecret, apiKeySecret, cookieSecret, setCookieSecret]) {
+      expect(serializedSdkArguments).not.toContain(secret);
+    }
+    expect(serializedSdkArguments).not.toContain("x-cch-");
+    expect(serializedSdkArguments).not.toContain("future-internal-canary");
+    expect(serializedSdkArguments).not.toContain("ws-session-canary");
   });
 
   test("should include provider name and model in tags", async () => {
@@ -461,12 +507,12 @@ describe("traceProxyRequest", () => {
     expect(llmCall[1].metadata.originalModel).toBe("claude-sonnet-4-20250514");
   });
 
-  test("should set completionStartTime from ttfbMs", async () => {
+  test("should set completionStartTime from ttftMs", async () => {
     const { traceProxyRequest } = await import("@/lib/langfuse/trace-proxy-request");
 
     const startTime = Date.now() - 500;
     await traceProxyRequest({
-      session: createMockSession({ startTime, ttfbMs: 200 }),
+      session: createMockSession({ startTime, ttftMs: 200 }),
       responseHeaders: new Headers(),
       durationMs: 500,
       statusCode: 200,
@@ -985,7 +1031,8 @@ describe("traceProxyRequest", () => {
       session: createMockSession({
         startTime,
         forwardStartTime,
-        ttfbMs: 105,
+        ttftMs: 105,
+        firstByteMs: 105,
         getProviderChain: () => [
           { id: 1, name: "p1", reason: "retry_failed", timestamp: startTime + 50 },
           { id: 2, name: "p2", reason: "request_success", timestamp: startTime + 100 },
@@ -1000,8 +1047,8 @@ describe("traceProxyRequest", () => {
     const expectedTimingBreakdown = {
       guardPipelineMs: 5,
       upstreamTotalMs: 495,
-      ttfbFromForwardMs: 100, // ttfbMs(105) - guardPipelineMs(5)
-      tokenGenerationMs: 395, // durationMs(500) - ttfbMs(105)
+      ttftFromForwardMs: 100, // ttftMs(105) - guardPipelineMs(5)
+      tokenGenerationMs: 395, // durationMs(500) - ttftMs(105)
       failedAttempts: 1, // only retry_failed is non-success
       providersAttempted: 2, // 2 unique provider ids
     };

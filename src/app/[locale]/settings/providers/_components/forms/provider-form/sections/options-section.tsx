@@ -19,6 +19,7 @@ import { CUSTOM_HEADERS_PLACEHOLDER } from "@/lib/custom-headers";
 import type {
   CodexImageGenerationPreference,
   CodexParallelToolCallsPreference,
+  CodexReasoningEffortPreference,
   CodexReasoningSummaryPreference,
   CodexServiceTierPreference,
   CodexTextVerbosityPreference,
@@ -167,6 +168,61 @@ export function OptionsSection({ subSectionRefs }: OptionsSectionProps) {
               }
             >
               <div className="space-y-4">
+                <SmartInputWrapper
+                  label={t("sections.routing.codexOverrides.reasoningEffort.label")}
+                >
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="relative">
+                        <Select
+                          value={state.routing.codexReasoningEffortPreference}
+                          onValueChange={(val) =>
+                            dispatch({
+                              type: "SET_CODEX_REASONING_EFFORT",
+                              payload: val as CodexReasoningEffortPreference,
+                            })
+                          }
+                          disabled={state.ui.isPending}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue
+                              placeholder={t(
+                                "sections.routing.codexOverrides.reasoningEffort.options.inherit"
+                              )}
+                            />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {[
+                              "inherit",
+                              "none",
+                              "minimal",
+                              "low",
+                              "medium",
+                              "high",
+                              "xhigh",
+                              "max",
+                            ].map((val) => (
+                              <SelectItem key={val} value={val}>
+                                {t(
+                                  `sections.routing.codexOverrides.reasoningEffort.options.${val}`
+                                )}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Info
+                          aria-hidden="true"
+                          className="pointer-events-none absolute right-10 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
+                        />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-xs">
+                      <p className="text-sm">
+                        {t("sections.routing.codexOverrides.reasoningEffort.help")}
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </SmartInputWrapper>
                 <ReasoningEffortRuleEditor
                   rules={state.routing.reasoningEffortOverrideRules}
                   onChange={(rules) =>

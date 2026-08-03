@@ -13,8 +13,10 @@
  */
 
 import { logger } from "@/lib/logger";
+import { DEFAULT_SITE_TITLE } from "@/lib/site-title";
 import { getSystemSettings } from "@/repository/system-config";
 import type { SystemSettings } from "@/types/system-config";
+import { getEnvConfig } from "./env.schema";
 
 /** Cache TTL in milliseconds (1 minute) */
 const CACHE_TTL_MS = 60 * 1000;
@@ -22,6 +24,56 @@ const CACHE_TTL_MS = 60 * 1000;
 /** Cached settings and timestamp */
 let cachedSettings: SystemSettings | null = null;
 let cachedAt: number = 0;
+
+/** Avoid repeating the same invalid environment-variable warning on every request. */
+let hasWarnedInvalidResponsesWebsocketEnv = false;
+let hasWarnedInvalidStreamGateEnv = false;
+
+function getOpenaiResponsesWebsocketEnvOverride(): boolean | undefined {
+  const rawValue = process.env.ENABLE_OPENAI_RESPONSES_WEBSOCKET;
+
+  if (rawValue === undefined) {
+    return undefined;
+  }
+
+  switch (rawValue) {
+    case "true":
+    case "1":
+      return true;
+    case "false":
+    case "0":
+      return false;
+    default:
+      if (!hasWarnedInvalidResponsesWebsocketEnv) {
+        hasWarnedInvalidResponsesWebsocketEnv = true;
+        logger.warn(
+          "[SystemSettingsCache] Invalid ENABLE_OPENAI_RESPONSES_WEBSOCKET, using database setting",
+          { value: rawValue }
+        );
+      }
+      return undefined;
+  }
+}
+
+function getFallbackStreamGateMode(): "off" | "shadow" | "enforce" {
+  const rawValue = process.env.STREAM_GATE_MODE;
+  if (rawValue === "off" || rawValue === "shadow" || rawValue === "enforce") {
+    return rawValue;
+  }
+
+  try {
+    return getEnvConfig().STREAM_GATE_MODE;
+  } catch (error) {
+    if (!hasWarnedInvalidStreamGateEnv) {
+      hasWarnedInvalidStreamGateEnv = true;
+      logger.warn("[SystemSettingsCache] Invalid environment fallback, using Stream Gate enforce", {
+        error: error instanceof Error ? error.message : String(error),
+        value: process.env.STREAM_GATE_MODE,
+      });
+    }
+    return "enforce";
+  }
+}
 
 /**
  * Read the current in-memory settings cache only.
@@ -32,7 +84,7 @@ export function getCachedSystemSettingsOnlyCache(): SystemSettings | null {
 }
 
 /** Default settings used when cache fetch fails */
-const DEFAULT_SETTINGS: Pick<
+export const DEFAULT_SETTINGS: Pick<
   SystemSettings,
   | "enableHttp2"
   | "enableOpenaiResponsesWebsocket"
@@ -54,6 +106,15 @@ const DEFAULT_SETTINGS: Pick<
   | "passThroughUpstreamErrorMessage"
   | "publicStatusWindowHours"
   | "publicStatusAggregationIntervalMinutes"
+  | "streamGateMode"
+  | "affinityIgnoreClientSessionId"
+  | "discoveryEnabled"
+  | "discoveryConcurrency"
+  | "maxDiscoveryRounds"
+  | "discoverySlaMs"
+  | "stickySlaMs"
+  | "racingTotalTimeoutMs"
+  | "stickyTimeoutCooldownMs"
 > = {
   enableHttp2: false,
   enableOpenaiResponsesWebsocket: true,
@@ -84,6 +145,15 @@ const DEFAULT_SETTINGS: Pick<
   },
   publicStatusWindowHours: 24,
   publicStatusAggregationIntervalMinutes: 5,
+  streamGateMode: "enforce",
+  affinityIgnoreClientSessionId: true,
+  discoveryEnabled: false,
+  discoveryConcurrency: 2,
+  maxDiscoveryRounds: 2,
+  discoverySlaMs: 10_000,
+  stickySlaMs: 20_000,
+  racingTotalTimeoutMs: 60_000,
+  stickyTimeoutCooldownMs: 300_000,
 };
 
 /**
@@ -131,7 +201,7 @@ export async function getCachedSystemSettings(): Promise<SystemSettings> {
     // since getSystemSettings creates default row if not exists
     return {
       id: 0,
-      siteTitle: "Claude Code Hub",
+      siteTitle: DEFAULT_SITE_TITLE,
       allowGlobalUsageView: false,
       currencyDisplay: "USD",
       billingModelSource: "original",
@@ -166,6 +236,17 @@ export async function getCachedSystemSettings(): Promise<SystemSettings> {
       publicStatusWindowHours: DEFAULT_SETTINGS.publicStatusWindowHours,
       publicStatusAggregationIntervalMinutes:
         DEFAULT_SETTINGS.publicStatusAggregationIntervalMinutes,
+      streamGateMode: getFallbackStreamGateMode(),
+      affinityIgnoreClientSessionId: DEFAULT_SETTINGS.affinityIgnoreClientSessionId,
+      replayEnabled: null,
+      cacheEffectivenessEnabled: null,
+      discoveryEnabled: DEFAULT_SETTINGS.discoveryEnabled,
+      discoveryConcurrency: DEFAULT_SETTINGS.discoveryConcurrency,
+      maxDiscoveryRounds: DEFAULT_SETTINGS.maxDiscoveryRounds,
+      discoverySlaMs: DEFAULT_SETTINGS.discoverySlaMs,
+      stickySlaMs: DEFAULT_SETTINGS.stickySlaMs,
+      racingTotalTimeoutMs: DEFAULT_SETTINGS.racingTotalTimeoutMs,
+      stickyTimeoutCooldownMs: DEFAULT_SETTINGS.stickyTimeoutCooldownMs,
       quotaDbRefreshIntervalSeconds: 10,
       quotaLeasePercent5h: 0.05,
       quotaLeasePercentDaily: 0.05,
@@ -197,6 +278,11 @@ export async function isHttp2Enabled(): Promise<boolean> {
  * @returns Whether OpenAI Responses WebSocket support is enabled globally.
  */
 export async function isOpenaiResponsesWebsocketEnabled(): Promise<boolean> {
+  const envOverride = getOpenaiResponsesWebsocketEnvOverride();
+  if (envOverride !== undefined) {
+    return envOverride;
+  }
+
   const settings = await getCachedSystemSettings();
   return settings.enableOpenaiResponsesWebsocket;
 }

@@ -1,10 +1,18 @@
 import { injectClaudeMetadataUserIdWithContext } from "@/lib/claude-code/metadata-user-id";
 import { getCachedSystemSettings } from "@/lib/config";
+import { getEnvConfig } from "@/lib/config/env.schema";
 import { logger } from "@/lib/logger";
 import { resolveKeyUserConcurrentSessionLimits } from "@/lib/rate-limit/concurrent-session-limit";
+import { buildPublicSessionIdentity, buildScopeTag } from "@/lib/request-identity";
 import { headersToSanitizedObject, SessionManager } from "@/lib/session-manager";
 import { SessionTracker } from "@/lib/session-tracker";
 import { completeCodexSessionIdentifiers } from "../codex/session-completer";
+import { getAffinityStore } from "./affinity/affinity-store";
+import {
+  computeFingerprintChain,
+  fingerprintsDeepestFirst,
+  fingerprintTip,
+} from "./affinity/fingerprint";
 import type { ProxySession } from "./session";
 
 const CLIENT_HEADER_SNAPSHOT_BLOCKLIST = [
@@ -143,6 +151,55 @@ export class ProxySessionGuard {
 
       // 4. 设置到 session 对象
       session.setSessionId(sessionId);
+      session.setSessionIdentityMetadata({
+        identity: buildPublicSessionIdentity(sessionId, keyId),
+        kind: "session_id",
+        scopeTag: null,
+        fingerprint: null,
+        fingerprints: [],
+      });
+
+      if (
+        systemSettings.affinityIgnoreClientSessionId &&
+        session.getEndpointPolicy().kind === "default"
+      ) {
+        const chain = computeFingerprintChain(
+          session.request.message as Record<string, unknown>,
+          session.originalFormat,
+          getEnvConfig().PREFIX_AFFINITY_WINDOW
+        );
+        if (chain) {
+          session.affinity = {
+            scopeTag: buildScopeTag(
+              keyId,
+              session.originalFormat,
+              session.getOriginalModel() ?? session.request.model
+            ),
+            chain,
+            nominatedProviderId: null,
+            matchedFp: null,
+            identityFp: null,
+            generation: null,
+            lookup: null,
+          };
+          const lookup = await getAffinityStore().lookup(
+            session.affinity.scopeTag,
+            fingerprintsDeepestFirst(chain),
+            getEnvConfig().PREFIX_AFFINITY_TTL_SECONDS
+          );
+          session.affinity.lookup = lookup;
+          const fingerprint = lookup?.identityFp ?? fingerprintTip(chain).fp;
+          session.affinity.identityFp = lookup?.identityFp ?? null;
+          session.affinity.generation = lookup?.generation ?? null;
+          session.setSessionIdentityMetadata({
+            identity: `pfx:${session.affinity.scopeTag}:${fingerprint}`,
+            kind: "prefix_affinity",
+            scopeTag: session.affinity.scopeTag,
+            fingerprint,
+            fingerprints: chain.tail.map((boundary) => boundary.fp).reverse(),
+          });
+        }
+      }
 
       if (
         !allowRawSessionContext &&
@@ -166,7 +223,7 @@ export class ProxySessionGuard {
       }
 
       // 4.1 获取并设置请求序号（Session 内唯一标识每个请求）
-      const requestSequence = await SessionManager.getNextRequestSequence(sessionId);
+      const requestSequence = await SessionManager.getNextRequestSequence(sessionId, keyId);
       session.setRequestSequence(requestSequence);
 
       // 4.2 存储完整请求体与客户端端点（用于 Session 详情调试）

@@ -1,10 +1,12 @@
 import { PROVIDER_TIMEOUT_DEFAULTS } from "@/lib/constants/provider.constants";
 import { normalizeProviderModelRedirectRules } from "@/lib/provider-model-redirects";
+import { DEFAULT_SITE_TITLE } from "@/lib/site-title";
 import { formatCostForStorage } from "@/lib/utils/currency";
 import type { Key } from "@/types/key";
 import type { MessageRequest } from "@/types/message";
 import type { ModelPrice } from "@/types/model-price";
 import type { Provider, ReasoningEffortOverrideRule } from "@/types/provider";
+import { normalizeRoutingTrace } from "@/types/routing-trace";
 import {
   DEFAULT_FAKE_STREAMING_WHITELIST,
   type FakeStreamingWhitelistEntry,
@@ -187,7 +189,10 @@ export function toMessageRequest(dbMessage: any): MessageRequest {
     cacheTtlApplied: dbMessage?.cacheTtlApplied ?? null,
     context1mApplied: dbMessage?.context1mApplied ?? false,
     swapCacheTtlApplied: dbMessage?.swapCacheTtlApplied ?? false,
+    isReplay: dbMessage?.isReplay ?? false,
+    replaySourceRequestId: dbMessage?.replaySourceRequestId ?? null,
     specialSettings: dbMessage?.specialSettings ?? null,
+    routingTrace: normalizeRoutingTrace(dbMessage?.routingTrace),
   };
 }
 
@@ -247,7 +252,7 @@ export function toSystemSettings(dbSettings: any): SystemSettings {
 
   return {
     id: dbSettings?.id ?? 0,
-    siteTitle: dbSettings?.siteTitle ?? "Claude Code Hub",
+    siteTitle: dbSettings?.siteTitle ?? DEFAULT_SITE_TITLE,
     allowGlobalUsageView: dbSettings?.allowGlobalUsageView ?? true,
     currencyDisplay: dbSettings?.currencyDisplay ?? "USD",
     billingModelSource: dbSettings?.billingModelSource ?? "original",
@@ -303,8 +308,24 @@ export function toSystemSettings(dbSettings: any): SystemSettings {
     quotaLeaseCapUsd: dbSettings?.quotaLeaseCapUsd ? parseFloat(dbSettings.quotaLeaseCapUsd) : null,
     publicStatusWindowHours: dbSettings?.publicStatusWindowHours ?? 24,
     publicStatusAggregationIntervalMinutes: dbSettings?.publicStatusAggregationIntervalMinutes ?? 5,
+    discoveryEnabled: dbSettings?.discoveryEnabled ?? false,
+    discoveryConcurrency: dbSettings?.discoveryConcurrency ?? 2,
+    maxDiscoveryRounds: dbSettings?.maxDiscoveryRounds ?? 2,
+    discoverySlaMs: dbSettings?.discoverySlaMs ?? 10_000,
+    stickySlaMs: dbSettings?.stickySlaMs ?? 20_000,
+    racingTotalTimeoutMs: dbSettings?.racingTotalTimeoutMs ?? 60_000,
+    stickyTimeoutCooldownMs: dbSettings?.stickyTimeoutCooldownMs ?? 300_000,
     ipExtractionConfig: dbSettings?.ipExtractionConfig ?? null,
     ipGeoLookupEnabled: dbSettings?.ipGeoLookupEnabled ?? true,
+    streamGateMode:
+      dbSettings?.streamGateMode === "off" ||
+      dbSettings?.streamGateMode === "shadow" ||
+      dbSettings?.streamGateMode === "enforce"
+        ? dbSettings.streamGateMode
+        : "enforce",
+    affinityIgnoreClientSessionId: dbSettings?.affinityIgnoreClientSessionId ?? true,
+    replayEnabled: dbSettings?.replayEnabled ?? null,
+    cacheEffectivenessEnabled: dbSettings?.cacheEffectivenessEnabled ?? null,
     createdAt: dbSettings?.createdAt ? new Date(dbSettings.createdAt) : new Date(),
     updatedAt: dbSettings?.updatedAt ? new Date(dbSettings.updatedAt) : new Date(),
   };

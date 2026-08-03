@@ -191,8 +191,19 @@ function createFallbackSettings(): SystemSettings {
     quotaLeaseCapUsd: null,
     publicStatusWindowHours: 24,
     publicStatusAggregationIntervalMinutes: 5,
+    discoveryEnabled: false,
+    discoveryConcurrency: 2,
+    maxDiscoveryRounds: 2,
+    discoverySlaMs: 10_000,
+    stickySlaMs: 20_000,
+    racingTotalTimeoutMs: 60_000,
+    stickyTimeoutCooldownMs: 300_000,
     ipExtractionConfig: null,
     ipGeoLookupEnabled: true,
+    streamGateMode: "enforce",
+    affinityIgnoreClientSessionId: true,
+    replayEnabled: null,
+    cacheEffectivenessEnabled: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -247,6 +258,13 @@ const BASE_SETTINGS_COLUMNS: SettingsSelection = {
   quotaLeaseCapUsd: systemSettings.quotaLeaseCapUsd,
   publicStatusWindowHours: systemSettings.publicStatusWindowHours,
   publicStatusAggregationIntervalMinutes: systemSettings.publicStatusAggregationIntervalMinutes,
+  discoveryEnabled: systemSettings.discoveryEnabled,
+  discoveryConcurrency: systemSettings.discoveryConcurrency,
+  maxDiscoveryRounds: systemSettings.maxDiscoveryRounds,
+  discoverySlaMs: systemSettings.discoverySlaMs,
+  stickySlaMs: systemSettings.stickySlaMs,
+  racingTotalTimeoutMs: systemSettings.racingTotalTimeoutMs,
+  stickyTimeoutCooldownMs: systemSettings.stickyTimeoutCooldownMs,
   createdAt: systemSettings.createdAt,
   updatedAt: systemSettings.updatedAt,
   passThroughUpstreamErrorMessage: systemSettings.passThroughUpstreamErrorMessage,
@@ -264,6 +282,74 @@ const RECENT_COLUMN_LADDER: ReadonlyArray<{
   // 本层更新失败（仍有列缺失）时记录的告警
   updateWarn: string;
 }> = [
+  {
+    key: "cacheEffectivenessEnabled",
+    column: systemSettings.cacheEffectivenessEnabled,
+    selectWarn:
+      "system_settings 表除 cacheEffectivenessEnabled 外仍有列缺失，继续回退到上一代字段集。",
+    updateWarn: "system_settings 表除 cacheEffectivenessEnabled 外仍有列缺失，继续降级更新。",
+  },
+  {
+    key: "replayEnabled",
+    column: systemSettings.replayEnabled,
+    selectWarn: "system_settings 表除 replayEnabled 外仍有列缺失，继续回退到上一代字段集。",
+    updateWarn: "system_settings 表除 replayEnabled 外仍有列缺失，继续降级更新。",
+  },
+  {
+    key: "affinityIgnoreClientSessionId",
+    column: systemSettings.affinityIgnoreClientSessionId,
+    selectWarn:
+      "system_settings 表除 affinityIgnoreClientSessionId 外仍有列缺失，继续回退到上一代字段集。",
+    updateWarn: "system_settings 表除 affinityIgnoreClientSessionId 外仍有列缺失，继续降级更新。",
+  },
+  {
+    key: "streamGateMode",
+    column: systemSettings.streamGateMode,
+    selectWarn: "system_settings 表除 streamGateMode 外仍有列缺失，继续回退到上一代字段集。",
+    updateWarn: "system_settings 表除 streamGateMode 外仍有列缺失，继续降级更新。",
+  },
+  {
+    key: "stickyTimeoutCooldownMs",
+    column: systemSettings.stickyTimeoutCooldownMs,
+    selectWarn: "system_settings 缺少 stickyTimeoutCooldownMs，回退到上一代字段集。",
+    updateWarn: "system_settings 缺少 stickyTimeoutCooldownMs，回退到上一代字段集。",
+  },
+  {
+    key: "racingTotalTimeoutMs",
+    column: systemSettings.racingTotalTimeoutMs,
+    selectWarn: "system_settings 缺少 racingTotalTimeoutMs，回退到上一代字段集。",
+    updateWarn: "system_settings 缺少 racingTotalTimeoutMs，回退到上一代字段集。",
+  },
+  {
+    key: "stickySlaMs",
+    column: systemSettings.stickySlaMs,
+    selectWarn: "system_settings 缺少 stickySlaMs，回退到上一代字段集。",
+    updateWarn: "system_settings 缺少 stickySlaMs，回退到上一代字段集。",
+  },
+  {
+    key: "discoverySlaMs",
+    column: systemSettings.discoverySlaMs,
+    selectWarn: "system_settings 缺少 discoverySlaMs，回退到上一代字段集。",
+    updateWarn: "system_settings 缺少 discoverySlaMs，回退到上一代字段集。",
+  },
+  {
+    key: "maxDiscoveryRounds",
+    column: systemSettings.maxDiscoveryRounds,
+    selectWarn: "system_settings 缺少 maxDiscoveryRounds，回退到上一代字段集。",
+    updateWarn: "system_settings 缺少 maxDiscoveryRounds，回退到上一代字段集。",
+  },
+  {
+    key: "discoveryConcurrency",
+    column: systemSettings.discoveryConcurrency,
+    selectWarn: "system_settings 缺少 discoveryConcurrency，回退到上一代字段集。",
+    updateWarn: "system_settings 缺少 discoveryConcurrency，回退到上一代字段集。",
+  },
+  {
+    key: "discoveryEnabled",
+    column: systemSettings.discoveryEnabled,
+    selectWarn: "system_settings 缺少 discoveryEnabled，回退到上一代字段集。",
+    updateWarn: "system_settings 缺少 discoveryEnabled，回退到上一代字段集。",
+  },
   {
     key: "enableGeminiFunctionIdRectifier",
     column: systemSettings.enableGeminiFunctionIdRectifier,
@@ -620,6 +706,28 @@ export async function updateSystemSettings(
       updates.billHedgeLosers = payload.billHedgeLosers;
     }
 
+    if (payload.discoveryEnabled !== undefined) {
+      updates.discoveryEnabled = payload.discoveryEnabled;
+    }
+    if (payload.discoveryConcurrency !== undefined) {
+      updates.discoveryConcurrency = payload.discoveryConcurrency;
+    }
+    if (payload.maxDiscoveryRounds !== undefined) {
+      updates.maxDiscoveryRounds = payload.maxDiscoveryRounds;
+    }
+    if (payload.discoverySlaMs !== undefined) {
+      updates.discoverySlaMs = payload.discoverySlaMs;
+    }
+    if (payload.stickySlaMs !== undefined) {
+      updates.stickySlaMs = payload.stickySlaMs;
+    }
+    if (payload.racingTotalTimeoutMs !== undefined) {
+      updates.racingTotalTimeoutMs = payload.racingTotalTimeoutMs;
+    }
+    if (payload.stickyTimeoutCooldownMs !== undefined) {
+      updates.stickyTimeoutCooldownMs = payload.stickyTimeoutCooldownMs;
+    }
+
     // 系统时区配置字段（如果提供）
     if (payload.timezone !== undefined) {
       updates.timezone = payload.timezone;
@@ -771,6 +879,26 @@ export async function updateSystemSettings(
     // Fake 流式输出白名单（如果提供；空数组表示显式禁用，null 留待 transformer 落默认）
     if (payload.fakeStreamingWhitelist !== undefined) {
       updates.fakeStreamingWhitelist = payload.fakeStreamingWhitelist;
+    }
+
+    // F1 流式内容门控模式（如果提供）
+    if (payload.streamGateMode !== undefined) {
+      updates.streamGateMode = payload.streamGateMode;
+    }
+
+    // 忽略客户端 Session ID 开关（如果提供）
+    if (payload.affinityIgnoreClientSessionId !== undefined) {
+      updates.affinityIgnoreClientSessionId = payload.affinityIgnoreClientSessionId;
+    }
+
+    // F2 Replay 开关覆写（如果提供；null = 清除覆写跟随环境变量）
+    if (payload.replayEnabled !== undefined) {
+      updates.replayEnabled = payload.replayEnabled;
+    }
+
+    // F3b 缓存模拟开关覆写（如果提供；null = 清除覆写跟随环境变量）
+    if (payload.cacheEffectivenessEnabled !== undefined) {
+      updates.cacheEffectivenessEnabled = payload.cacheEffectivenessEnabled;
     }
 
     let updated;

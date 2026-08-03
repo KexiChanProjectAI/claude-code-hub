@@ -332,7 +332,9 @@ describe("findReusable - cross-type model routing (#832)", () => {
 
     expect(result).toBeNull();
     expect(sessionManagerMocks.SessionManager.clearSessionProvider).toHaveBeenCalledWith(
-      "cross-type-3"
+      "cross-type-3",
+      12,
+      null
     );
   });
 
@@ -364,7 +366,9 @@ describe("findReusable - cross-type model routing (#832)", () => {
 
     expect(result).toBeNull();
     expect(sessionManagerMocks.SessionManager.clearSessionProvider).toHaveBeenCalledWith(
-      "cross-type-6"
+      "cross-type-6",
+      15,
+      null
     );
   });
 });

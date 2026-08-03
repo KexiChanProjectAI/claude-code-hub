@@ -17,7 +17,7 @@ export const UsageLogsQuerySchema = z.object({
     .optional()
     .describe("Offset page number for legacy listing."),
   pageSize: z.coerce.number().int().min(1).max(100).optional().describe("Offset page size."),
-  sessionId: z.string().optional().describe("Session id filter."),
+  sessionId: z.string().optional().describe("Exact Session ID or Prefix ID filter."),
   userId: NumberQuerySchema.describe("User id filter."),
   keyId: NumberQuerySchema.describe("Key id filter."),
   providerId: NumberQuerySchema.describe("Provider id filter."),
@@ -29,6 +29,10 @@ export const UsageLogsQuerySchema = z.object({
   excludeStatusCode200: BooleanQuerySchema.describe("Exclude successful responses."),
   endpoint: z.string().optional().describe("Endpoint filter."),
   minRetryCount: z.coerce.number().int().min(0).optional().describe("Minimum retry count."),
+  replayFilter: z
+    .enum(["all", "replay", "non-replay"])
+    .optional()
+    .describe("Replay request filter."),
   startTime: NumberQuerySchema.describe("Start timestamp in milliseconds."),
   endTime: NumberQuerySchema.describe("End timestamp in milliseconds."),
 });

@@ -82,6 +82,7 @@ vi.mock("@/lib/session-manager", () => ({
     updateSessionBindingSmart: mocks.updateSessionBindingSmart,
     updateSessionProvider: mocks.updateSessionProvider,
     clearSessionProvider: vi.fn(),
+    clearSessionProviders: vi.fn(),
   },
 }));
 
@@ -202,7 +203,7 @@ function createSession(
     highConcurrencyModeEnabled: false,
     rawCrossProviderFallbackEnabled: false,
     providersSnapshot: [],
-    providerSessionRefs: new Set<number>(),
+    providerSessionRefs: new Map<number, Array<{ retainOnSuccess: boolean }>>(),
   });
 
   return session as ProxySession;
@@ -277,6 +278,15 @@ function okResponse(): Response {
   return new Response(body, {
     status: 200,
     headers: { "content-type": "application/json", "content-length": String(body.length) },
+  });
+}
+
+function okStreamingResponse(): Response {
+  const body =
+    'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"ok"}}\n\n';
+  return new Response(body, {
+    status: 200,
+    headers: { "content-type": "text/event-stream", "content-length": String(body.length) },
   });
 }
 
@@ -606,7 +616,7 @@ describe("ProxyForwarder reasoning effort rule forwarding", () => {
     session.setProvider(provider);
     const responses = [
       errorResponse(400, "thinking options type cannot be disabled when reasoning_effort is set"),
-      okResponse(),
+      okStreamingResponse(),
     ];
     vi.spyOn(forwarder, "fetchWithoutAutoDecode").mockImplementation(async () => {
       sentBodies.push(JSON.parse(session.forwardedRequestBody ?? "{}"));

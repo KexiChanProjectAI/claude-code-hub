@@ -7,6 +7,10 @@ const loggerDebugMock = vi.fn();
 const loggerWarnMock = vi.fn();
 const loggerInfoMock = vi.fn();
 
+const originalResponsesWebsocketEnv = process.env.ENABLE_OPENAI_RESPONSES_WEBSOCKET;
+const originalStreamGateMode = process.env.STREAM_GATE_MODE;
+const originalSessionTtl = process.env.SESSION_TTL;
+
 vi.mock("server-only", () => ({}));
 
 vi.mock("@/repository/system-config", () => ({
@@ -26,7 +30,7 @@ vi.mock("@/lib/logger", () => ({
 function createSettings(overrides: Partial<SystemSettings> = {}): SystemSettings {
   const base: SystemSettings = {
     id: 1,
-    siteTitle: "Claude Code Hub",
+    siteTitle: "CC Hub",
     allowGlobalUsageView: false,
     currencyDisplay: "USD",
     billingModelSource: "original",
@@ -73,6 +77,7 @@ async function loadCache() {
   return {
     getCachedSystemSettings: mod.getCachedSystemSettings,
     isHttp2Enabled: mod.isHttp2Enabled,
+    isOpenaiResponsesWebsocketEnabled: mod.isOpenaiResponsesWebsocketEnabled,
     invalidateSystemSettingsCache: mod.invalidateSystemSettingsCache,
   };
 }
@@ -82,10 +87,26 @@ beforeEach(() => {
   vi.resetModules();
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-01-03T00:00:00.000Z"));
+  delete process.env.ENABLE_OPENAI_RESPONSES_WEBSOCKET;
 });
 
 afterEach(() => {
   vi.useRealTimers();
+  if (originalResponsesWebsocketEnv === undefined) {
+    delete process.env.ENABLE_OPENAI_RESPONSES_WEBSOCKET;
+  } else {
+    process.env.ENABLE_OPENAI_RESPONSES_WEBSOCKET = originalResponsesWebsocketEnv;
+  }
+  if (originalStreamGateMode === undefined) {
+    delete process.env.STREAM_GATE_MODE;
+  } else {
+    process.env.STREAM_GATE_MODE = originalStreamGateMode;
+  }
+  if (originalSessionTtl === undefined) {
+    delete process.env.SESSION_TTL;
+  } else {
+    process.env.SESSION_TTL = originalSessionTtl;
+  }
 });
 
 describe("SystemSettingsCache", () => {
@@ -145,7 +166,7 @@ describe("SystemSettingsCache", () => {
     const settings = await getCachedSystemSettings();
     expect(settings).toEqual(
       expect.objectContaining({
-        siteTitle: "Claude Code Hub",
+        siteTitle: "CC Hub",
         enableHttp2: false,
         enableHighConcurrencyMode: false,
         interceptAnthropicWarmupRequests: false,
@@ -155,6 +176,44 @@ describe("SystemSettingsCache", () => {
     );
     expect(loggerWarnMock).toHaveBeenCalledTimes(1);
   });
+
+  test("冷缓存读取失败时保留显式 STREAM_GATE_MODE=off", async () => {
+    process.env.STREAM_GATE_MODE = "off";
+    getSystemSettingsMock.mockRejectedValueOnce(new Error("db down"));
+    const { getCachedSystemSettings } = await loadCache();
+
+    const settings = await getCachedSystemSettings();
+    expect(settings.streamGateMode).toBe("off");
+  });
+
+  test("其他环境变量无效时，冷缓存回退仍强制开启 Stream Gate 并记录告警", async () => {
+    delete process.env.STREAM_GATE_MODE;
+    process.env.SESSION_TTL = "invalid";
+    getSystemSettingsMock.mockRejectedValueOnce(new Error("db down"));
+    const { getCachedSystemSettings } = await loadCache();
+
+    const settings = await getCachedSystemSettings();
+
+    expect(settings.streamGateMode).toBe("enforce");
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      "[SystemSettingsCache] Invalid environment fallback, using Stream Gate enforce",
+      expect.objectContaining({ value: undefined })
+    );
+  });
+
+  test.each(["off", "shadow"] as const)(
+    "其他环境变量无效时仍保留显式 STREAM_GATE_MODE=%s",
+    async (streamGateMode) => {
+      process.env.STREAM_GATE_MODE = streamGateMode;
+      process.env.SESSION_TTL = "invalid";
+      getSystemSettingsMock.mockRejectedValueOnce(new Error("db down"));
+      const { getCachedSystemSettings } = await loadCache();
+
+      const settings = await getCachedSystemSettings();
+
+      expect(settings.streamGateMode).toBe(streamGateMode);
+    }
+  );
 
   test("invalidateSystemSettingsCache 应清空缓存并触发下一次重新获取", async () => {
     const settingsA = createSettings({ id: 401 });
@@ -177,5 +236,48 @@ describe("SystemSettingsCache", () => {
     const { isHttp2Enabled } = await loadCache();
 
     expect(await isHttp2Enabled()).toBe(true);
+  });
+
+  test.each([
+    ["true", true],
+    ["1", true],
+    ["false", false],
+    ["0", false],
+  ])("ENABLE_OPENAI_RESPONSES_WEBSOCKET=%s 应覆盖数据库设置", async (value, expected) => {
+    process.env.ENABLE_OPENAI_RESPONSES_WEBSOCKET = value;
+    getSystemSettingsMock.mockResolvedValueOnce(
+      createSettings({ enableOpenaiResponsesWebsocket: !expected })
+    );
+    const { isOpenaiResponsesWebsocketEnabled } = await loadCache();
+
+    expect(await isOpenaiResponsesWebsocketEnabled()).toBe(expected);
+    expect(getSystemSettingsMock).not.toHaveBeenCalled();
+  });
+
+  test("未设置 ENABLE_OPENAI_RESPONSES_WEBSOCKET 时应读取数据库设置", async () => {
+    getSystemSettingsMock.mockResolvedValueOnce(
+      createSettings({ enableOpenaiResponsesWebsocket: false })
+    );
+    const { isOpenaiResponsesWebsocketEnabled } = await loadCache();
+
+    expect(await isOpenaiResponsesWebsocketEnabled()).toBe(false);
+    expect(getSystemSettingsMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("ENABLE_OPENAI_RESPONSES_WEBSOCKET 非法时应仅警告一次并回退数据库设置", async () => {
+    process.env.ENABLE_OPENAI_RESPONSES_WEBSOCKET = " false ";
+    getSystemSettingsMock.mockResolvedValueOnce(
+      createSettings({ enableOpenaiResponsesWebsocket: true })
+    );
+    const { isOpenaiResponsesWebsocketEnabled } = await loadCache();
+
+    expect(await isOpenaiResponsesWebsocketEnabled()).toBe(true);
+    expect(await isOpenaiResponsesWebsocketEnabled()).toBe(true);
+    expect(getSystemSettingsMock).toHaveBeenCalledTimes(1);
+    expect(loggerWarnMock).toHaveBeenCalledTimes(1);
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      "[SystemSettingsCache] Invalid ENABLE_OPENAI_RESPONSES_WEBSOCKET, using database setting",
+      { value: " false " }
+    );
   });
 });

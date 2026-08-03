@@ -298,11 +298,12 @@ describe("OptionsSection", () => {
 
   describe("conditional rendering - codex provider", () => {
     it("shows Codex overrides for codex type", () => {
-      const { unmount } = renderSection({
+      const { container, unmount } = renderSection({
         state: createMockState({ routing: { providerType: "codex" } }),
       });
 
       expect(getBodyText()).toContain("sections.routing.codexOverrides.title");
+      expect(container.querySelector('[data-value="max"]')).toBeTruthy();
 
       unmount();
     });
@@ -661,15 +662,13 @@ describe("OptionsSection - ReasoningEffortRuleEditor integration", () => {
     unmount();
   });
 
-  it("does not show legacy codex reasoning effort select", () => {
+  it("shows the legacy codex reasoning effort select alongside the rule editor", () => {
     const { container, unmount } = renderSection({
       state: createMockState({ routing: { providerType: "codex" } }),
     });
 
-    // The old codex reasoning effort label should not be in the Codex Overrides section
-    // (it was replaced by the rule editor)
     const allText = container.textContent ?? "";
-    expect(allText).not.toContain("sections.routing.codexOverrides.reasoningEffort.label");
+    expect(allText).toContain("sections.routing.codexOverrides.reasoningEffort.label");
 
     unmount();
   });
