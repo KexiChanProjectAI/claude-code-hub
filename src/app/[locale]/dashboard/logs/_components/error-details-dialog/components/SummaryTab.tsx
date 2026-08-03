@@ -20,6 +20,7 @@ import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { IpDetailsDialog } from "@/app/[locale]/dashboard/_components/ip-details-dialog";
 import { IpDisplayTrigger } from "@/app/[locale]/dashboard/_components/ip-display-trigger";
+import { AnthropicEffortBadge } from "@/components/customs/anthropic-effort-badge";
 import { ThinkingEffortBadge } from "@/components/customs/thinking-effort-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -153,6 +154,8 @@ export function SummaryTab({
         overridden: t(`${effortMessageKey}.overridden`),
       }
     : null;
+  const EffortBadge =
+    thinkingEffortInfo?.source === "anthropic" ? AnthropicEffortBadge : ThinkingEffortBadge;
   const isFake200PostStreamFailure =
     typeof errorMessage === "string" && errorMessage.startsWith("FAKE_200_");
   const fake200Code =
@@ -380,7 +383,7 @@ export function SummaryTab({
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <span>
-                            <ThinkingEffortBadge
+                            <EffortBadge
                               effort={effortDisplay.requestedEffort}
                               label={effortDisplay.requestedEffort}
                             />
@@ -397,7 +400,7 @@ export function SummaryTab({
                       {effortDisplay.requestedEffort && (
                         <ArrowRight className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
                       )}
-                      <ThinkingEffortBadge
+                      <EffortBadge
                         effort={effortDisplay.effectiveEffort}
                         label={effortDisplay.effectiveEffort}
                       />
