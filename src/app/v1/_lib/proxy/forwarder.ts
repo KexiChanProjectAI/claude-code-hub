@@ -544,16 +544,22 @@ export function applyCacheTtlOverrideToMessage(
   // messages[].content[]
   const messages = message.messages;
   if (Array.isArray(messages)) {
-    for (const msg of messages) {
+    let nextMessages: unknown[] | null = null;
+    for (let index = 0; index < messages.length; index += 1) {
+      const msg = messages[index];
       if (!msg || typeof msg !== "object") continue;
       const msgObj = msg as Record<string, unknown>;
       const content = msgObj.content;
       if (!Array.isArray(content)) continue;
       const result = applyTtlToContentBlocks(content, ttl);
       if (result.applied) {
-        msgObj.content = result.blocks;
+        nextMessages ??= [...messages];
+        nextMessages[index] = { ...msgObj, content: result.blocks };
         applied = true;
       }
+    }
+    if (nextMessages) {
+      message.messages = nextMessages;
     }
   }
 
@@ -1183,7 +1189,11 @@ async function tryApplyReactiveRectifier(params: {
     }
 
     const requestDetailsBeforeRectify = buildRequestDetails(requestSession);
-    const rectified = descriptor.rectify(requestSession.request.message as Record<string, unknown>);
+    const mutableMessage = structuredClone(
+      requestSession.request.message as Record<string, unknown>
+    );
+    requestSession.request.message = mutableMessage;
+    const rectified = descriptor.rectify(mutableMessage);
 
     addSpecialSettingForPersistence(
       requestSession,
@@ -3362,13 +3372,7 @@ export class ProxyForwarder {
           const bodyString = JSON.stringify(messageToSend);
           requestBody = bodyString;
           session.forwardedRequestBody = bodyString;
-
-          try {
-            const parsed = JSON.parse(bodyString);
-            isStreaming = parsed.stream === true;
-          } catch {
-            isStreaming = false;
-          }
+          isStreaming = messageToSend.stream === true;
 
           if (process.env.NODE_ENV === "development") {
             logger.trace("ProxyForwarder: Forwarding request", {
@@ -7813,8 +7817,10 @@ export class ProxyForwarder {
 
     shadowState.request = {
       ...session.request,
-      message: structuredClone(session.request.message),
-      buffer: session.request.buffer ? session.request.buffer.slice(0) : undefined,
+      // attempt 改写采用顶层 copy-on-write；发送前的私有参数过滤会生成独立深拷贝。
+      message: { ...session.request.message },
+      // 原始请求字节只读；shadow 共享底层 buffer，任何改写都必须整体替换属性。
+      buffer: session.request.buffer,
       imageRequestMetadata: cloneOpenAIImageRequestMetadata(session.request.imageRequestMetadata),
     };
     shadow.requestUrl = new URL(session.requestUrl.toString());

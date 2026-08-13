@@ -841,6 +841,20 @@
       "when": 1785770702012,
       "tag": "0119_common_madame_masque",
       "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1786038550610,
+      "tag": "0119_tiresome_banshee",
+      "breakpoints": true
+    },
+    {
+      "idx": 121,
+      "version": "7",
+      "when": 1786500000000,
+      "tag": "0120_availability_projection",
+      "breakpoints": true
     }
   ]
 }
