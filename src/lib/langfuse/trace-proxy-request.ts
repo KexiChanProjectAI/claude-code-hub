@@ -132,9 +132,24 @@ function isResponseMissing(ctx: TraceContext): boolean {
   return true;
 }
 
+function omitTopLevelInstructions(value: unknown): unknown {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    !Object.hasOwn(value, "instructions")
+  ) {
+    return value;
+  }
+
+  const output: Record<string, unknown> = { ...value };
+  delete output.instructions;
+  return output;
+}
+
 function buildResponseOutput(ctx: TraceContext): unknown {
   if (ctx.finalResponseOutput?.kind === "final") {
-    return ctx.finalResponseOutput.value;
+    return omitTopLevelInstructions(ctx.finalResponseOutput.value);
   }
   if (ctx.finalResponseOutput !== undefined) {
     return ctx.finalResponseOutput;
@@ -148,7 +163,7 @@ function buildResponseOutput(ctx: TraceContext): unknown {
   }
 
   if (ctx.responseText) {
-    return tryParseJsonSafe(ctx.responseText);
+    return omitTopLevelInstructions(tryParseJsonSafe(ctx.responseText));
   }
 
   const responseMissing = isResponseMissing(ctx);
@@ -474,12 +489,6 @@ export async function traceProxyRequest(ctx: TraceContext): Promise<void> {
         generation.end(requestEndTime);
       }
     );
-
-    // Explicitly set trace-level input/output (propagateAttributes does not support these)
-    rootSpan.setTraceIO({
-      input: actualRequestBody,
-      output: actualResponseBody,
-    });
 
     rootSpan.end(requestEndTime);
   } catch (error) {

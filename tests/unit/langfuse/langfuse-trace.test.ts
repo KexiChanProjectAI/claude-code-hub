@@ -26,11 +26,8 @@ const mockEventObs: any = {
   end: mockEventEnd,
 };
 
-const mockSetTraceIO = vi.fn();
-
 const mockRootSpan = {
   startObservation: vi.fn(),
-  setTraceIO: mockSetTraceIO,
   end: mockSpanEnd,
 };
 
@@ -218,9 +215,21 @@ describe("traceProxyRequest", () => {
     expect(llmCall[1].input).toEqual(session.request.message);
   });
 
-  test("should use actual response body as generation output", async () => {
+  test("should use sanitized OpenAI Responses output in root and generation observations", async () => {
     const { traceProxyRequest } = await import("@/lib/langfuse/trace-proxy-request");
-    const responseBody = { content: [{ type: "text", text: "Hello!" }] };
+    const responseBody = {
+      id: "resp_123",
+      object: "response",
+      instructions: "do-not-send",
+      output: [{ type: "message", content: [{ type: "output_text", text: "Hello!" }] }],
+      metadata: { instructions: "nested-instructions" },
+    };
+    const expectedOutput = {
+      id: "resp_123",
+      object: "response",
+      output: [{ type: "message", content: [{ type: "output_text", text: "Hello!" }] }],
+      metadata: { instructions: "nested-instructions" },
+    };
 
     await traceProxyRequest({
       session: createMockSession(),
@@ -231,10 +240,14 @@ describe("traceProxyRequest", () => {
       responseText: JSON.stringify(responseBody),
     });
 
+    const rootCall = mockStartObservation.mock.calls[0];
     const llmCall = mockRootSpan.startObservation.mock.calls.find(
       (c: unknown[]) => c[0] === "llm-call"
     );
-    expect(llmCall[1].output).toEqual(responseBody);
+    expect(rootCall[1].output).toEqual(expectedOutput);
+    expect(llmCall[1].output).toEqual(expectedOutput);
+    expect(rootCall[1].output.metadata.instructions).toBe("nested-instructions");
+    expect(llmCall[1].output.metadata.instructions).toBe("nested-instructions");
   });
 
   test("redacts credential headers and preserves benign headers at the Langfuse boundary", async () => {
@@ -291,7 +304,6 @@ describe("traceProxyRequest", () => {
       generationEnds: mockGenerationEnd.mock.calls,
       guardEnds: mockGuardSpanEnd.mock.calls,
       eventEnds: mockEventEnd.mock.calls,
-      traceIo: mockSetTraceIO.mock.calls,
       rootEnds: mockSpanEnd.mock.calls,
     });
     for (const secret of [authorizationSecret, apiKeySecret, cookieSecret, setCookieSecret]) {
@@ -670,11 +682,6 @@ describe("traceProxyRequest", () => {
       (c: unknown[]) => c[0] === "llm-call"
     );
     expect(llmCall[1].output).toEqual(expectedOutput);
-    expect(mockRootSpan.setTraceIO).toHaveBeenCalledWith(
-      expect.objectContaining({
-        output: expectedOutput,
-      })
-    );
   });
 
   test("should mark missing non-stream output when request input exists", async () => {
@@ -708,11 +715,6 @@ describe("traceProxyRequest", () => {
       (c: unknown[]) => c[0] === "llm-call"
     );
     expect(llmCall[1].output).toEqual(expectedOutput);
-    expect(mockRootSpan.setTraceIO).toHaveBeenCalledWith(
-      expect.objectContaining({
-        output: expectedOutput,
-      })
-    );
   });
 
   test("should include costUsd in root span metadata", async () => {
@@ -735,32 +737,15 @@ describe("traceProxyRequest", () => {
     );
   });
 
-  test("should set trace-level input/output via setTraceIO with actual bodies", async () => {
-    const { traceProxyRequest } = await import("@/lib/langfuse/trace-proxy-request");
-    const responseBody = { result: "ok" };
-
-    await traceProxyRequest({
-      session: createMockSession(),
-      responseHeaders: new Headers(),
-      durationMs: 500,
-      statusCode: 200,
-      isStreaming: false,
-      responseText: JSON.stringify(responseBody),
-      costUsd: "0.05",
-    });
-
-    expect(mockSetTraceIO).toHaveBeenCalledWith({
-      input: expect.objectContaining({
-        model: "claude-sonnet-4-20250514",
-        messages: expect.any(Array),
-      }),
-      output: responseBody,
-    });
-  });
-
-  test("should reuse structured streaming output across all Langfuse output sinks", async () => {
+  test("should reuse sanitized structured streaming output across v4 observation sinks", async () => {
     const { traceProxyRequest } = await import("@/lib/langfuse/trace-proxy-request");
     const finalValue = {
+      id: "chat-1",
+      object: "chat.completion",
+      instructions: "do-not-send",
+      choices: [{ index: 0, message: { role: "assistant", content: "hello" } }],
+    };
+    const expectedOutput = {
       id: "chat-1",
       object: "chat.completion",
       choices: [{ index: 0, message: { role: "assistant", content: "hello" } }],
@@ -781,14 +766,16 @@ describe("traceProxyRequest", () => {
     const llmCall = mockRootSpan.startObservation.mock.calls.find(
       (call: unknown[]) => call[0] === "llm-call"
     );
-    const traceIoCall = mockSetTraceIO.mock.calls[0];
+    const rootOutput = rootCall[1].output;
+    const generationOutput = llmCall?.[1].output;
+    const serializedOutputs = JSON.stringify({ rootOutput, generationOutput });
 
-    expect(rootCall[1].output).toBe(finalValue);
-    expect(llmCall?.[1].output).toBe(finalValue);
-    expect(traceIoCall[0].output).toBe(finalValue);
-    expect(JSON.stringify(rootCall[1].output)).not.toContain("data: ");
-    expect(JSON.stringify(llmCall?.[1].output)).not.toContain("data: ");
-    expect(JSON.stringify(traceIoCall[0].output)).not.toContain("data: ");
+    expect(rootOutput).toBe(generationOutput);
+    expect(rootOutput).toEqual(expectedOutput);
+    expect(finalValue.instructions).toBe("do-not-send");
+    expect(serializedOutputs).not.toContain("instructions");
+    expect(serializedOutputs).not.toContain("do-not-send");
+    expect(serializedOutputs).not.toContain("data: ");
   });
 
   test("should use a structured diagnostic as the shared streaming output", async () => {
@@ -817,7 +804,6 @@ describe("traceProxyRequest", () => {
 
     expect(rootCall[1].output).toBe(diagnostic);
     expect(llmCall?.[1].output).toBe(diagnostic);
-    expect(mockSetTraceIO.mock.calls[0][0].output).toBe(diagnostic);
   });
 
   test("should use a bounded diagnostic when streaming output has no finalizer result", async () => {
@@ -844,14 +830,11 @@ describe("traceProxyRequest", () => {
     const llmCall = mockRootSpan.startObservation.mock.calls.find(
       (call: unknown[]) => call[0] === "llm-call"
     );
-    const traceIoCall = mockSetTraceIO.mock.calls[0];
 
     expect(rootCall[1].output).toEqual(diagnostic);
     expect(llmCall?.[1].output).toEqual(diagnostic);
-    expect(traceIoCall[0].output).toEqual(diagnostic);
     expect(JSON.stringify(rootCall[1].output)).not.toContain("data:");
     expect(JSON.stringify(llmCall?.[1].output)).not.toContain("data:");
-    expect(JSON.stringify(traceIoCall[0].output)).not.toContain("data:");
   });
 
   // --- New tests for multi-span hierarchy ---
@@ -1111,12 +1094,6 @@ describe("traceProxyRequest", () => {
     // Root span input should be the forwarded body (parsed JSON)
     const rootCall = mockStartObservation.mock.calls[0];
     expect(rootCall[1].input).toEqual(JSON.parse(forwardedBody));
-
-    // setTraceIO should also use forwarded body
-    expect(mockSetTraceIO).toHaveBeenCalledWith({
-      input: JSON.parse(forwardedBody),
-      output: { ok: true },
-    });
   });
 
   test("should set root span level to DEFAULT for successful request", async () => {
