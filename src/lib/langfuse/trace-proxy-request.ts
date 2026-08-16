@@ -12,6 +12,31 @@ import type { CostBreakdown } from "@/lib/utils/cost-calculation";
 
 const LANGFUSE_JSON_PARSE_MAX_CHARS = 1024 * 1024;
 const LANGFUSE_TEXT_PREVIEW_EDGE_CHARS = 128 * 1024;
+const LANGFUSE_PROPAGATED_STRING_MAX_CHARS = 200;
+
+function clampLangfusePropagatedString(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  return value.length <= LANGFUSE_PROPAGATED_STRING_MAX_CHARS
+    ? value
+    : value.slice(0, LANGFUSE_PROPAGATED_STRING_MAX_CHARS);
+}
+
+function clampLangfusePropagatedMetadata(metadata: Record<string, string>): Record<string, string> {
+  const clamped: Record<string, string> = {};
+  for (const [key, value] of Object.entries(metadata)) {
+    const next = clampLangfusePropagatedString(value);
+    if (next !== undefined) {
+      clamped[key] = next;
+    }
+  }
+  return clamped;
+}
+
+function clampLangfuseTags(tags: string[]): string[] {
+  return tags
+    .map((tag) => clampLangfusePropagatedString(tag))
+    .filter((tag): tag is string => tag !== undefined);
+}
 
 function buildRequestBodySummary(session: ProxySession): Record<string, unknown> {
   const msg = session.request.message as Record<string, unknown>;
@@ -132,23 +157,132 @@ function isResponseMissing(ctx: TraceContext): boolean {
   return true;
 }
 
-function buildResponseOutput(ctx: TraceContext): unknown {
+type ResponseOutputMetadata = {
+  id?: unknown;
+  status?: unknown;
+  model?: unknown;
+};
+
+type ResponseCapture = {
+  output: unknown;
+  metadata?: ResponseOutputMetadata;
+  usageDetails?: {
+    input_tokens?: number;
+    input_tokens_details?: { cached_tokens?: number };
+    output_tokens?: number;
+    output_tokens_details?: { reasoning_tokens?: number };
+    total_tokens?: number;
+  };
+};
+
+const RESPONSE_TOOL_CALL_EXCLUDED_FIELDS: Record<string, true> = {
+  id: true,
+  status: true,
+  internal_chat_message_metadata_passthrough: true,
+  metadata: true,
+};
+
+function sanitizeResponseOutputItem(value: unknown, isInsideToolCall = false): unknown {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return value;
+
+  const item = value as Record<string, unknown>;
+  const isToolCall =
+    isInsideToolCall ||
+    (typeof item.type === "string" && (item.type.endsWith("_call") || item.type === "tool_calls"));
+
+  return Object.fromEntries(
+    Object.entries(item)
+      .filter(([key]) => !isToolCall || RESPONSE_TOOL_CALL_EXCLUDED_FIELDS[key] === undefined)
+      .map(([key, child]) => [
+        key,
+        Array.isArray(child)
+          ? child.map((entry) => sanitizeResponseOutputItem(entry, isToolCall))
+          : sanitizeResponseOutputItem(child, isToolCall),
+      ])
+  );
+}
+
+function buildResponseCapture(ctx: TraceContext): ResponseCapture {
+  const responseValue =
+    ctx.finalResponseOutput?.kind === "final"
+      ? ctx.finalResponseOutput.value
+      : ctx.isStreaming || !ctx.responseText
+        ? undefined
+        : tryParseJsonSafe(ctx.responseText);
+
+  if (
+    ctx.session.originalFormat === "response" &&
+    typeof responseValue === "object" &&
+    responseValue !== null &&
+    !Array.isArray(responseValue)
+  ) {
+    const response = responseValue as Record<string, unknown>;
+    const usage =
+      typeof response.usage === "object" &&
+      response.usage !== null &&
+      !Array.isArray(response.usage)
+        ? (response.usage as Record<string, unknown>)
+        : undefined;
+    const inputTokenDetails =
+      typeof usage?.input_tokens_details === "object" &&
+      usage.input_tokens_details !== null &&
+      !Array.isArray(usage.input_tokens_details)
+        ? (usage.input_tokens_details as Record<string, unknown>)
+        : undefined;
+    const outputTokenDetails =
+      typeof usage?.output_tokens_details === "object" &&
+      usage.output_tokens_details !== null &&
+      !Array.isArray(usage.output_tokens_details)
+        ? (usage.output_tokens_details as Record<string, unknown>)
+        : undefined;
+    const usageDetails: ResponseCapture["usageDetails"] = usage
+      ? {
+          ...(typeof usage.input_tokens === "number" ? { input_tokens: usage.input_tokens } : {}),
+          ...(typeof inputTokenDetails?.cached_tokens === "number"
+            ? { input_tokens_details: { cached_tokens: inputTokenDetails.cached_tokens } }
+            : {}),
+          ...(typeof usage.output_tokens === "number"
+            ? { output_tokens: usage.output_tokens }
+            : {}),
+          ...(typeof outputTokenDetails?.reasoning_tokens === "number"
+            ? { output_tokens_details: { reasoning_tokens: outputTokenDetails.reasoning_tokens } }
+            : {}),
+          ...(typeof usage.total_tokens === "number" ? { total_tokens: usage.total_tokens } : {}),
+        }
+      : undefined;
+    const metadata: ResponseOutputMetadata = {
+      ...(response.id !== undefined ? { id: response.id } : {}),
+      ...(response.status !== undefined ? { status: response.status } : {}),
+      ...(response.model !== undefined ? { model: response.model } : {}),
+    };
+
+    return {
+      output: Array.isArray(response.output)
+        ? response.output.map((item) => sanitizeResponseOutputItem(item))
+        : undefined,
+      ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
+      ...(usageDetails && Object.keys(usageDetails).length > 0 ? { usageDetails } : {}),
+    };
+  }
+
   if (ctx.finalResponseOutput?.kind === "final") {
-    return ctx.finalResponseOutput.value;
+    return { output: ctx.finalResponseOutput.value };
   }
   if (ctx.finalResponseOutput !== undefined) {
-    return ctx.finalResponseOutput;
+    return { output: ctx.finalResponseOutput };
   }
 
   if (ctx.isStreaming) {
-    return createFinalOutputUnavailable("no_terminal_event", {
-      eventCount: ctx.sseEventCount ?? 0,
-      status: ctx.statusCode,
-    });
+    return {
+      output: createFinalOutputUnavailable("no_terminal_event", {
+        eventCount: ctx.sseEventCount ?? 0,
+        status: ctx.statusCode,
+      }),
+    };
   }
 
   if (ctx.responseText) {
-    return tryParseJsonSafe(ctx.responseText);
+    return { output: tryParseJsonSafe(ctx.responseText) };
   }
 
   const responseMissing = isResponseMissing(ctx);
@@ -167,7 +301,7 @@ function buildResponseOutput(ctx: TraceContext): unknown {
     output.errorMessage = ctx.errorMessage;
   }
 
-  return output;
+  return { output };
 }
 
 function buildLargeTextPreview(text: string): Record<string, unknown> {
@@ -230,12 +364,14 @@ export async function traceProxyRequest(ctx: TraceContext): Promise<void> {
     }
 
     // Actual request body (forwarded to upstream after all preprocessing) - no truncation
+    // Actual request and response bodies are not truncated.
     const actualRequestBody = session.forwardedRequestBody
       ? tryParseJsonSafe(session.forwardedRequestBody)
       : session.request.message;
-
-    // Actual response body - no truncation
-    const actualResponseBody = buildResponseOutput(ctx);
+    const actualResponse = buildResponseCapture(ctx);
+    const actualResponseBody = actualResponse.output;
+    const responseOutputMetadata = actualResponse.metadata;
+    const responseUsageDetails = actualResponse.usageDetails;
     const responseMissing = isResponseMissing(ctx);
 
     // Root span metadata (former input/output summaries moved here)
@@ -258,15 +394,16 @@ export async function traceProxyRequest(ctx: TraceContext): Promise<void> {
     };
 
     // Build tags - include provider name and model
-    const tags: string[] = [];
-    if (provider?.providerType) tags.push(provider.providerType);
-    if (provider?.name) tags.push(provider.name);
-    if (session.originalFormat) tags.push(session.originalFormat);
-    if (session.getCurrentModel()) tags.push(session.getCurrentModel()!);
-    tags.push(getStatusCategory(statusCode));
+    const tags = clampLangfuseTags([
+      ...(provider?.providerType ? [provider.providerType] : []),
+      ...(provider?.name ? [provider.name] : []),
+      ...(session.originalFormat ? [session.originalFormat] : []),
+      ...(session.getCurrentModel() ? [session.getCurrentModel()!] : []),
+      getStatusCategory(statusCode),
+    ]);
 
-    // Build trace-level metadata (propagateAttributes requires all values to be strings)
-    const traceMetadata: Record<string, string> = {
+    // Build trace-level metadata (propagateAttributes requires all values to be strings ≤200)
+    const traceMetadata = clampLangfusePropagatedMetadata({
       userName: messageContext?.user?.name ?? session.userName ?? "",
       keyName: messageContext?.key?.name ?? "",
       clientIp: session.clientIp ?? "",
@@ -275,7 +412,7 @@ export async function traceProxyRequest(ctx: TraceContext): Promise<void> {
       clientFormat: session.originalFormat,
       userAgent: session.userAgent ?? "",
       requestSequence: String(session.getRequestSequence()),
-    };
+    });
 
     const requestHeaders = redactLangfuseHeaders(session.headers);
     const responseHeaders = redactLangfuseHeaders(ctx.responseHeaders);
@@ -319,25 +456,29 @@ export async function traceProxyRequest(ctx: TraceContext): Promise<void> {
       sseEventCount: ctx.sseEventCount,
       requestHeaders,
       responseHeaders,
+      ...(responseOutputMetadata !== undefined ? { response: responseOutputMetadata } : {}),
     };
 
-    // Build usage details for Langfuse generation
-    const usageDetails: Record<string, number> | undefined = ctx.usageMetrics
-      ? {
-          ...(ctx.usageMetrics.input_tokens != null
-            ? { input: ctx.usageMetrics.input_tokens }
-            : {}),
-          ...(ctx.usageMetrics.output_tokens != null
-            ? { output: ctx.usageMetrics.output_tokens }
-            : {}),
-          ...(ctx.usageMetrics.cache_read_input_tokens != null
-            ? { cache_read_input_tokens: ctx.usageMetrics.cache_read_input_tokens }
-            : {}),
-          ...(ctx.usageMetrics.cache_creation_input_tokens != null
-            ? { cache_creation_input_tokens: ctx.usageMetrics.cache_creation_input_tokens }
-            : {}),
-        }
-      : undefined;
+    // Responses API reports native Langfuse token dimensions from its own output.
+    const usageDetails: Record<string, number> | undefined =
+      responseUsageDetails !== undefined
+        ? (responseUsageDetails as unknown as Record<string, number>)
+        : ctx.usageMetrics
+          ? {
+              ...(ctx.usageMetrics.input_tokens != null
+                ? { input: ctx.usageMetrics.input_tokens }
+                : {}),
+              ...(ctx.usageMetrics.output_tokens != null
+                ? { output: ctx.usageMetrics.output_tokens }
+                : {}),
+              ...(ctx.usageMetrics.cache_read_input_tokens != null
+                ? { cache_read_input_tokens: ctx.usageMetrics.cache_read_input_tokens }
+                : {}),
+              ...(ctx.usageMetrics.cache_creation_input_tokens != null
+                ? { cache_creation_input_tokens: ctx.usageMetrics.cache_creation_input_tokens }
+                : {}),
+            }
+          : undefined;
 
     // Build cost details (prefer breakdown, fallback to total-only)
     const costDetails: Record<string, number> | undefined = ctx.costBreakdown
@@ -346,53 +487,57 @@ export async function traceProxyRequest(ctx: TraceContext): Promise<void> {
         ? { total: Number.parseFloat(ctx.costUsd) }
         : undefined;
 
-    // Create the root trace span with actual bodies, level, and metadata
-    const rootSpan = startObservation(
-      "proxy-request",
-      {
-        input: actualRequestBody,
-        output: actualResponseBody,
-        level: rootSpanLevel,
-        metadata: rootSpanMetadata,
-      },
-      {
-        startTime: requestStartTime,
-      }
+    const username = messageContext?.user?.name ?? session.userName;
+    const traceName = clampLangfusePropagatedString(
+      username
+        ? `${username}:${session.getCurrentModel() ?? "unknown"}`
+        : (session.getCurrentModel() ?? "unknown")
     );
 
-    // Propagate trace attributes
-    const username = messageContext?.user?.name ?? session.userName;
-    const traceName = username
-      ? `${username}:${session.getCurrentModel() ?? "unknown"}`
-      : (session.getCurrentModel() ?? "unknown");
-
+    // Official v5: wrap ALL observations in propagateAttributes so userId/sessionId/tags
+    // land on the root span too. Child startObservation on the wrapper drops startTime;
+    // use the module-level API with parentSpanContext instead.
     await propagateAttributes(
       {
-        userId: messageContext?.user?.name ?? session.userName ?? undefined,
-        sessionId: session.sessionId ?? undefined,
+        userId: clampLangfusePropagatedString(
+          messageContext?.user?.name ?? session.userName ?? undefined
+        ),
+        sessionId: clampLangfusePropagatedString(session.sessionId ?? undefined),
         tags,
         metadata: traceMetadata,
-        traceName,
+        ...(traceName ? { traceName } : {}),
       },
       async () => {
-        // 1. Guard pipeline span (if forwardStartTime was recorded)
+        const rootSpan = startObservation(
+          "proxy-request",
+          {
+            input: actualRequestBody,
+            output: actualResponseBody,
+            level: rootSpanLevel,
+            metadata: rootSpanMetadata,
+          },
+          {
+            startTime: requestStartTime,
+          }
+        );
+
+        const parentSpanContext = rootSpan.otelSpan.spanContext();
+
         if (forwardStartDate) {
-          const guardSpan = rootSpan.startObservation(
+          const guardSpan = startObservation(
             "guard-pipeline",
             {
               output: { durationMs: guardPipelineMs, passed: true },
             },
-            { startTime: requestStartTime } as Record<string, unknown>
+            { startTime: requestStartTime, parentSpanContext }
           );
           guardSpan.end(forwardStartDate);
         }
 
-        // 2. Provider attempt events (one per failed/hedge chain item)
         for (const rawItem of session.getProviderChain()) {
           const item = sanitizeProviderChainValue(rawItem) as typeof rawItem;
-          // Hedge trigger: informational event (not a success or failure)
           if (item.reason === "hedge_triggered") {
-            const hedgeObs = rootSpan.startObservation(
+            const hedgeObs = startObservation(
               "hedge-trigger",
               {
                 level: "WARNING" as ObservationLevel,
@@ -410,14 +555,15 @@ export async function traceProxyRequest(ctx: TraceContext): Promise<void> {
               {
                 asType: "event",
                 startTime: new Date(item.timestamp ?? session.startTime),
-              } as { asType: "event" }
+                parentSpanContext,
+              }
             );
             hedgeObs.end();
             continue;
           }
 
           if (!isSuccessReason(item.reason)) {
-            const eventObs = rootSpan.startObservation(
+            const eventObs = startObservation(
               "provider-attempt",
               {
                 level: isErrorReason(item.reason) ? "ERROR" : "WARNING",
@@ -436,35 +582,31 @@ export async function traceProxyRequest(ctx: TraceContext): Promise<void> {
               {
                 asType: "event",
                 startTime: new Date(item.timestamp ?? session.startTime),
-              } as { asType: "event" }
+                parentSpanContext,
+              }
             );
             eventObs.end();
           }
         }
 
-        // 3. LLM generation (startTime = forwardStartTime when available)
         const generationStartTime = forwardStartDate ?? requestStartTime;
-
-        // Generation input/output = raw payload, no truncation
-        const generationInput = actualRequestBody;
-        const generationOutput = actualResponseBody;
-
-        // Create the LLM generation observation
-        const generation = rootSpan.startObservation(
+        const generation = startObservation(
           "llm-call",
           {
             model: session.getCurrentModel() ?? undefined,
-            input: generationInput,
-            output: generationOutput,
+            input: actualRequestBody,
+            output: actualResponseBody,
             ...(usageDetails && Object.keys(usageDetails).length > 0 ? { usageDetails } : {}),
             ...(costDetails ? { costDetails } : {}),
             metadata: generationMetadata,
           },
-          // SDK runtime supports startTime on child observations but types don't expose it
-          { asType: "generation", startTime: generationStartTime } as { asType: "generation" }
+          {
+            asType: "generation",
+            startTime: generationStartTime,
+            parentSpanContext,
+          }
         );
 
-        // Set TTFT as completionStartTime
         if (session.ttftMs != null) {
           generation.update({
             completionStartTime: new Date(session.startTime + session.ttftMs),
@@ -472,16 +614,9 @@ export async function traceProxyRequest(ctx: TraceContext): Promise<void> {
         }
 
         generation.end(requestEndTime);
+        rootSpan.end(requestEndTime);
       }
     );
-
-    // Explicitly set trace-level input/output (propagateAttributes does not support these)
-    rootSpan.setTraceIO({
-      input: actualRequestBody,
-      output: actualResponseBody,
-    });
-
-    rootSpan.end(requestEndTime);
   } catch (error) {
     logger.warn("[Langfuse] Failed to trace proxy request", {
       error: error instanceof Error ? error.message : String(error),

@@ -27,30 +27,51 @@ const mockEventObs: any = {
 };
 
 const mockSetTraceIO = vi.fn();
+const MOCK_PARENT_SPAN_CONTEXT = { traceId: "lf-trace", spanId: "lf-root" };
+const propagateState = { active: false };
+const createdInsidePropagate: boolean[] = [];
 
 const mockRootSpan = {
   startObservation: vi.fn(),
   setTraceIO: mockSetTraceIO,
   end: mockSpanEnd,
+  otelSpan: { spanContext: () => MOCK_PARENT_SPAN_CONTEXT },
 };
 
-// Default: route by observation name
+function getObservationCall(name: string) {
+  return mockStartObservation.mock.calls.find((c: unknown[]) => c[0] === name);
+}
+
+function getObservationCalls(name: string) {
+  return mockStartObservation.mock.calls.filter((c: unknown[]) => c[0] === name);
+}
+
 function setupDefaultStartObservation() {
   mockRootSpan.startObservation.mockImplementation((name: string) => {
     if (name === "guard-pipeline") return mockGuardSpan;
-    if (name === "provider-attempt") return mockEventObs;
-    return mockGeneration; // "llm-call"
+    if (name === "provider-attempt" || name === "hedge-trigger") return mockEventObs;
+    return mockGeneration;
   });
 }
 
 vi.mock("@langfuse/tracing", () => ({
   startObservation: (...args: unknown[]) => {
     mockStartObservation(...args);
+    createdInsidePropagate.push(propagateState.active);
+    const name = args[0] as string;
+    if (name === "guard-pipeline") return mockGuardSpan;
+    if (name === "provider-attempt" || name === "hedge-trigger") return mockEventObs;
+    if (name === "llm-call") return mockGeneration;
     return mockRootSpan;
   },
   propagateAttributes: async (attrs: unknown, fn: () => Promise<void>) => {
     mockPropagateAttributes(attrs);
-    await fn();
+    propagateState.active = true;
+    try {
+      await fn();
+    } finally {
+      propagateState.active = false;
+    }
   },
 }));
 
@@ -133,6 +154,7 @@ describe("traceProxyRequest", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     langfuseEnabled = true;
+    createdInsidePropagate.length = 0;
     setupDefaultStartObservation();
   });
 
@@ -189,7 +211,7 @@ describe("traceProxyRequest", () => {
     );
 
     // Should have child observations
-    const callNames = mockRootSpan.startObservation.mock.calls.map((c: unknown[]) => c[0]);
+    const callNames = mockStartObservation.mock.calls.map((c: unknown[]) => c[0]);
     expect(callNames).toContain("guard-pipeline");
     expect(callNames).toContain("llm-call");
 
@@ -211,9 +233,7 @@ describe("traceProxyRequest", () => {
     });
 
     // Find the llm-call invocation
-    const llmCall = mockRootSpan.startObservation.mock.calls.find(
-      (c: unknown[]) => c[0] === "llm-call"
-    );
+    const llmCall = getObservationCall("llm-call");
     expect(llmCall).toBeDefined();
     expect(llmCall[1].input).toEqual(session.request.message);
   });
@@ -231,9 +251,7 @@ describe("traceProxyRequest", () => {
       responseText: JSON.stringify(responseBody),
     });
 
-    const llmCall = mockRootSpan.startObservation.mock.calls.find(
-      (c: unknown[]) => c[0] === "llm-call"
-    );
+    const llmCall = getObservationCall("llm-call");
     expect(llmCall[1].output).toEqual(responseBody);
   });
 
@@ -266,9 +284,7 @@ describe("traceProxyRequest", () => {
       isStreaming: false,
     });
 
-    const llmCall = mockRootSpan.startObservation.mock.calls.find(
-      (c: unknown[]) => c[0] === "llm-call"
-    );
+    const llmCall = getObservationCall("llm-call");
     const metadata = llmCall[1].metadata;
     expect(metadata.requestHeaders).toEqual({
       authorization: "[REDACTED]",
@@ -286,7 +302,7 @@ describe("traceProxyRequest", () => {
     const serializedSdkArguments = JSON.stringify({
       rootObservation: mockStartObservation.mock.calls,
       propagatedAttributes: mockPropagateAttributes.mock.calls,
-      childObservations: mockRootSpan.startObservation.mock.calls,
+      childObservations: mockStartObservation.mock.calls,
       generationUpdates: mockGenerationUpdate.mock.calls,
       generationEnds: mockGenerationEnd.mock.calls,
       guardEnds: mockGuardSpanEnd.mock.calls,
@@ -385,9 +401,7 @@ describe("traceProxyRequest", () => {
       costUsd: "0.0015",
     });
 
-    const llmCall = mockRootSpan.startObservation.mock.calls.find(
-      (c: unknown[]) => c[0] === "llm-call"
-    );
+    const llmCall = getObservationCall("llm-call");
     expect(llmCall[1].usageDetails).toEqual({
       input: 100,
       output: 50,
@@ -422,9 +436,7 @@ describe("traceProxyRequest", () => {
       isStreaming: false,
     });
 
-    const llmCall = mockRootSpan.startObservation.mock.calls.find(
-      (c: unknown[]) => c[0] === "llm-call"
-    );
+    const llmCall = getObservationCall("llm-call");
     const metadata = llmCall[1].metadata;
     expect(metadata.providerChain).toEqual(providerChain);
     expect(metadata.specialSettings).toEqual({ maxThinking: 8192 });
@@ -465,9 +477,7 @@ describe("traceProxyRequest", () => {
       isStreaming: true,
     });
 
-    const llmCall = mockRootSpan.startObservation.mock.calls.find(
-      (c: unknown[]) => c[0] === "llm-call"
-    );
+    const llmCall = getObservationCall("llm-call");
     expect(llmCall[1].metadata.requestSummary).toEqual(
       expect.objectContaining({
         model: "claude-sonnet-4-20250514",
@@ -500,9 +510,7 @@ describe("traceProxyRequest", () => {
       isStreaming: false,
     });
 
-    const llmCall = mockRootSpan.startObservation.mock.calls.find(
-      (c: unknown[]) => c[0] === "llm-call"
-    );
+    const llmCall = getObservationCall("llm-call");
     expect(llmCall[1].metadata.modelRedirected).toBe(true);
     expect(llmCall[1].metadata.originalModel).toBe("claude-sonnet-4-20250514");
   });
@@ -548,12 +556,11 @@ describe("traceProxyRequest", () => {
     });
 
     // Generation gets forwardStartTime in options (3rd arg)
-    const llmCall = mockRootSpan.startObservation.mock.calls.find(
-      (c: unknown[]) => c[0] === "llm-call"
-    );
+    const llmCall = getObservationCall("llm-call");
     expect(llmCall[2]).toEqual({
       asType: "generation",
       startTime: expectedForwardStart,
+      parentSpanContext: MOCK_PARENT_SPAN_CONTEXT,
     });
 
     // Both end() calls receive the computed endTime
@@ -614,9 +621,7 @@ describe("traceProxyRequest", () => {
       responseText: largeContent,
     });
 
-    const llmCall = mockRootSpan.startObservation.mock.calls.find(
-      (c: unknown[]) => c[0] === "llm-call"
-    );
+    const llmCall = getObservationCall("llm-call");
     const output = llmCall[1].output as string;
     // Should be the full content, no truncation
     expect(output).toBe(largeContent);
@@ -635,9 +640,7 @@ describe("traceProxyRequest", () => {
       sseEventCount: 42,
     });
 
-    const llmCall = mockRootSpan.startObservation.mock.calls.find(
-      (c: unknown[]) => c[0] === "llm-call"
-    );
+    const llmCall = getObservationCall("llm-call");
     expect(llmCall[1].output).toEqual({
       kind: "final_output_unavailable",
       reason: "no_terminal_event",
@@ -666,15 +669,9 @@ describe("traceProxyRequest", () => {
     const rootCall = mockStartObservation.mock.calls[0];
     expect(rootCall[1].output).toEqual(expectedOutput);
 
-    const llmCall = mockRootSpan.startObservation.mock.calls.find(
-      (c: unknown[]) => c[0] === "llm-call"
-    );
+    const llmCall = getObservationCall("llm-call");
     expect(llmCall[1].output).toEqual(expectedOutput);
-    expect(mockRootSpan.setTraceIO).toHaveBeenCalledWith(
-      expect.objectContaining({
-        output: expectedOutput,
-      })
-    );
+    expect(mockSetTraceIO).not.toHaveBeenCalled();
   });
 
   test("should mark missing non-stream output when request input exists", async () => {
@@ -704,15 +701,9 @@ describe("traceProxyRequest", () => {
     const rootCall = mockStartObservation.mock.calls[0];
     expect(rootCall[1].output).toEqual(expectedOutput);
 
-    const llmCall = mockRootSpan.startObservation.mock.calls.find(
-      (c: unknown[]) => c[0] === "llm-call"
-    );
+    const llmCall = getObservationCall("llm-call");
     expect(llmCall[1].output).toEqual(expectedOutput);
-    expect(mockRootSpan.setTraceIO).toHaveBeenCalledWith(
-      expect.objectContaining({
-        output: expectedOutput,
-      })
-    );
+    expect(mockSetTraceIO).not.toHaveBeenCalled();
   });
 
   test("should include costUsd in root span metadata", async () => {
@@ -735,7 +726,7 @@ describe("traceProxyRequest", () => {
     );
   });
 
-  test("should set trace-level input/output via setTraceIO with actual bodies", async () => {
+  test("should set input/output on the root observation instead of deprecated setTraceIO", async () => {
     const { traceProxyRequest } = await import("@/lib/langfuse/trace-proxy-request");
     const responseBody = { result: "ok" };
 
@@ -749,12 +740,150 @@ describe("traceProxyRequest", () => {
       costUsd: "0.05",
     });
 
-    expect(mockSetTraceIO).toHaveBeenCalledWith({
-      input: expect.objectContaining({
+    const rootCall = getObservationCall("proxy-request");
+    expect(rootCall?.[1].input).toEqual(
+      expect.objectContaining({
         model: "claude-sonnet-4-20250514",
         messages: expect.any(Array),
-      }),
-      output: responseBody,
+      })
+    );
+    expect(rootCall?.[1].output).toEqual(responseBody);
+    expect(mockSetTraceIO).not.toHaveBeenCalled();
+  });
+
+  test("should emit only sanitized Responses output and native Responses usage", async () => {
+    const { traceProxyRequest } = await import("@/lib/langfuse/trace-proxy-request");
+    const responseBody = {
+      id: "resp_123",
+      object: "response",
+      created_at: 1,
+      completed_at: 2,
+      background: true,
+      error: null,
+      incomplete_details: null,
+      frequency_penalty: 0,
+      presence_penalty: 0,
+      temperature: 1,
+      top_p: 1,
+      top_logprobs: 0,
+      max_output_tokens: 100,
+      max_tool_calls: 2,
+      parallel_tool_calls: true,
+      tool_choice: "auto",
+      truncation: "disabled",
+      store: false,
+      previous_response_id: "resp_previous",
+      prompt_cache_key: "cache-key",
+      prompt_cache_retention: "24h",
+      reasoning: { effort: "high" },
+      safety_identifier: "user-hash",
+      service_tier: "default",
+      text: { format: { type: "text" } },
+      tools: [{ type: "function", name: "lookup" }],
+      tool_usage: { count: 1 },
+      user: "user_123",
+      metadata: { request: "metadata" },
+      status: "completed",
+      model: "gpt-5.6",
+      output: [
+        {
+          id: "msg_123",
+          type: "message",
+          status: "completed",
+          content: [{ type: "output_text", text: "Hello" }],
+        },
+        {
+          id: "fc_123",
+          type: "function_call",
+          status: "completed",
+          internal_chat_message_metadata_passthrough: { internal: true },
+          metadata: { internal: true },
+          call_id: "call_123",
+          name: "lookup",
+          arguments: '{"city":"Taipei"}',
+        },
+      ],
+      usage: {
+        input_tokens: 100,
+        input_tokens_details: { cached_tokens: 25 },
+        output_tokens: 50,
+        output_tokens_details: { reasoning_tokens: 10 },
+        total_tokens: 150,
+      },
+    };
+
+    await traceProxyRequest({
+      session: createMockSession({ originalFormat: "response" }),
+      responseHeaders: new Headers(),
+      durationMs: 500,
+      statusCode: 200,
+      isStreaming: false,
+      responseText: JSON.stringify(responseBody),
+    });
+
+    const expectedOutput = [
+      {
+        id: "msg_123",
+        type: "message",
+        status: "completed",
+        content: [{ type: "output_text", text: "Hello" }],
+      },
+      {
+        type: "function_call",
+        call_id: "call_123",
+        name: "lookup",
+        arguments: '{"city":"Taipei"}',
+      },
+    ];
+    const rootCall = mockStartObservation.mock.calls[0];
+    const llmCall = getObservationCall("llm-call");
+
+    expect(rootCall[1].output).toEqual(expectedOutput);
+    expect(llmCall?.[1]).toMatchObject({
+      output: expectedOutput,
+      usageDetails: responseBody.usage,
+      metadata: { response: { id: "resp_123", status: "completed", model: "gpt-5.6" } },
+    });
+    expect(mockSetTraceIO).not.toHaveBeenCalled();
+  });
+
+  test("should sanitize finalized streaming Responses output", async () => {
+    const { traceProxyRequest } = await import("@/lib/langfuse/trace-proxy-request");
+    const finalResponseOutput: StreamFinalOutput = {
+      kind: "final",
+      value: {
+        id: "resp_stream",
+        object: "response",
+        status: "completed",
+        model: "gpt-5.6",
+        output: [
+          {
+            id: "tool_123",
+            type: "function_call",
+            status: "completed",
+            metadata: { hidden: true },
+            call_id: "call_123",
+          },
+        ],
+        usage: { input_tokens: 1, output_tokens: 2, total_tokens: 3 },
+      },
+    };
+
+    await traceProxyRequest({
+      session: createMockSession({ originalFormat: "response" }),
+      responseHeaders: new Headers(),
+      durationMs: 500,
+      statusCode: 200,
+      isStreaming: true,
+      finalResponseOutput,
+    });
+
+    const llmCall = getObservationCall("llm-call");
+
+    expect(llmCall?.[1]).toMatchObject({
+      output: [{ type: "function_call", call_id: "call_123" }],
+      usageDetails: { input_tokens: 1, output_tokens: 2, total_tokens: 3 },
+      metadata: { response: { id: "resp_stream", status: "completed", model: "gpt-5.6" } },
     });
   });
 
@@ -778,17 +907,13 @@ describe("traceProxyRequest", () => {
     });
 
     const rootCall = mockStartObservation.mock.calls[0];
-    const llmCall = mockRootSpan.startObservation.mock.calls.find(
-      (call: unknown[]) => call[0] === "llm-call"
-    );
-    const traceIoCall = mockSetTraceIO.mock.calls[0];
+    const llmCall = getObservationCall("llm-call");
 
     expect(rootCall[1].output).toBe(finalValue);
     expect(llmCall?.[1].output).toBe(finalValue);
-    expect(traceIoCall[0].output).toBe(finalValue);
+    expect(mockSetTraceIO).not.toHaveBeenCalled();
     expect(JSON.stringify(rootCall[1].output)).not.toContain("data: ");
     expect(JSON.stringify(llmCall?.[1].output)).not.toContain("data: ");
-    expect(JSON.stringify(traceIoCall[0].output)).not.toContain("data: ");
   });
 
   test("should use a structured diagnostic as the shared streaming output", async () => {
@@ -811,13 +936,11 @@ describe("traceProxyRequest", () => {
     });
 
     const rootCall = mockStartObservation.mock.calls[0];
-    const llmCall = mockRootSpan.startObservation.mock.calls.find(
-      (call: unknown[]) => call[0] === "llm-call"
-    );
+    const llmCall = getObservationCall("llm-call");
 
     expect(rootCall[1].output).toBe(diagnostic);
     expect(llmCall?.[1].output).toBe(diagnostic);
-    expect(mockSetTraceIO.mock.calls[0][0].output).toBe(diagnostic);
+    expect(mockSetTraceIO).not.toHaveBeenCalled();
   });
 
   test("should use a bounded diagnostic when streaming output has no finalizer result", async () => {
@@ -841,17 +964,13 @@ describe("traceProxyRequest", () => {
     });
 
     const rootCall = mockStartObservation.mock.calls[0];
-    const llmCall = mockRootSpan.startObservation.mock.calls.find(
-      (call: unknown[]) => call[0] === "llm-call"
-    );
-    const traceIoCall = mockSetTraceIO.mock.calls[0];
+    const llmCall = getObservationCall("llm-call");
 
     expect(rootCall[1].output).toEqual(diagnostic);
     expect(llmCall?.[1].output).toEqual(diagnostic);
-    expect(traceIoCall[0].output).toEqual(diagnostic);
+    expect(mockSetTraceIO).not.toHaveBeenCalled();
     expect(JSON.stringify(rootCall[1].output)).not.toContain("data:");
     expect(JSON.stringify(llmCall?.[1].output)).not.toContain("data:");
-    expect(JSON.stringify(traceIoCall[0].output)).not.toContain("data:");
   });
 
   // --- New tests for multi-span hierarchy ---
@@ -870,14 +989,15 @@ describe("traceProxyRequest", () => {
       isStreaming: false,
     });
 
-    const guardCall = mockRootSpan.startObservation.mock.calls.find(
-      (c: unknown[]) => c[0] === "guard-pipeline"
-    );
+    const guardCall = getObservationCall("guard-pipeline");
     expect(guardCall).toBeDefined();
     expect(guardCall[1]).toEqual({
       output: { durationMs: 8, passed: true },
     });
-    expect(guardCall[2]).toEqual({ startTime: new Date(startTime) });
+    expect(guardCall[2]).toEqual({
+      startTime: new Date(startTime),
+      parentSpanContext: MOCK_PARENT_SPAN_CONTEXT,
+    });
 
     // Guard span should end at forwardStartTime
     expect(mockGuardSpanEnd).toHaveBeenCalledWith(new Date(forwardStartTime));
@@ -894,9 +1014,7 @@ describe("traceProxyRequest", () => {
       isStreaming: false,
     });
 
-    const guardCall = mockRootSpan.startObservation.mock.calls.find(
-      (c: unknown[]) => c[0] === "guard-pipeline"
-    );
+    const guardCall = getObservationCall("guard-pipeline");
     expect(guardCall).toBeUndefined();
     expect(mockGuardSpanEnd).not.toHaveBeenCalled();
   });
@@ -944,9 +1062,7 @@ describe("traceProxyRequest", () => {
       isStreaming: false,
     });
 
-    const eventCalls = mockRootSpan.startObservation.mock.calls.filter(
-      (c: unknown[]) => c[0] === "provider-attempt"
-    );
+    const eventCalls = getObservationCalls("provider-attempt");
     // 2 failed items (retry_failed + system_error), success is skipped
     expect(eventCalls).toHaveLength(2);
 
@@ -969,6 +1085,7 @@ describe("traceProxyRequest", () => {
     expect(eventCalls[0][2]).toEqual({
       asType: "event",
       startTime: new Date(failTimestamp),
+      parentSpanContext: MOCK_PARENT_SPAN_CONTEXT,
     });
 
     // Second event: system_error -> ERROR level
@@ -990,12 +1107,11 @@ describe("traceProxyRequest", () => {
       isStreaming: false,
     });
 
-    const llmCall = mockRootSpan.startObservation.mock.calls.find(
-      (c: unknown[]) => c[0] === "llm-call"
-    );
+    const llmCall = getObservationCall("llm-call");
     expect(llmCall[2]).toEqual({
       asType: "generation",
       startTime: new Date(forwardStartTime),
+      parentSpanContext: MOCK_PARENT_SPAN_CONTEXT,
     });
   });
 
@@ -1012,12 +1128,11 @@ describe("traceProxyRequest", () => {
       isStreaming: false,
     });
 
-    const llmCall = mockRootSpan.startObservation.mock.calls.find(
-      (c: unknown[]) => c[0] === "llm-call"
-    );
+    const llmCall = getObservationCall("llm-call");
     expect(llmCall[2]).toEqual({
       asType: "generation",
       startTime: new Date(startTime),
+      parentSpanContext: MOCK_PARENT_SPAN_CONTEXT,
     });
   });
 
@@ -1058,9 +1173,7 @@ describe("traceProxyRequest", () => {
     expect(rootCall[1].metadata.timingBreakdown).toEqual(expectedTimingBreakdown);
 
     // Generation metadata should also have timingBreakdown
-    const llmCall = mockRootSpan.startObservation.mock.calls.find(
-      (c: unknown[]) => c[0] === "llm-call"
-    );
+    const llmCall = getObservationCall("llm-call");
     expect(llmCall[1].metadata.timingBreakdown).toEqual(expectedTimingBreakdown);
   });
 
@@ -1080,9 +1193,7 @@ describe("traceProxyRequest", () => {
       isStreaming: false,
     });
 
-    const eventCalls = mockRootSpan.startObservation.mock.calls.filter(
-      (c: unknown[]) => c[0] === "provider-attempt"
-    );
+    const eventCalls = getObservationCalls("provider-attempt");
     expect(eventCalls).toHaveLength(0);
   });
 
@@ -1112,11 +1223,7 @@ describe("traceProxyRequest", () => {
     const rootCall = mockStartObservation.mock.calls[0];
     expect(rootCall[1].input).toEqual(JSON.parse(forwardedBody));
 
-    // setTraceIO should also use forwarded body
-    expect(mockSetTraceIO).toHaveBeenCalledWith({
-      input: JSON.parse(forwardedBody),
-      output: { ok: true },
-    });
+    expect(mockSetTraceIO).not.toHaveBeenCalled();
   });
 
   test("should set root span level to DEFAULT for successful request", async () => {
@@ -1207,9 +1314,7 @@ describe("traceProxyRequest", () => {
       costBreakdown,
     });
 
-    const llmCall = mockRootSpan.startObservation.mock.calls.find(
-      (c: unknown[]) => c[0] === "llm-call"
-    );
+    const llmCall = getObservationCall("llm-call");
     expect(llmCall[1].costDetails).toEqual(costBreakdown);
   });
 
@@ -1225,9 +1330,7 @@ describe("traceProxyRequest", () => {
       costUsd: "0.05",
     });
 
-    const llmCall = mockRootSpan.startObservation.mock.calls.find(
-      (c: unknown[]) => c[0] === "llm-call"
-    );
+    const llmCall = getObservationCall("llm-call");
     expect(llmCall[1].costDetails).toEqual({ total: 0.05 });
   });
 
@@ -1256,6 +1359,66 @@ describe("traceProxyRequest", () => {
     expect(metadata.durationMs).toBe(500);
     expect(metadata.costUsd).toBe("0.05");
     expect(metadata.timingBreakdown).toBeDefined();
+  });
+
+  test("creates every observation inside propagateAttributes", async () => {
+    const { traceProxyRequest } = await import("@/lib/langfuse/trace-proxy-request");
+
+    await traceProxyRequest({
+      session: createMockSession(),
+      responseHeaders: new Headers(),
+      durationMs: 500,
+      statusCode: 200,
+      isStreaming: false,
+    });
+
+    expect(createdInsidePropagate.length).toBeGreaterThan(0);
+    expect(createdInsidePropagate.every(Boolean)).toBe(true);
+    expect(getObservationCall("proxy-request")).toBeDefined();
+    expect(getObservationCall("llm-call")?.[2]).toEqual(
+      expect.objectContaining({
+        asType: "generation",
+        parentSpanContext: MOCK_PARENT_SPAN_CONTEXT,
+      })
+    );
+  });
+
+  test("clamps propagated metadata values to 200 characters", async () => {
+    const { traceProxyRequest } = await import("@/lib/langfuse/trace-proxy-request");
+    const longUserAgent = `claude-code/${"x".repeat(400)}`;
+
+    await traceProxyRequest({
+      session: createMockSession({ userAgent: longUserAgent }),
+      responseHeaders: new Headers(),
+      durationMs: 500,
+      statusCode: 200,
+      isStreaming: false,
+    });
+
+    expect(mockPropagateAttributes).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          userAgent: longUserAgent.slice(0, 200),
+        }),
+      })
+    );
+  });
+
+  test("omits empty propagated metadata fields", async () => {
+    const { traceProxyRequest } = await import("@/lib/langfuse/trace-proxy-request");
+
+    await traceProxyRequest({
+      session: createMockSession({ messageContext: null, userName: undefined, clientIp: null }),
+      responseHeaders: new Headers(),
+      durationMs: 500,
+      statusCode: 200,
+      isStreaming: false,
+    });
+
+    const metadata = mockPropagateAttributes.mock.calls[0][0].metadata as Record<string, string>;
+    expect(metadata).not.toHaveProperty("userName");
+    expect(metadata).not.toHaveProperty("keyName");
+    expect(metadata).not.toHaveProperty("clientIp");
   });
 });
 
