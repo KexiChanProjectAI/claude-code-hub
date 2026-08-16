@@ -188,7 +188,8 @@ describe("traceProxyRequest", () => {
 
     // Root span should have actual request body as input (not summary)
     const rootCall = mockStartObservation.mock.calls[0];
-    expect(rootCall[0]).toBe("proxy-request");
+    expect(rootCall[0]).toBe("testuser:claude-sonnet-4-20250514");
+
     // Input should be the actual request message (since forwardedRequestBody is null)
     expect(rootCall[1].input).toEqual(
       expect.objectContaining({
@@ -364,6 +365,7 @@ describe("traceProxyRequest", () => {
         }),
       })
     );
+    expect(getObservationCall("testuser:claude-sonnet-4-20250514")).toBeDefined();
   });
 
   test("should use the bare model as trace name when username is absent", async () => {
@@ -382,6 +384,31 @@ describe("traceProxyRequest", () => {
         traceName: "claude-sonnet-4-20250514",
       })
     );
+    expect(getObservationCall("claude-sonnet-4-20250514")).toBeDefined();
+  });
+
+  test("strips provider prefixes from observation and trace names at the last slash", async () => {
+    const { traceProxyRequest } = await import("@/lib/langfuse/trace-proxy-request");
+
+    await traceProxyRequest({
+      session: createMockSession({
+        getCurrentModel: () => "openrouter/anthropic/claude-sonnet-4-20250514",
+      }),
+      responseHeaders: new Headers(),
+      durationMs: 500,
+      statusCode: 200,
+      isStreaming: false,
+    });
+
+    expect(mockPropagateAttributes).toHaveBeenCalledWith(
+      expect.objectContaining({
+        traceName: "testuser:claude-sonnet-4-20250514",
+      })
+    );
+    expect(getObservationCall("testuser:claude-sonnet-4-20250514")).toBeDefined();
+    expect(
+      getObservationCall("testuser:openrouter/anthropic/claude-sonnet-4-20250514")
+    ).toBeUndefined();
   });
 
   test("should include usage details when provided", async () => {
@@ -551,9 +578,13 @@ describe("traceProxyRequest", () => {
     const expectedForwardStart = new Date(startTime + 5);
 
     // Root span gets startTime in options (3rd arg)
-    expect(mockStartObservation).toHaveBeenCalledWith("proxy-request", expect.any(Object), {
-      startTime: expectedStart,
-    });
+    expect(mockStartObservation).toHaveBeenCalledWith(
+      "testuser:claude-sonnet-4-20250514",
+      expect.any(Object),
+      {
+        startTime: expectedStart,
+      }
+    );
 
     // Generation gets forwardStartTime in options (3rd arg)
     const llmCall = getObservationCall("llm-call");
@@ -740,7 +771,8 @@ describe("traceProxyRequest", () => {
       costUsd: "0.05",
     });
 
-    const rootCall = getObservationCall("proxy-request");
+    const rootCall = getObservationCall("testuser:claude-sonnet-4-20250514");
+
     expect(rootCall?.[1].input).toEqual(
       expect.objectContaining({
         model: "claude-sonnet-4-20250514",
@@ -1374,7 +1406,8 @@ describe("traceProxyRequest", () => {
 
     expect(createdInsidePropagate.length).toBeGreaterThan(0);
     expect(createdInsidePropagate.every(Boolean)).toBe(true);
-    expect(getObservationCall("proxy-request")).toBeDefined();
+    expect(getObservationCall("testuser:claude-sonnet-4-20250514")).toBeDefined();
+
     expect(getObservationCall("llm-call")?.[2]).toEqual(
       expect.objectContaining({
         asType: "generation",
