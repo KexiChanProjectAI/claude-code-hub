@@ -38,6 +38,22 @@ function clampLangfuseTags(tags: string[]): string[] {
     .filter((tag): tag is string => tag !== undefined);
 }
 
+/** Keep the segment after the last `/` so provider prefixes stay out of the name. */
+function langfuseModelShortName(model: string | undefined): string {
+  if (!model) return "unknown";
+  const separator = model.lastIndexOf("/");
+  const shortName = separator >= 0 ? model.slice(separator + 1) : model;
+  return shortName || "unknown";
+}
+
+function buildLangfuseDisplayName(
+  username: string | undefined,
+  model: string | undefined
+): string | undefined {
+  const shortModel = langfuseModelShortName(model);
+  return clampLangfusePropagatedString(username ? `${username}:${shortModel}` : shortModel);
+}
+
 function buildRequestBodySummary(session: ProxySession): Record<string, unknown> {
   const msg = session.request.message as Record<string, unknown>;
   const hasSystemPrompt =
@@ -487,29 +503,23 @@ export async function traceProxyRequest(ctx: TraceContext): Promise<void> {
         ? { total: Number.parseFloat(ctx.costUsd) }
         : undefined;
 
-    const username = messageContext?.user?.name ?? session.userName;
-    const traceName = clampLangfusePropagatedString(
-      username
-        ? `${username}:${session.getCurrentModel() ?? "unknown"}`
-        : (session.getCurrentModel() ?? "unknown")
-    );
+    const username = messageContext?.user?.name ?? session.userName ?? undefined;
+    const displayName = buildLangfuseDisplayName(username, session.getCurrentModel()) ?? "unknown";
 
     // Official v5: wrap ALL observations in propagateAttributes so userId/sessionId/tags
     // land on the root span too. Child startObservation on the wrapper drops startTime;
     // use the module-level API with parentSpanContext instead.
     await propagateAttributes(
       {
-        userId: clampLangfusePropagatedString(
-          messageContext?.user?.name ?? session.userName ?? undefined
-        ),
+        userId: clampLangfusePropagatedString(username),
         sessionId: clampLangfusePropagatedString(session.sessionId ?? undefined),
         tags,
         metadata: traceMetadata,
-        ...(traceName ? { traceName } : {}),
+        traceName: displayName,
       },
       async () => {
         const rootSpan = startObservation(
-          "proxy-request",
+          displayName,
           {
             input: actualRequestBody,
             output: actualResponseBody,
