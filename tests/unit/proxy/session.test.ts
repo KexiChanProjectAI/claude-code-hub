@@ -530,6 +530,23 @@ describe("ProxySession - isHeaderModified", () => {
   });
 });
 
+describe("ProxySession - getOriginalHeaders", () => {
+  it("应返回会话创建时的客户端原始请求头", () => {
+    const headers = new Headers([
+      ["authorization", "Bearer original-token-value"],
+      ["user-agent", "claude-code/1.0"],
+    ]);
+    const session = createSessionForHeaders(headers);
+
+    session.headers.set("user-agent", "filter-rewritten");
+    session.headers.set("x-filter-added", "1");
+
+    expect(session.getOriginalHeaders().get("authorization")).toBe("Bearer original-token-value");
+    expect(session.getOriginalHeaders().get("user-agent")).toBe("claude-code/1.0");
+    expect(session.getOriginalHeaders().get("x-filter-added")).toBeNull();
+  });
+});
+
 describe("ProxySession.isWarmupRequest", () => {
   it("应识别合法的 Warmup 请求（忽略大小写与首尾空格）", () => {
     const session = createSession({
