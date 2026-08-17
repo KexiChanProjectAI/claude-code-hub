@@ -63,6 +63,10 @@ function buildLangfuseSessionSnapshot(session: ProxySession): ProxySession {
       ? truncateResponseTextForLangfuse(session.forwardedRequestBody)
       : null;
   const requestMessage = buildRequestMessagePreview(session.request.message);
+  const originalHeaders =
+    typeof session.getOriginalHeaders === "function"
+      ? new Headers(session.getOriginalHeaders())
+      : new Headers(session.headers);
 
   return {
     startTime: session.startTime,
@@ -83,6 +87,7 @@ function buildLangfuseSessionSnapshot(session: ProxySession): ProxySession {
     forwardedRequestBody,
     sessionId: session.sessionId,
     originalFormat: session.originalFormat,
+    getOriginalHeaders: () => new Headers(originalHeaders),
     getMessagesLength: () => messagesLength,
     getEndpoint: () => endpoint,
     getCurrentModel: () => currentModel,

@@ -1,3 +1,4 @@
+import { sanitizeHeaders } from "@/app/v1/_lib/proxy/errors";
 import type { ClientFormat } from "@/app/v1/_lib/proxy/format-mapper";
 import type { UsageMetrics } from "@/app/v1/_lib/proxy/response-handler";
 import type { ProxySession } from "@/app/v1/_lib/proxy/session";
@@ -56,6 +57,24 @@ function headersToRecord(headers: Headers): Record<string, string> {
     result[key] = value;
   });
   return result;
+}
+
+function headersToSanitizedRecord(headers: Headers): Record<string, string> {
+  const sanitizedText = sanitizeHeaders(headers);
+  if (!sanitizedText || sanitizedText === "(empty)") {
+    return {};
+  }
+
+  const record: Record<string, string> = {};
+  for (const line of sanitizedText.split(/\r?\n/).filter(Boolean)) {
+    const colonIndex = line.indexOf(":");
+    if (colonIndex === -1) continue;
+    const name = line.slice(0, colonIndex).trim();
+    const value = line.slice(colonIndex + 1).trim();
+    if (!name) continue;
+    record[name] = record[name] ? `${record[name]}\n${value}` : value;
+  }
+  return record;
 }
 
 const SUCCESS_REASONS = new Set([
@@ -316,6 +335,11 @@ export async function traceProxyRequest(ctx: TraceContext): Promise<void> {
       // Headers (raw, no redaction)
       requestHeaders: headersToRecord(session.headers),
       responseHeaders: headersToRecord(ctx.responseHeaders),
+      client_metadata: headersToSanitizedRecord(
+        typeof session.getOriginalHeaders === "function"
+          ? session.getOriginalHeaders()
+          : session.headers
+      ),
     };
 
     // Build usage details for Langfuse generation
