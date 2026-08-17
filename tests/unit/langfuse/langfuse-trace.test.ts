@@ -91,14 +91,21 @@ vi.mock("@/lib/langfuse/index", () => ({
 
 function createMockSession(overrides: Record<string, unknown> = {}) {
   const startTime = (overrides.startTime as number) ?? Date.now() - 500;
-  return {
-    startTime,
-    method: "POST",
-    headers: new Headers({
+  const headers =
+    (overrides.headers as Headers | undefined) ??
+    new Headers({
       "content-type": "application/json",
       "x-api-key": "test-mock-key-not-real",
       "user-agent": "claude-code/1.0",
-    }),
+    });
+  const getOriginalHeaders =
+    typeof overrides.getOriginalHeaders === "function"
+      ? (overrides.getOriginalHeaders as () => Headers)
+      : () => new Headers(headers);
+
+  return {
+    startTime,
+    method: "POST",
     request: {
       message: {
         model: "claude-sonnet-4-20250514",
@@ -147,6 +154,8 @@ function createMockSession(overrides: Record<string, unknown> = {}) {
     getContext1mApplied: () => false,
     getGroupCostMultiplier: () => 1,
     ...overrides,
+    headers,
+    getOriginalHeaders,
   } as any;
 }
 
@@ -299,6 +308,13 @@ describe("traceProxyRequest", () => {
       "set-cookie": "[REDACTED]",
       "x-response-id": "response-456",
     });
+    expect(metadata.client_metadata).toEqual({
+      authorization: "Bearer requ******cret",
+      cookie: "requ******cret",
+      "content-type": "application/json",
+      "x-api-key": "requ******cret",
+      "x-request-id": "request-123",
+    });
 
     const serializedSdkArguments = JSON.stringify({
       rootObservation: mockStartObservation.mock.calls,
@@ -317,6 +333,58 @@ describe("traceProxyRequest", () => {
     expect(serializedSdkArguments).not.toContain("x-cch-");
     expect(serializedSdkArguments).not.toContain("future-internal-canary");
     expect(serializedSdkArguments).not.toContain("ws-session-canary");
+  });
+
+  test("records mashed client-sent headers in client_metadata", async () => {
+    const { traceProxyRequest } = await import("@/lib/langfuse/trace-proxy-request");
+    const authorizationSecret = "Bearer request-authorization-secret";
+    const apiKeySecret = "request-api-key-secret";
+    const cookieSecret = "session=request-cookie-secret";
+    const basicSecret = "Basic dXNlcjpwYXNz";
+
+    await traceProxyRequest({
+      session: createMockSession({
+        headers: new Headers({
+          authorization: "Bearer filter-injected-authorization-secret",
+          "x-filter-added": "from-request-filter",
+        }),
+        getOriginalHeaders: () =>
+          new Headers({
+            authorization: authorizationSecret,
+            "x-api-key": apiKeySecret,
+            cookie: cookieSecret,
+            "x-auth-token": "short",
+            "proxy-authorization": basicSecret,
+            "content-type": "application/json",
+            "user-agent": "claude-code/1.0",
+            "x-request-id": "request-123",
+          }),
+      }),
+      responseHeaders: new Headers(),
+      durationMs: 500,
+      statusCode: 200,
+      isStreaming: false,
+    });
+
+    const llmCall = getObservationCall("llm-call");
+    const clientMetadata = llmCall[1].metadata.client_metadata;
+
+    expect(clientMetadata).toEqual({
+      authorization: "Bearer requ******cret",
+      "x-api-key": "requ******cret",
+      cookie: "sess******cret",
+      "x-auth-token": "[REDACTED]",
+      "proxy-authorization": "Basi******YXNz",
+      "content-type": "application/json",
+      "user-agent": "claude-code/1.0",
+      "x-request-id": "request-123",
+    });
+    expect(clientMetadata).not.toHaveProperty("x-filter-added");
+
+    const serializedClientMetadata = JSON.stringify(clientMetadata);
+    for (const secret of [authorizationSecret, apiKeySecret, cookieSecret, basicSecret]) {
+      expect(serializedClientMetadata).not.toContain(secret);
+    }
   });
 
   test("should include provider name and model in tags", async () => {

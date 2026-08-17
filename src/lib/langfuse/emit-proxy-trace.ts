@@ -69,6 +69,10 @@ function buildLangfuseSessionSnapshot(session: ProxySession): ProxySession {
       : null;
   const requestMessage = buildRequestMessagePreview(session.request.message);
   const clientIp = session.clientIp;
+  const originalHeaders =
+    typeof session.getOriginalHeaders === "function"
+      ? new Headers(session.getOriginalHeaders())
+      : new Headers(session.headers);
 
   return {
     startTime: session.startTime,
@@ -91,6 +95,7 @@ function buildLangfuseSessionSnapshot(session: ProxySession): ProxySession {
     sessionId: session.sessionId,
     clientIp,
     originalFormat: session.originalFormat,
+    getOriginalHeaders: () => new Headers(originalHeaders),
     getMessagesLength: () => messagesLength,
     getEndpoint: () => endpoint,
     getCurrentModel: () => currentModel,
