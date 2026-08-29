@@ -33,3 +33,14 @@ export function getKeyActiveSessionsKey(keyId: number): string {
 export function getUserActiveSessionsKey(userId: number): string {
   return `${ACTIVE_SESSIONS_HASH_TAG}:user:${userId}:active_sessions`;
 }
+
+export function getUserActiveSessionsScanPattern(): string {
+  return `${ACTIVE_SESSIONS_HASH_TAG}:user:*:active_sessions`;
+}
+
+export function parseUserIdFromActiveSessionsKey(key: string): number | null {
+  const match = /:user:(\d+):active_sessions$/.exec(key);
+  if (!match) return null;
+  const userId = Number(match[1]);
+  return Number.isInteger(userId) && userId > 0 ? userId : null;
+}

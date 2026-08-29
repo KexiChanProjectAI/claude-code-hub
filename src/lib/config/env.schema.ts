@@ -258,6 +258,10 @@ export const EnvSchema = z.object({
   LANGFUSE_TRACING_ENVIRONMENT: z.string().optional(),
   LANGFUSE_RELEASE: z.string().optional(),
 
+  // Prometheus scrape at GET /metrics
+  METRICS_ENABLED: z.string().default("true").transform(booleanTransform),
+  METRICS_TOKEN: z.string().optional(),
+
   // IP 归属地查询服务
   // 默认使用官方托管服务；可通过 IP_GEO_API_URL 自托管
   IP_GEO_API_URL: z.string().default("https://ip-api.claude-code-hub.app"),
