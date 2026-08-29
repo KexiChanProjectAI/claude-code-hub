@@ -8,6 +8,7 @@ import {
 } from "@/lib/error-override-validator";
 import { emitProxyLangfuseTrace } from "@/lib/langfuse/emit-proxy-trace";
 import { logger } from "@/lib/logger";
+import { emitProxyMetrics } from "@/lib/metrics";
 import { ProxyStatusTracker } from "@/lib/proxy-status-tracker";
 import { ERROR_CODES, getErrorMessageServer } from "@/lib/utils/error-messages";
 import { sanitizeErrorTextForDetail } from "@/lib/utils/upstream-error-detection";
@@ -693,6 +694,12 @@ export class ProxyErrorHandler {
   ): void {
     const isStreaming = isRequestStreaming(session);
 
+    emitProxyMetrics(session, {
+      statusCode: data.statusCode,
+      durationMs: Math.max(0, Date.now() - session.startTime),
+      usageMetrics: null,
+      costUsd: undefined,
+    });
     emitProxyLangfuseTrace(session, {
       responseHeaders: new Headers(),
       responseText: data.responseText ?? getErrorResponseText(data.error),

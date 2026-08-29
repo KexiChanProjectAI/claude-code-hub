@@ -10,6 +10,7 @@ import { getEnvConfig } from "@/lib/config/env.schema";
 import { getCachedSystemSettings } from "@/lib/config/system-settings-cache";
 import { emitProxyLangfuseTrace } from "@/lib/langfuse/emit-proxy-trace";
 import { logger } from "@/lib/logger";
+import { emitProxyMetrics } from "@/lib/metrics";
 import { recordDiscoveryControlEvent } from "@/lib/observability/discovery-metrics";
 import { requestCloudPriceTableSync } from "@/lib/price-sync/cloud-price-updater";
 import { ProxyStatusTracker } from "@/lib/proxy-status-tracker";
@@ -2730,6 +2731,12 @@ export class ProxyResponseHandler {
               false, // Gemini 非流式透传
               scheduleCommittedSideEffects
             );
+            emitProxyMetrics(session, {
+              statusCode,
+              durationMs: duration,
+              usageMetrics: finalizedUsage,
+              costUsd: undefined,
+            });
             emitProxyLangfuseTrace(session, {
               responseHeaders: response.headers,
               responseText,
@@ -3401,6 +3408,12 @@ export class ProxyResponseHandler {
           statusCode,
         });
 
+        emitProxyMetrics(session, {
+          statusCode,
+          durationMs: Date.now() - session.startTime,
+          usageMetrics,
+          costUsd: rawCostUsdStr,
+        });
         emitProxyLangfuseTrace(session, {
           responseHeaders: response.headers,
           responseText,
@@ -4027,6 +4040,12 @@ export class ProxyResponseHandler {
               true, // Gemini 流式透传(NDJSON 无 data:/event: 前缀,必须显式告知)
               () => scheduleCommitSideEffects(latestCommitSideEffects)
             );
+            emitProxyMetrics(session, {
+              statusCode: finalized.effectiveStatusCode,
+              durationMs: duration,
+              usageMetrics: finalizedUsage,
+              costUsd: undefined,
+            });
             emitProxyLangfuseTrace(session, {
               responseHeaders: response.headers,
               responseText: allContent,
@@ -5058,6 +5077,12 @@ export class ProxyResponseHandler {
           )
         );
 
+        emitProxyMetrics(session, {
+          statusCode: effectiveStatusCode,
+          durationMs: duration,
+          usageMetrics: usageForCost,
+          costUsd: rawCostUsdStr,
+        });
         emitProxyLangfuseTrace(session, {
           responseHeaders: response.headers,
           responseText: allContent,
@@ -6727,6 +6752,12 @@ export async function finalizeRequestStats(
     } else {
       await updateMessageRequestDetailsDurably(messageContext.id, terminalDetails);
     }
+    emitProxyMetrics(session, {
+      statusCode,
+      durationMs: duration,
+      usageMetrics: billablePerRequestUsage,
+      costUsd: perRequestCostUsd,
+    });
     return null;
   }
 
@@ -6852,6 +6883,12 @@ export async function finalizeRequestStats(
     }
   }
 
+  emitProxyMetrics(session, {
+    statusCode,
+    durationMs: duration,
+    usageMetrics: billableNormalizedUsage ?? normalizedUsage,
+    costUsd: costUpdateResult.costUsd,
+  });
   return normalizedUsage;
 }
 
@@ -7149,6 +7186,12 @@ async function persistRequestFailure(options: {
   }
 
   // Emit Langfuse trace for error/abort paths
+  emitProxyMetrics(session, {
+    statusCode,
+    durationMs: duration,
+    usageMetrics: null,
+    costUsd: undefined,
+  });
   emitProxyLangfuseTrace(session, {
     responseHeaders: new Headers(),
     responseText: "",
