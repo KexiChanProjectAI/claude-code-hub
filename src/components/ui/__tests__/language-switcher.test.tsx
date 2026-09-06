@@ -131,58 +131,45 @@ describe("LanguageSwitcher", () => {
   });
 
   test("keeps the pending refresh after remount when sessionStorage is blocked", () => {
-    const sessionStorageDescriptor = Object.getOwnPropertyDescriptor(window, "sessionStorage");
-    const setItemSpy = vi.fn(() => {
-      throw new Error("blocked storage");
-    });
-    const blockedStorage = {
-      length: 0,
-      clear: vi.fn(),
-      getItem: vi.fn(() => null),
-      key: vi.fn(() => null),
-      removeItem: vi.fn(),
-      setItem: setItemSpy,
-    } satisfies Storage;
-    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    Object.defineProperty(window, "sessionStorage", {
+    const originalDescriptor = Object.getOwnPropertyDescriptor(window, "sessionStorage") || {
+      value: window.sessionStorage,
       configurable: true,
-      value: blockedStorage,
+      writable: true,
+    };
+    Object.defineProperty(window, "sessionStorage", {
+      get() {
+        throw new Error("blocked storage");
+      },
+      configurable: true,
     });
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    try {
-      view = render(<LanguageSwitcher />);
+    view = render(<LanguageSwitcher />);
 
-      const englishOption = Array.from(view.container.querySelectorAll("button")).find((button) =>
-        button.textContent?.includes("English")
-      );
+    const englishOption = Array.from(view.container.querySelectorAll("button")).find((button) =>
+      button.textContent?.includes("English")
+    );
 
-      expect(englishOption).toBeTruthy();
-      click(englishOption!);
+    expect(englishOption).toBeTruthy();
+    click(englishOption!);
 
-      expect(setItemSpy).toHaveBeenCalledWith("cch.pendingLocaleRefresh", "en");
-      expect(testState.router.push).toHaveBeenCalledWith("/settings/config", { locale: "en" });
-      expect(testState.router.refresh).not.toHaveBeenCalled();
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "Failed to persist pending locale refresh target:",
-        expect.any(Error)
-      );
+    expect(testState.router.push).toHaveBeenCalledWith("/settings/config", { locale: "en" });
+    expect(testState.router.refresh).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "Failed to persist pending locale refresh target:",
+      expect.any(Error)
+    );
 
-      view.unmount();
-      view = null;
-      if (sessionStorageDescriptor) {
-        Object.defineProperty(window, "sessionStorage", sessionStorageDescriptor);
-      }
+    view.unmount();
+    view = null;
+    Object.defineProperty(window, "sessionStorage", originalDescriptor);
 
-      testState.currentLocale = "en";
-      view = render(<LanguageSwitcher />);
+    testState.currentLocale = "en";
+    view = render(<LanguageSwitcher />);
 
-      expect(testState.router.refresh).toHaveBeenCalledTimes(1);
-    } finally {
-      if (sessionStorageDescriptor) {
-        Object.defineProperty(window, "sessionStorage", sessionStorageDescriptor);
-      }
-      consoleErrorSpy.mockRestore();
-    }
+    expect(testState.router.refresh).toHaveBeenCalledTimes(1);
+
+    consoleErrorSpy.mockRestore();
   });
 
   test("restores a pending refresh from sessionStorage after remount", () => {
