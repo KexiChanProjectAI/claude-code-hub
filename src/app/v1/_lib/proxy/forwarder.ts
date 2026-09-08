@@ -32,7 +32,11 @@ import {
   getEndpointFilterStats,
   getPreferredProviderEndpoints,
 } from "@/lib/provider-endpoints/endpoint-selector";
-import { getGlobalAgentPool, getProxyAgentForProvider } from "@/lib/proxy-agent";
+import {
+  fetchWithDispatcher,
+  getGlobalAgentPool,
+  getProxyAgentForProvider,
+} from "@/lib/proxy-agent";
 import {
   isHttp2TransportQuarantined,
   quarantineHttp2Transport,
@@ -702,7 +706,6 @@ function getReasoningEffortOverrideRules(
 ): readonly ReasoningEffortOverrideRule[] | null {
   return hasReasoningEffortOverrideRules(provider) ? provider.reasoningEffortOverrideRules : null;
 }
-
 
 // 非流式响应体检查的上限（字节）：避免上游在 2xx 场景返回超大内容导致内存占用失控。
 // 说明：
@@ -3527,34 +3530,34 @@ export class ProxyForwarder {
               );
             session.request.message = anthropicOverridden;
 
-          if (anthropicAudit) {
-            session.addSpecialSetting(anthropicAudit);
-            const specialSettings = session.getSpecialSettings();
+            if (anthropicAudit) {
+              session.addSpecialSetting(anthropicAudit);
+              const specialSettings = session.getSpecialSettings();
 
-            if (session.sessionId && session.shouldPersistSessionDebugArtifacts()) {
-              await SessionManager.storeSessionSpecialSettings(
-                session.sessionId,
-                specialSettings,
-                session.requestSequence
-              ).catch((err) => {
-                logger.error("[ProxyForwarder] Failed to store Anthropic special settings", {
-                  error: err,
-                  sessionId: session.sessionId,
+              if (session.sessionId && session.shouldPersistSessionDebugArtifacts()) {
+                await SessionManager.storeSessionSpecialSettings(
+                  session.sessionId,
+                  specialSettings,
+                  session.requestSequence
+                ).catch((err) => {
+                  logger.error("[ProxyForwarder] Failed to store Anthropic special settings", {
+                    error: err,
+                    sessionId: session.sessionId,
+                  });
                 });
-              });
-            }
+              }
 
-            if (session.messageContext?.id) {
-              await updateMessageRequestDetails(session.messageContext.id, {
-                specialSettings,
-              }).catch((err) => {
-                logger.error("[ProxyForwarder] Failed to persist Anthropic special settings", {
-                  error: err,
-                  messageRequestId: session.messageContext?.id,
+              if (session.messageContext?.id) {
+                await updateMessageRequestDetails(session.messageContext.id, {
+                  specialSettings,
+                }).catch((err) => {
+                  logger.error("[ProxyForwarder] Failed to persist Anthropic special settings", {
+                    error: err,
+                    messageRequestId: session.messageContext?.id,
+                  });
                 });
-              });
+              }
             }
-          }
           }
         }
 
@@ -3839,7 +3842,7 @@ export class ProxyForwarder {
     }
     const fetchWithDispatch = async (url: string, requestInit: UndiciFetchOptions) => {
       onUpstreamDispatch?.();
-      return await fetch(url, requestInit);
+      return await fetchWithDispatcher(url, requestInit);
     };
 
     // ⭐ 双路超时控制（first-byte / total）

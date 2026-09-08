@@ -54,6 +54,7 @@ import {
 import { getPresetsForProvider } from "@/lib/provider-testing/presets";
 import {
   createProxyAgentForProvider,
+  fetchWithDispatcher,
   isValidProxyUrl,
   type ProviderProxyConfig,
 } from "@/lib/proxy-agent";
@@ -3522,7 +3523,7 @@ export async function testProviderProxy(data: {
       }
 
       // 发起测试请求
-      const response = await fetch(data.providerUrl, init);
+      const response = await fetchWithDispatcher(data.providerUrl, init);
       const responseTime = Date.now() - startTime;
 
       return {
@@ -4415,12 +4416,11 @@ async function executeProviderApiTest(
         init.dispatcher = proxyConfig.agent;
       }
 
-      let response = await fetch(url, init);
+      let response = await fetchWithDispatcher(url, init);
       let responseTime = Date.now() - startTime;
 
       const shouldAttemptDirectRetry =
         Boolean(proxyConfig?.fallbackToDirect) && PROXY_RETRY_STATUS_CODES.has(response.status);
-
       if (shouldAttemptDirectRetry) {
         const isCloudflareError = detectCloudflareGatewayError(response);
 
@@ -4437,7 +4437,7 @@ async function executeProviderApiTest(
 
         const fallbackStartTime = Date.now();
         try {
-          response = await fetch(url, fallbackInit);
+          response = await fetchWithDispatcher(url, fallbackInit);
           responseTime = Date.now() - fallbackStartTime;
 
           logger.info("Provider API test: Direct connection succeeded after proxy failure", {
@@ -5434,8 +5434,7 @@ async function executeProxiedFetch(
   if (proxy) {
     init.dispatcher = proxy.agent;
   }
-
-  return fetch(url, init);
+  return fetchWithDispatcher(url, init);
 }
 
 /**

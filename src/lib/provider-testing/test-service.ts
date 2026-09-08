@@ -4,7 +4,11 @@
  * 统一执行模板探测，并在协议不匹配时自动切换到同套件里的下一个模板。
  */
 
-import { createProxyAgentForProvider, type ProviderProxyConfig } from "@/lib/proxy-agent";
+import {
+  createProxyAgentForProvider,
+  fetchWithDispatcher,
+  type ProviderProxyConfig,
+} from "@/lib/proxy-agent";
 import { parseResponse } from "./parsers";
 import {
   getExecutionPresetCandidates,
@@ -235,11 +239,10 @@ async function runSingleAttempt(
         fetchOptions.dispatcher = dispatcher;
       }
 
-      // provider testing 只在这条受控链路里做一次 versionless fallback，避免影响 runtime proxy 行为。
       while (true) {
         attemptStartTime = Date.now();
         firstByteMs = undefined;
-        const response = await fetch(requestUrl, fetchOptions);
+        const response = await fetchWithDispatcher(requestUrl, fetchOptions);
         firstByteMs = Date.now() - attemptStartTime;
 
         const responseBody = await response.text();
