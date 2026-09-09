@@ -44,6 +44,7 @@ export const notificationTypeEnum = pgEnum('notification_type', [
   'daily_leaderboard',
   'cost_alert',
   'cache_hit_rate_alert',
+  'client_problem',
 ]);
 
 // Users table
@@ -1096,6 +1097,8 @@ export const notificationSettings = pgTable('notification_settings', {
   enabled: boolean('enabled').notNull().default(false),
   // 兼容旧配置：默认使用 legacy 字段（单 URL / 自动识别），创建新目标后会切到新模式
   useLegacyMode: boolean('use_legacy_mode').notNull().default(false),
+  // 告警标题前缀（区分实例，例如 PROXY）
+  titlePrefix: varchar('title_prefix', { length: 64 }),
 
   // 熔断器告警配置
   circuitBreakerEnabled: boolean('circuit_breaker_enabled').notNull().default(false),
@@ -1126,6 +1129,14 @@ export const notificationSettings = pgTable('notification_settings', {
   cacheHitRateAlertDropAbs: numeric('cache_hit_rate_alert_drop_abs', { precision: 5, scale: 4 }).default('0.1'),
   cacheHitRateAlertCooldownMinutes: integer('cache_hit_rate_alert_cooldown_minutes').default(30),
   cacheHitRateAlertTopN: integer('cache_hit_rate_alert_top_n').default(10),
+
+  // 客户端故障汇总告警（超时 / 5xx / cyber risk，不含 499）
+  clientProblemEnabled: boolean('client_problem_enabled').notNull().default(false),
+  clientProblemWebhook: varchar('client_problem_webhook', { length: 512 }),
+  clientProblemCountThreshold: integer('client_problem_count_threshold').default(10),
+  clientProblemWindowMinutes: integer('client_problem_window_minutes').default(5),
+  clientProblemCyberCountThreshold: integer('client_problem_cyber_count_threshold').default(3),
+  clientProblemCyberWindowMinutes: integer('client_problem_cyber_window_minutes').default(5),
 
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
