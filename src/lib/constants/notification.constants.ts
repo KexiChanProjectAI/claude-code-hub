@@ -6,6 +6,7 @@ export const NOTIFICATION_JOB_TYPES = [
   "cache-hit-rate-alert",
   "cost-alert",
   "daily-leaderboard",
+  "client-problem",
 ] as const;
 
 export type NotificationJobType = (typeof NOTIFICATION_JOB_TYPES)[number];

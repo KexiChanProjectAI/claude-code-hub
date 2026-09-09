@@ -30,6 +30,7 @@ export interface ClientActionResult<T> {
 
 export interface NotificationSettingsState {
   enabled: boolean;
+  titlePrefix: string;
 
   circuitBreakerEnabled: boolean;
   circuitBreakerWebhook: string;
@@ -54,6 +55,12 @@ export interface NotificationSettingsState {
   cacheHitRateAlertDropAbs: number;
   cacheHitRateAlertCooldownMinutes: number;
   cacheHitRateAlertTopN: number;
+
+  clientProblemEnabled: boolean;
+  clientProblemCountThreshold: number;
+  clientProblemWindowMinutes: number;
+  clientProblemCyberCountThreshold: number;
+  clientProblemCyberWindowMinutes: number;
 }
 
 export interface WebhookTestResult {
@@ -114,6 +121,7 @@ export const NOTIFICATION_TYPES: NotificationType[] = [
   "daily_leaderboard",
   "cost_alert",
   "cache_hit_rate_alert",
+  "client_problem",
 ];
 
 const INT32_MAX = 2_147_483_647;
@@ -164,6 +172,7 @@ function toClientSettings(raw: any): NotificationSettingsState {
 
   return {
     enabled: Boolean(raw?.enabled),
+    titlePrefix: typeof raw?.titlePrefix === "string" ? raw.titlePrefix : "",
     circuitBreakerEnabled: Boolean(raw?.circuitBreakerEnabled),
     circuitBreakerWebhook: raw?.circuitBreakerWebhook || "",
     dailyLeaderboardEnabled: Boolean(raw?.dailyLeaderboardEnabled),
@@ -205,6 +214,16 @@ function toClientSettings(raw: any): NotificationSettingsState {
       1440
     ),
     cacheHitRateAlertTopN: toBoundedInt(raw?.cacheHitRateAlertTopN, 10, 1, 100),
+    clientProblemEnabled: Boolean(raw?.clientProblemEnabled),
+    clientProblemCountThreshold: toBoundedInt(raw?.clientProblemCountThreshold, 10, 1, 10000),
+    clientProblemWindowMinutes: toBoundedInt(raw?.clientProblemWindowMinutes, 5, 1, 1440),
+    clientProblemCyberCountThreshold: toBoundedInt(
+      raw?.clientProblemCyberCountThreshold,
+      3,
+      1,
+      10000
+    ),
+    clientProblemCyberWindowMinutes: toBoundedInt(raw?.clientProblemCyberWindowMinutes, 5, 1, 1440),
   };
 }
 
@@ -218,6 +237,7 @@ export function useNotificationsPageData() {
     daily_leaderboard: [],
     cost_alert: [],
     cache_hit_rate_alert: [],
+    client_problem: [],
   }));
 
   const [isLoading, setIsLoading] = useState(true);
@@ -272,6 +292,10 @@ export function useNotificationsPageData() {
 
       if (patch.enabled !== undefined) {
         payload.enabled = patch.enabled;
+      }
+      if (patch.titlePrefix !== undefined) {
+        const nextValue = patch.titlePrefix.trim().slice(0, 64);
+        payload.titlePrefix = nextValue.length > 0 ? nextValue : null;
       }
 
       if (patch.circuitBreakerEnabled !== undefined) {
@@ -380,6 +404,33 @@ export function useNotificationsPageData() {
         const nextValue = normalizeIntPatch(patch.cacheHitRateAlertTopN, 1, 100);
         if (nextValue !== undefined) {
           payload.cacheHitRateAlertTopN = nextValue;
+        }
+      }
+      if (patch.clientProblemEnabled !== undefined) {
+        payload.clientProblemEnabled = patch.clientProblemEnabled;
+      }
+      if (patch.clientProblemCountThreshold !== undefined) {
+        const nextValue = normalizeIntPatch(patch.clientProblemCountThreshold, 1, 10000);
+        if (nextValue !== undefined) {
+          payload.clientProblemCountThreshold = nextValue;
+        }
+      }
+      if (patch.clientProblemWindowMinutes !== undefined) {
+        const nextValue = normalizeIntPatch(patch.clientProblemWindowMinutes, 1, 1440);
+        if (nextValue !== undefined) {
+          payload.clientProblemWindowMinutes = nextValue;
+        }
+      }
+      if (patch.clientProblemCyberCountThreshold !== undefined) {
+        const nextValue = normalizeIntPatch(patch.clientProblemCyberCountThreshold, 1, 10000);
+        if (nextValue !== undefined) {
+          payload.clientProblemCyberCountThreshold = nextValue;
+        }
+      }
+      if (patch.clientProblemCyberWindowMinutes !== undefined) {
+        const nextValue = normalizeIntPatch(patch.clientProblemCyberWindowMinutes, 1, 1440);
+        if (nextValue !== undefined) {
+          payload.clientProblemCyberWindowMinutes = nextValue;
         }
       }
 

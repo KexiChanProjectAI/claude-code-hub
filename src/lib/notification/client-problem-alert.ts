@@ -1,0 +1,492 @@
+import { createHash } from "node:crypto";
+import type { ProxySession } from "@/app/v1/_lib/proxy/session";
+import { logger } from "@/lib/logger";
+import { getRedisClient } from "@/lib/redis/client";
+import type {
+  ClientProblemAlertData,
+  ClientProblemAlertSample,
+  ClientProblemBucket,
+  ClientProblemFlushJobData,
+  ClientProblemKind,
+} from "@/lib/webhook/types";
+import { getNotificationSettings, type NotificationSettings } from "@/repository/notifications";
+import type { ProviderChainItem } from "@/types/message";
+
+export type { ClientProblemBucket, ClientProblemKind };
+export type ClientProblemClass =
+  | { bucket: "cyber"; kind: "cyber" }
+  | { bucket: "general"; kind: "timeout" | "server" }
+  | null;
+
+const CYBER_RE = /cyber_policy|flagged for possible cybersecurity risk/iu;
+const TIMEOUT_RE =
+  /ETIMEDOUT|UND_ERR_CONNECT_TIMEOUT|UND_ERR_HEADERS_TIMEOUT|UND_ERR_BODY_TIMEOUT|STREAM_IDLE_TIMEOUT|STREAM_RESPONSE_TIMEOUT|\btimeout\b/i;
+const TIMEOUT_STATUS = new Set([408, 504, 524]);
+const HAYSTACK_MAX_CHARS = 8 * 1024;
+const SAMPLE_ERROR_MAX_CHARS = 200;
+const SAMPLE_LIMIT = 10;
+const TOP_GROUP_LIMIT = 8;
+const SETTINGS_CACHE_TTL_MS = 15_000;
+const REDIS_SKIP_LOG_INTERVAL_MS = 60_000;
+const KEY_PREFIX = "cch:client-problem";
+
+const CLIENT_PROBLEM_INCR_LUA = `
+local prefix = KEYS[1]
+local nowMs = ARGV[1]
+local sampleJson = ARGV[2]
+local kind = ARGV[3]
+local status = ARGV[4]
+local userKey = ARGV[5]
+local providerKey = ARGV[6]
+local modelKey = ARGV[7]
+local countThreshold = tonumber(ARGV[8])
+
+local countKey = prefix .. ":count"
+local count = redis.call("INCR", countKey)
+if count == 1 then
+  redis.call("SET", prefix .. ":firstAt", nowMs)
+end
+redis.call("HINCRBY", prefix .. ":kind", kind, 1)
+redis.call("HINCRBY", prefix .. ":status", status, 1)
+redis.call("HINCRBY", prefix .. ":user", userKey, 1)
+redis.call("HINCRBY", prefix .. ":provider", providerKey, 1)
+redis.call("HINCRBY", prefix .. ":model", modelKey, 1)
+if redis.call("LLEN", prefix .. ":samples") < 10 then
+  redis.call("LPUSH", prefix .. ":samples", sampleJson)
+end
+if count == countThreshold then
+  return {count, 1}
+end
+if count == 1 then
+  return {count, 2}
+end
+return {count, 0}
+`;
+
+const CLIENT_PROBLEM_INCR_SHA = createHash("sha1").update(CLIENT_PROBLEM_INCR_LUA).digest("hex");
+
+const recordedSessions = new WeakSet<ProxySession>();
+
+type SettingsCache = { value: NotificationSettings; expiresAt: number };
+let settingsCache: SettingsCache | null = null;
+let lastRedisSkipLogAt = 0;
+
+type RedisLike = {
+  eval: (script: string, numKeys: number, ...args: Array<string | number>) => Promise<unknown>;
+  evalsha?: (sha: string, numKeys: number, ...args: Array<string | number>) => Promise<unknown>;
+  get: (key: string) => Promise<string | null>;
+  set: (
+    key: string,
+    value: string,
+    expiryMode: string,
+    time: number,
+    flag: string
+  ) => Promise<string | null>;
+  del: (...keys: string[]) => Promise<number>;
+  hgetall: (key: string) => Promise<Record<string, string>>;
+  lrange: (key: string, start: number, stop: number) => Promise<string[]>;
+};
+
+export type ClientProblemBucketSnapshot = {
+  count: number;
+  firstAtMs: number;
+  kind: Record<string, number>;
+  status: Record<string, number>;
+  user: Record<string, number>;
+  provider: Record<string, number>;
+  model: Record<string, number>;
+  samples: ClientProblemAlertSample[];
+};
+
+export function classifyClientProblem(input: {
+  statusCode: number;
+  isWarmup: boolean;
+  errorText: string;
+}): ClientProblemClass {
+  if (input.isWarmup) return null;
+  if (input.statusCode === 499) return null;
+  if (CYBER_RE.test(input.errorText)) return { bucket: "cyber", kind: "cyber" };
+  if (TIMEOUT_STATUS.has(input.statusCode) || TIMEOUT_RE.test(input.errorText)) {
+    return { bucket: "general", kind: "timeout" };
+  }
+  if (input.statusCode >= 500 && input.statusCode <= 599) {
+    return { bucket: "general", kind: "server" };
+  }
+  return null;
+}
+
+export function collectClientProblemHaystack(session: ProxySession): string {
+  const getter = (session as { getProviderChain?: () => ProviderChainItem[] }).getProviderChain;
+  const chain = typeof getter === "function" ? getter.call(session) : [];
+  if (!Array.isArray(chain) || chain.length === 0) return "";
+
+  const parts: string[] = [];
+  const last = chain[chain.length - 1];
+  if (last) {
+    pushHaystackPart(parts, last.errorMessage);
+    pushHaystackPart(parts, last.errorDetails?.clientError);
+    pushHaystackPart(parts, last.errorDetails?.matchedRule?.pattern);
+    pushHaystackPart(parts, last.errorDetails?.matchedRule?.description);
+    pushHaystackPart(parts, last.errorDetails?.system?.errorMessage);
+    pushHaystackPart(parts, last.errorDetails?.system?.errorCode);
+    const upstreamBody = last.errorDetails?.provider?.upstreamBody;
+    if (typeof upstreamBody === "string") pushHaystackPart(parts, upstreamBody);
+  }
+  for (const item of chain) {
+    pushHaystackPart(parts, item.reason);
+  }
+
+  const joined = parts.join("\n");
+  return joined.length > HAYSTACK_MAX_CHARS ? joined.slice(0, HAYSTACK_MAX_CHARS) : joined;
+}
+
+function pushHaystackPart(parts: string[], value: string | undefined): void {
+  if (value && value.length > 0) parts.push(value);
+}
+
+export function emitClientProblemAlert(session: ProxySession, statusCode: number): void {
+  if (recordedSessions.has(session)) return;
+  recordedSessions.add(session);
+  void recordClientProblemAlert(session, statusCode).catch((error) => {
+    logger.warn({
+      action: "client_problem_alert_record_error",
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+}
+
+export async function recordClientProblemAlert(
+  session: ProxySession,
+  statusCode: number
+): Promise<void> {
+  const errorText = collectClientProblemHaystack(session);
+  const classified = classifyClientProblem({
+    statusCode,
+    isWarmup: typeof session.isWarmupRequest === "function" ? session.isWarmupRequest() : false,
+    errorText,
+  });
+  if (!classified) return;
+
+  const settings = await getCachedNotificationSettings();
+  if (!settings.enabled || !settings.clientProblemEnabled) return;
+
+  const redis = getRedisClient({ allowWhenRateLimitDisabled: true }) as RedisLike | null;
+  if (!redis) {
+    const now = Date.now();
+    if (now - lastRedisSkipLogAt >= REDIS_SKIP_LOG_INTERVAL_MS) {
+      lastRedisSkipLogAt = now;
+      logger.warn({ action: "client_problem_alert_skipped", reason: "redis_unavailable" });
+    }
+    return;
+  }
+
+  const countThreshold =
+    classified.bucket === "cyber"
+      ? clampCount(settings.clientProblemCyberCountThreshold, 3)
+      : clampCount(settings.clientProblemCountThreshold, 10);
+  const windowMinutes =
+    classified.bucket === "cyber"
+      ? clampWindowMinutes(settings.clientProblemCyberWindowMinutes, 5)
+      : clampWindowMinutes(settings.clientProblemWindowMinutes, 5);
+
+  const user = session.messageContext?.user ?? session.authState?.user;
+  const provider = session.provider;
+  const model =
+    (typeof session.getCurrentModel === "function" ? session.getCurrentModel() : null) ?? "unknown";
+  const userKey = user ? `${user.id}:${user.name}` : "unknown";
+  const providerKey = provider ? `${provider.id}:${provider.name}` : "unknown";
+  const sample = {
+    at: new Date().toISOString(),
+    userId: user?.id ?? null,
+    userName: user?.name ?? "unknown",
+    providerId: provider?.id ?? null,
+    providerName: provider?.name ?? "unknown",
+    model,
+    statusCode,
+    kind: classified.kind,
+    error: errorText.slice(0, SAMPLE_ERROR_MAX_CHARS),
+  };
+
+  const prefix = bucketPrefix(classified.bucket);
+  const nowMs = Date.now();
+  const luaResult = await evalIncr(redis, prefix, [
+    String(nowMs),
+    JSON.stringify(sample),
+    classified.kind,
+    String(statusCode || "unknown"),
+    orUnknown(userKey),
+    orUnknown(providerKey),
+    orUnknown(model),
+    countThreshold,
+  ]);
+  const code = luaResult[1];
+
+  if (code === 1) {
+    const snapshot = await loadAndClearBucket(redis, classified.bucket);
+    const { removeClientProblemFlushJob } = await import("./notification-queue");
+    await removeClientProblemFlushJob(classified.bucket);
+    if (snapshot) {
+      await sendClientProblemAlert(
+        buildClientProblemAlertData(snapshot, {
+          bucket: classified.bucket,
+          windowMinutes,
+          trigger: "count",
+        })
+      );
+    }
+    return;
+  }
+
+  if (code === 2) {
+    const windowSeconds = windowMinutes * 60;
+    const timerSet = await redis.set(`${prefix}:timer`, "1", "EX", windowSeconds, "NX");
+    if (timerSet === "OK") {
+      const { addClientProblemFlushJob } = await import("./notification-queue");
+      await addClientProblemFlushJob(classified.bucket, windowMinutes * 60_000);
+    }
+  }
+}
+
+export async function sendClientProblemAlert(data: ClientProblemAlertData): Promise<void> {
+  try {
+    const settings = await getNotificationSettings();
+    if (!settings.enabled || !settings.clientProblemEnabled) {
+      return;
+    }
+    // Dynamic import: notification-queue pulls Bull; keep it off the emit/metrics path.
+    const { addNotificationJob, addNotificationJobForTarget } = await import(
+      "./notification-queue"
+    );
+
+    if (settings.useLegacyMode) {
+      const url = settings.clientProblemWebhook?.trim();
+      if (!url) return;
+      await addNotificationJob("client-problem", url, data);
+      return;
+    }
+
+    const { getEnabledBindingsByType } = await import("@/repository/notification-bindings");
+    const bindings = await getEnabledBindingsByType("client_problem");
+    for (const binding of bindings) {
+      await addNotificationJobForTarget("client-problem", binding.targetId, binding.id, data);
+    }
+  } catch (error) {
+    logger.error({
+      action: "send_client_problem_alert_error",
+      bucket: data.bucket,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+export async function handleClientProblemFlush(bucket: ClientProblemBucket): Promise<void> {
+  const redis = getRedisClient({ allowWhenRateLimitDisabled: true }) as RedisLike | null;
+  if (!redis) return;
+
+  const snapshot = await loadAndClearBucket(redis, bucket);
+  if (!snapshot || snapshot.count < 1) return;
+
+  const settings = await getNotificationSettings();
+  if (!settings.enabled || !settings.clientProblemEnabled) return;
+
+  const windowMinutes =
+    bucket === "cyber"
+      ? clampWindowMinutes(settings.clientProblemCyberWindowMinutes, 5)
+      : clampWindowMinutes(settings.clientProblemWindowMinutes, 5);
+
+  await sendClientProblemAlert(
+    buildClientProblemAlertData(snapshot, {
+      bucket,
+      windowMinutes,
+      trigger: "window",
+    })
+  );
+}
+
+export async function loadAndClearBucket(
+  redis: RedisLike,
+  bucket: ClientProblemBucket
+): Promise<ClientProblemBucketSnapshot | null> {
+  const prefix = bucketPrefix(bucket);
+  const countRaw = await redis.get(`${prefix}:count`);
+  const count = Number(countRaw);
+  if (!Number.isFinite(count) || count < 1) {
+    await redis.del(...bucketKeys(prefix));
+    return null;
+  }
+
+  const [firstAtRaw, kind, status, user, provider, model, sampleRaw] = await Promise.all([
+    redis.get(`${prefix}:firstAt`),
+    redis.hgetall(`${prefix}:kind`),
+    redis.hgetall(`${prefix}:status`),
+    redis.hgetall(`${prefix}:user`),
+    redis.hgetall(`${prefix}:provider`),
+    redis.hgetall(`${prefix}:model`),
+    redis.lrange(`${prefix}:samples`, 0, SAMPLE_LIMIT - 1),
+  ]);
+
+  await redis.del(...bucketKeys(prefix));
+
+  return {
+    count,
+    firstAtMs: Number(firstAtRaw) || Date.now(),
+    kind: toCountMap(kind),
+    status: toCountMap(status),
+    user: toCountMap(user),
+    provider: toCountMap(provider),
+    model: toCountMap(model),
+    samples: (sampleRaw ?? [])
+      .map(parseSample)
+      .filter((sample): sample is ClientProblemAlertSample => sample != null),
+  };
+}
+
+export function buildClientProblemAlertData(
+  snapshot: ClientProblemBucketSnapshot,
+  input: {
+    bucket: ClientProblemBucket;
+    windowMinutes: number;
+    trigger: "count" | "window";
+  }
+): ClientProblemAlertData {
+  return {
+    bucket: input.bucket,
+    kindCounts: {
+      timeout: snapshot.kind.timeout ?? 0,
+      server: snapshot.kind.server ?? 0,
+      cyber: snapshot.kind.cyber ?? 0,
+    },
+    totalCount: snapshot.count,
+    windowStartedAt: new Date(snapshot.firstAtMs).toISOString(),
+    windowMinutes: input.windowMinutes,
+    trigger: input.trigger,
+    byStatus: topCounts(snapshot.status),
+    byUser: topCounts(snapshot.user),
+    byProvider: topCounts(snapshot.provider),
+    byModel: topCounts(snapshot.model),
+    samples: snapshot.samples.slice(0, SAMPLE_LIMIT),
+  };
+}
+
+export function isClientProblemFlushJobData(value: unknown): value is ClientProblemFlushJobData {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return record.flush === true && (record.bucket === "general" || record.bucket === "cyber");
+}
+
+export function isClientProblemAlertData(value: unknown): value is ClientProblemAlertData {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    (record.bucket === "general" || record.bucket === "cyber") &&
+    typeof record.totalCount === "number" &&
+    (record.trigger === "count" || record.trigger === "window")
+  );
+}
+
+export function resetClientProblemAlertForTests(): void {
+  settingsCache = null;
+  lastRedisSkipLogAt = 0;
+}
+
+function bucketPrefix(bucket: ClientProblemBucket): string {
+  return `${KEY_PREFIX}:${bucket}`;
+}
+
+function bucketKeys(prefix: string): string[] {
+  return [
+    `${prefix}:count`,
+    `${prefix}:firstAt`,
+    `${prefix}:kind`,
+    `${prefix}:status`,
+    `${prefix}:user`,
+    `${prefix}:provider`,
+    `${prefix}:model`,
+    `${prefix}:samples`,
+    `${prefix}:timer`,
+  ];
+}
+
+async function evalIncr(
+  redis: RedisLike,
+  prefix: string,
+  args: Array<string | number>
+): Promise<[number, number]> {
+  let raw: unknown;
+  if (redis.evalsha) {
+    try {
+      raw = await redis.evalsha(CLIENT_PROBLEM_INCR_SHA, 1, prefix, ...args);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/NOSCRIPT/i.test(message)) throw error;
+      raw = await redis.eval(CLIENT_PROBLEM_INCR_LUA, 1, prefix, ...args);
+    }
+  } else {
+    raw = await redis.eval(CLIENT_PROBLEM_INCR_LUA, 1, prefix, ...args);
+  }
+
+  const pair = Array.isArray(raw) ? raw : [0, 0];
+  return [Number(pair[0]) || 0, Number(pair[1]) || 0];
+}
+
+async function getCachedNotificationSettings(): Promise<NotificationSettings> {
+  const now = Date.now();
+  if (settingsCache && settingsCache.expiresAt > now) {
+    return settingsCache.value;
+  }
+  const value = await getNotificationSettings();
+  settingsCache = { value, expiresAt: now + SETTINGS_CACHE_TTL_MS };
+  return value;
+}
+
+function clampCount(n: unknown, fallback: number): number {
+  return Math.min(10000, Math.max(1, Math.trunc(Number(n)) || fallback));
+}
+
+function clampWindowMinutes(n: unknown, fallback: number): number {
+  return Math.min(1440, Math.max(1, Math.trunc(Number(n)) || fallback));
+}
+
+function orUnknown(value: string | null | undefined): string {
+  const trimmed = value?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : "unknown";
+}
+
+function toCountMap(hash: Record<string, string> | null | undefined): Record<string, number> {
+  const result: Record<string, number> = {};
+  if (!hash) return result;
+  for (const [key, raw] of Object.entries(hash)) {
+    const count = Number(raw);
+    result[key] = Number.isFinite(count) ? count : 0;
+  }
+  return result;
+}
+
+function topCounts(hash: Record<string, number>): Array<{ key: string; count: number }> {
+  return Object.entries(hash)
+    .map(([key, count]) => ({ key, count }))
+    .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key))
+    .slice(0, TOP_GROUP_LIMIT);
+}
+
+function parseSample(raw: string): ClientProblemAlertSample | null {
+  try {
+    const parsed = JSON.parse(raw) as Partial<ClientProblemAlertSample> & { kind?: string };
+    if (!parsed || typeof parsed !== "object") return null;
+    const kind: ClientProblemKind =
+      parsed.kind === "timeout" || parsed.kind === "server" || parsed.kind === "cyber"
+        ? parsed.kind
+        : "server";
+    return {
+      at: typeof parsed.at === "string" ? parsed.at : new Date().toISOString(),
+      userName: typeof parsed.userName === "string" ? parsed.userName : "unknown",
+      providerName: typeof parsed.providerName === "string" ? parsed.providerName : "unknown",
+      model: typeof parsed.model === "string" ? parsed.model : "unknown",
+      statusCode: Number(parsed.statusCode) || 0,
+      kind,
+      error: typeof parsed.error === "string" ? parsed.error : "",
+    };
+  } catch {
+    return null;
+  }
+}

@@ -20,6 +20,7 @@ type LegacySecretBearingRecord = {
 type LegacyNotificationSettingsRecord = {
   cacheHitRateAlertWebhook?: string | null;
   circuitBreakerWebhook?: string | null;
+  clientProblemWebhook?: string | null;
   costAlertWebhook?: string | null;
   dailyLeaderboardWebhook?: string | null;
 };
@@ -36,6 +37,7 @@ export function sanitizeLegacyNotificationSettingsResponse<
     ...settings,
     cacheHitRateAlertWebhook: redactWebhookField(settings.cacheHitRateAlertWebhook),
     circuitBreakerWebhook: redactWebhookField(settings.circuitBreakerWebhook),
+    clientProblemWebhook: redactWebhookField(settings.clientProblemWebhook),
     costAlertWebhook: redactWebhookField(settings.costAlertWebhook),
     dailyLeaderboardWebhook: redactWebhookField(settings.dailyLeaderboardWebhook),
   } as T;
@@ -46,6 +48,7 @@ export function preserveLegacyNotificationSettingsUpdateInput<T extends object>(
   for (const field of [
     "cacheHitRateAlertWebhook",
     "circuitBreakerWebhook",
+    "clientProblemWebhook",
     "costAlertWebhook",
     "dailyLeaderboardWebhook",
   ] as const) {

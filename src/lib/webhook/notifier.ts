@@ -6,7 +6,9 @@ import {
   fetchWithDispatcher,
   type ProxyConfig,
 } from "@/lib/proxy-agent";
+import { resolveWebhookProxyUrl } from "./env-proxy";
 import { createRenderer, type Renderer } from "./renderers";
+import { applyNotificationTitlePrefix } from "./title-prefix";
 import type {
   ProviderType,
   StructuredMessage,
@@ -44,7 +46,10 @@ export class WebhookNotifier {
   }
 
   async send(message: StructuredMessage, options?: WebhookSendOptions): Promise<WebhookResult> {
-    const payload = this.renderer.render(message, options);
+    const payload = this.renderer.render(
+      applyNotificationTitlePrefix(message, options?.titlePrefix),
+      options
+    );
     const url = this.getEndpointUrl();
 
     try {
@@ -117,7 +122,7 @@ export class WebhookNotifier {
   }
 
   private createProxyConfig(): ProxyConfig | null {
-    const proxyUrl = this.config.proxyUrl?.trim();
+    const proxyUrl = resolveWebhookProxyUrl(this.config.proxyUrl);
     if (!proxyUrl) {
       return null;
     }

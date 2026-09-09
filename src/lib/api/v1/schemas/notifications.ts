@@ -3,7 +3,13 @@ import { IsoDateTimeStringSchema } from "./_common";
 import { WebhookTargetSchema } from "./webhook-targets";
 
 export const NotificationTypeSchema = z
-  .enum(["circuit_breaker", "daily_leaderboard", "cost_alert", "cache_hit_rate_alert"])
+  .enum([
+    "circuit_breaker",
+    "daily_leaderboard",
+    "cost_alert",
+    "cache_hit_rate_alert",
+    "client_problem",
+  ])
   .describe("Notification job type.");
 
 export const NotificationTypeParamSchema = z.object({
@@ -15,6 +21,11 @@ export const NotificationSettingsSchema = z
     id: z.number().int().positive().describe("Settings row id."),
     enabled: z.boolean().describe("Whether notifications are enabled globally."),
     useLegacyMode: z.boolean().describe("Whether legacy single-webhook mode is enabled."),
+    titlePrefix: z
+      .string()
+      .max(64)
+      .nullable()
+      .describe("Instance title prefix prepended to alert titles, e.g. PROXY."),
     circuitBreakerEnabled: z
       .boolean()
       .describe("Whether circuit breaker notifications are enabled."),
@@ -74,6 +85,36 @@ export const NotificationSettingsSchema = z
       .nullable()
       .describe("Alert cooldown in minutes."),
     cacheHitRateAlertTopN: z.number().int().nullable().describe("Top N cache hit-rate alerts."),
+    clientProblemEnabled: z.boolean().describe("Whether client problem alerts are enabled."),
+    clientProblemWebhook: z.string().nullable().describe("Legacy client problem webhook URL."),
+    clientProblemCountThreshold: z
+      .number()
+      .int()
+      .min(1)
+      .max(10000)
+      .nullable()
+      .describe("General client-problem count threshold."),
+    clientProblemWindowMinutes: z
+      .number()
+      .int()
+      .min(1)
+      .max(1440)
+      .nullable()
+      .describe("General client-problem window in minutes."),
+    clientProblemCyberCountThreshold: z
+      .number()
+      .int()
+      .min(1)
+      .max(10000)
+      .nullable()
+      .describe("Cyber-risk count threshold."),
+    clientProblemCyberWindowMinutes: z
+      .number()
+      .int()
+      .min(1)
+      .max(1440)
+      .nullable()
+      .describe("Cyber-risk window in minutes."),
     createdAt: IsoDateTimeStringSchema.nullable().describe("Creation time."),
     updatedAt: IsoDateTimeStringSchema.nullable().describe("Last update time."),
   })

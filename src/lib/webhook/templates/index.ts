@@ -1,5 +1,6 @@
 export { buildCacheHitRateAlertMessage } from "./cache-hit-rate-alert";
 export { buildCircuitBreakerMessage } from "./circuit-breaker";
+export { buildClientProblemMessage } from "./client-problem";
 export { buildCostAlertMessage } from "./cost-alert";
 export { buildDailyLeaderboardMessage } from "./daily-leaderboard";
 export { DEFAULT_TEMPLATE_BY_NOTIFICATION_TYPE, DEFAULT_TEMPLATES } from "./defaults";

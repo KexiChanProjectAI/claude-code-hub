@@ -8,7 +8,10 @@
     "on": "已开启",
     "off": "已关闭",
     "legacyModeTitle": "兼容模式",
-    "legacyModeDescription": "当前使用旧版单 URL 推送配置。创建推送目标后将自动切换到多目标模式。"
+    "legacyModeDescription": "当前使用旧版单 URL 推送配置。创建推送目标后将自动切换到多目标模式。",
+    "titlePrefix": "告警标题前缀",
+    "titlePrefixPlaceholder": "PROXY",
+    "titlePrefixHelp": "用于区分实例，发送时加在标题前，例如 [PROXY]。留空则不加前缀。Webhook 可通过目标代理或环境变量 PROXY/HTTPS_PROXY 出网。"
   },
   "targets": {
     "title": "推送目标",
@@ -145,6 +148,15 @@
     "minEligibleRequests": "最小可命中请求数",
     "minEligibleTokens": "最小可命中 Tokens",
     "topN": "Top N"
+  },
+  "clientProblem": {
+    "title": "客户端故障告警",
+    "description": "客户端遇到超时、服务端错误或 cyber risk 时汇总推送（不含 499）。两组阈值独立：累计条数或时间窗口，先到先发。",
+    "enable": "启用客户端故障告警",
+    "countThreshold": "一般错误条数阈值",
+    "windowMinutes": "一般错误时间窗口（分钟）",
+    "cyberCountThreshold": "Cyber risk 条数阈值",
+    "cyberWindowMinutes": "Cyber risk 时间窗口（分钟）"
   },
   "form": {
     "save": "保存设置",

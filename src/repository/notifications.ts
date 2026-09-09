@@ -16,6 +16,7 @@ export interface NotificationSettings {
   id: number;
   enabled: boolean;
   useLegacyMode: boolean;
+  titlePrefix: string | null;
 
   // 熔断器告警配置
   circuitBreakerEnabled: boolean;
@@ -47,6 +48,13 @@ export interface NotificationSettings {
   cacheHitRateAlertCooldownMinutes: number | null;
   cacheHitRateAlertTopN: number | null;
 
+  clientProblemEnabled: boolean;
+  clientProblemWebhook: string | null;
+  clientProblemCountThreshold: number | null;
+  clientProblemWindowMinutes: number | null;
+  clientProblemCyberCountThreshold: number | null;
+  clientProblemCyberWindowMinutes: number | null;
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -57,6 +65,7 @@ export interface NotificationSettings {
 export interface UpdateNotificationSettingsInput {
   enabled?: boolean;
   useLegacyMode?: boolean;
+  titlePrefix?: string | null;
 
   circuitBreakerEnabled?: boolean;
   circuitBreakerWebhook?: string | null;
@@ -83,6 +92,13 @@ export interface UpdateNotificationSettingsInput {
   cacheHitRateAlertDropAbs?: string;
   cacheHitRateAlertCooldownMinutes?: number;
   cacheHitRateAlertTopN?: number;
+
+  clientProblemEnabled?: boolean;
+  clientProblemWebhook?: string | null;
+  clientProblemCountThreshold?: number;
+  clientProblemWindowMinutes?: number;
+  clientProblemCyberCountThreshold?: number;
+  clientProblemCyberWindowMinutes?: number;
 }
 
 /**
@@ -230,6 +246,7 @@ function createFallbackSettings(): NotificationSettings {
     id: 0,
     enabled: false,
     useLegacyMode: false,
+    titlePrefix: null,
     circuitBreakerEnabled: false,
     circuitBreakerWebhook: null,
     dailyLeaderboardEnabled: false,
@@ -253,6 +270,13 @@ function createFallbackSettings(): NotificationSettings {
     cacheHitRateAlertDropAbs: "0.1",
     cacheHitRateAlertCooldownMinutes: 30,
     cacheHitRateAlertTopN: 10,
+
+    clientProblemEnabled: false,
+    clientProblemWebhook: null,
+    clientProblemCountThreshold: 10,
+    clientProblemWindowMinutes: 5,
+    clientProblemCyberCountThreshold: 3,
+    clientProblemCyberWindowMinutes: 5,
     createdAt: now,
     updatedAt: now,
   };
@@ -301,6 +325,11 @@ export async function getNotificationSettings(): Promise<NotificationSettings> {
         cacheHitRateAlertDropAbs: "0.1",
         cacheHitRateAlertCooldownMinutes: 30,
         cacheHitRateAlertTopN: 10,
+        clientProblemEnabled: false,
+        clientProblemCountThreshold: 10,
+        clientProblemWindowMinutes: 5,
+        clientProblemCyberCountThreshold: 3,
+        clientProblemCyberWindowMinutes: 5,
       })
       .onConflictDoNothing()
       .returning();
@@ -313,6 +342,7 @@ export async function getNotificationSettings(): Promise<NotificationSettings> {
         cacheHitRateAlertWindowMode: normalizeCacheHitRateAlertWindowMode(
           created.cacheHitRateAlertWindowMode
         ),
+        clientProblemEnabled: created.clientProblemEnabled ?? false,
         createdAt: created.createdAt ?? new Date(),
         updatedAt: created.updatedAt ?? new Date(),
       };
@@ -332,6 +362,7 @@ export async function getNotificationSettings(): Promise<NotificationSettings> {
       cacheHitRateAlertWindowMode: normalizeCacheHitRateAlertWindowMode(
         fallback.cacheHitRateAlertWindowMode
       ),
+      clientProblemEnabled: fallback.clientProblemEnabled ?? false,
       createdAt: fallback.createdAt ?? new Date(),
       updatedAt: fallback.updatedAt ?? new Date(),
     };
@@ -445,6 +476,27 @@ export async function updateNotificationSettings(
     }
     if (payload.cacheHitRateAlertTopN !== undefined) {
       updates.cacheHitRateAlertTopN = payload.cacheHitRateAlertTopN;
+    }
+    if (payload.titlePrefix !== undefined) {
+      updates.titlePrefix = payload.titlePrefix;
+    }
+    if (payload.clientProblemEnabled !== undefined) {
+      updates.clientProblemEnabled = payload.clientProblemEnabled;
+    }
+    if (payload.clientProblemWebhook !== undefined) {
+      updates.clientProblemWebhook = payload.clientProblemWebhook;
+    }
+    if (payload.clientProblemCountThreshold !== undefined) {
+      updates.clientProblemCountThreshold = payload.clientProblemCountThreshold;
+    }
+    if (payload.clientProblemWindowMinutes !== undefined) {
+      updates.clientProblemWindowMinutes = payload.clientProblemWindowMinutes;
+    }
+    if (payload.clientProblemCyberCountThreshold !== undefined) {
+      updates.clientProblemCyberCountThreshold = payload.clientProblemCyberCountThreshold;
+    }
+    if (payload.clientProblemCyberWindowMinutes !== undefined) {
+      updates.clientProblemCyberWindowMinutes = payload.clientProblemCyberWindowMinutes;
     }
 
     const [updated] = await db

@@ -113,6 +113,10 @@ export function collectLegacyWebhooks(settings: NotificationSettings): LegacyWeb
     addWebhook(settings.costAlertWebhook, "cost_alert");
   }
 
+  if (settings.clientProblemEnabled && settings.clientProblemWebhook) {
+    addWebhook(settings.clientProblemWebhook, "client_problem");
+  }
+
   return Array.from(webhookMap.values());
 }
 

@@ -2,6 +2,7 @@ import type { NotificationJobType } from "@/lib/constants/notification.constants
 import type { StructuredMessage } from "../types";
 import { buildCacheHitRateAlertMessage } from "./cache-hit-rate-alert";
 import { buildCircuitBreakerMessage } from "./circuit-breaker";
+import { buildClientProblemMessage } from "./client-problem";
 import { buildCostAlertMessage } from "./cost-alert";
 import { buildDailyLeaderboardMessage } from "./daily-leaderboard";
 
@@ -99,5 +100,56 @@ export function buildTestMessage(type: NotificationJobType, timezone?: string): 
         },
         timezone
       );
+
+    case "client-problem":
+      return buildClientProblemMessage(buildClientProblemTestData(), timezone);
   }
+}
+
+export function buildClientProblemTestData() {
+  const now = Date.now();
+  return {
+    bucket: "general" as const,
+    kindCounts: { timeout: 1, server: 2, cyber: 0 },
+    totalCount: 3,
+    windowStartedAt: new Date(now - 5 * 60 * 1000).toISOString(),
+    windowMinutes: 5,
+    trigger: "count" as const,
+    byStatus: [
+      { key: "502", count: 2 },
+      { key: "524", count: 1 },
+    ],
+    byUser: [{ key: "1:测试用户", count: 3 }],
+    byProvider: [{ key: "1:测试供应商", count: 3 }],
+    byModel: [{ key: "test-model", count: 3 }],
+    samples: [
+      {
+        at: new Date(now - 4000).toISOString(),
+        userName: "测试用户",
+        providerName: "测试供应商",
+        model: "test-model",
+        statusCode: 524,
+        kind: "timeout" as const,
+        error: "vendor_type_all_timeout",
+      },
+      {
+        at: new Date(now - 2000).toISOString(),
+        userName: "测试用户",
+        providerName: "测试供应商",
+        model: "test-model",
+        statusCode: 502,
+        kind: "server" as const,
+        error: "Bad Gateway",
+      },
+      {
+        at: new Date(now).toISOString(),
+        userName: "测试用户",
+        providerName: "测试供应商",
+        model: "test-model",
+        statusCode: 502,
+        kind: "server" as const,
+        error: "Bad Gateway",
+      },
+    ],
+  };
 }

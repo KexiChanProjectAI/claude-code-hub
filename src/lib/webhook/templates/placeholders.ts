@@ -1,6 +1,7 @@
 import type {
   CacheHitRateAlertData,
   CircuitBreakerAlertData,
+  ClientProblemAlertData,
   CostAlertData,
   DailyLeaderboardData,
   Section,
@@ -20,6 +21,7 @@ export const WEBHOOK_NOTIFICATION_TYPES = [
   "daily_leaderboard",
   "cost_alert",
   "cache_hit_rate_alert",
+  "client_problem",
 ] as const satisfies readonly WebhookNotificationType[];
 
 export const TEMPLATE_PLACEHOLDERS = {
@@ -74,6 +76,21 @@ export const TEMPLATE_PLACEHOLDERS = {
     { key: "{{cooldown_minutes}}", label: "冷却分钟", description: "cooldownMinutes" },
     { key: "{{top_n}}", label: "TopN", description: "topN" },
     { key: "{{generated_at}}", label: "生成时间", description: "ISO 8601 格式" },
+  ],
+  client_problem: [
+    { key: "{{bucket}}", label: "分桶", description: "general / cyber" },
+    { key: "{{total_count}}", label: "累计条数", description: "窗口内事件总数" },
+    { key: "{{window_minutes}}", label: "窗口分钟", description: "聚合窗口（分钟）" },
+    { key: "{{trigger}}", label: "触发条件", description: "count / window" },
+    { key: "{{timeout_count}}", label: "超时条数", description: "timeout 计数" },
+    { key: "{{server_count}}", label: "服务端错误条数", description: "server 计数" },
+    { key: "{{cyber_count}}", label: "Cyber risk 条数", description: "cyber 计数" },
+    { key: "{{window_started_at}}", label: "窗口开始", description: "ISO 8601 格式" },
+    { key: "{{by_status_json}}", label: "状态码分布", description: "JSON" },
+    { key: "{{by_user_json}}", label: "用户分布", description: "JSON" },
+    { key: "{{by_provider_json}}", label: "供应商分布", description: "JSON" },
+    { key: "{{by_model_json}}", label: "模型分布", description: "JSON" },
+    { key: "{{samples_json}}", label: "最近样本", description: "JSON" },
   ],
 } as const satisfies Record<string, readonly TemplatePlaceholder[]>;
 
@@ -152,6 +169,26 @@ export function buildTemplateVariables(params: {
       ch?.settings?.cooldownMinutes !== undefined ? String(ch.settings.cooldownMinutes) : "";
     values["{{top_n}}"] = ch?.settings?.topN !== undefined ? String(ch.settings.topN) : "";
     values["{{generated_at}}"] = ch?.generatedAt ?? "";
+  }
+
+  if (notificationType === "client_problem") {
+    const cp = data as Partial<ClientProblemAlertData> | undefined;
+    values["{{bucket}}"] = cp?.bucket ?? "";
+    values["{{total_count}}"] = cp?.totalCount !== undefined ? String(cp.totalCount) : "";
+    values["{{window_minutes}}"] = cp?.windowMinutes !== undefined ? String(cp.windowMinutes) : "";
+    values["{{trigger}}"] = cp?.trigger ?? "";
+    values["{{timeout_count}}"] =
+      cp?.kindCounts?.timeout !== undefined ? String(cp.kindCounts.timeout) : "0";
+    values["{{server_count}}"] =
+      cp?.kindCounts?.server !== undefined ? String(cp.kindCounts.server) : "0";
+    values["{{cyber_count}}"] =
+      cp?.kindCounts?.cyber !== undefined ? String(cp.kindCounts.cyber) : "0";
+    values["{{window_started_at}}"] = cp?.windowStartedAt ?? "";
+    values["{{by_status_json}}"] = cp?.byStatus ? safeJsonStringify(cp.byStatus) : "[]";
+    values["{{by_user_json}}"] = cp?.byUser ? safeJsonStringify(cp.byUser) : "[]";
+    values["{{by_provider_json}}"] = cp?.byProvider ? safeJsonStringify(cp.byProvider) : "[]";
+    values["{{by_model_json}}"] = cp?.byModel ? safeJsonStringify(cp.byModel) : "[]";
+    values["{{samples_json}}"] = cp?.samples ? safeJsonStringify(cp.samples) : "[]";
   }
 
   return values;

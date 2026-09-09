@@ -7,7 +7,10 @@ import { logger } from "@/lib/logger";
 import { isValidProxyUrl } from "@/lib/proxy-agent";
 import { resolveSystemTimezone } from "@/lib/utils/timezone";
 import { WebhookNotifier } from "@/lib/webhook";
-import { buildTestMessage } from "@/lib/webhook/templates/test-messages";
+import {
+  buildClientProblemTestData,
+  buildTestMessage,
+} from "@/lib/webhook/templates/test-messages";
 import { getNotificationSettings, updateNotificationSettings } from "@/repository/notifications";
 import {
   createWebhookTarget,
@@ -80,6 +83,7 @@ const NotificationTypeSchema = z.enum([
   "daily_leaderboard",
   "cost_alert",
   "cache_hit_rate_alert",
+  "client_problem",
 ]);
 
 export type NotificationType = z.infer<typeof NotificationTypeSchema>;
@@ -248,6 +252,8 @@ function toJobType(type: NotificationType): NotificationJobType {
       return "cost-alert";
     case "cache_hit_rate_alert":
       return "cache-hit-rate-alert";
+    case "client_problem":
+      return "client-problem";
   }
 }
 
@@ -329,6 +335,8 @@ function buildTestData(type: NotificationType): unknown {
         },
         generatedAt: new Date().toISOString(),
       };
+    case "client_problem":
+      return buildClientProblemTestData();
   }
 }
 
@@ -438,12 +446,14 @@ export async function testWebhookTargetAction(
     const validatedType = NotificationTypeSchema.parse(notificationType);
     const timezone = await resolveSystemTimezone();
     const testMessage = buildTestMessage(toJobType(validatedType), timezone);
+    const settings = await getNotificationSettings();
 
     const notifier = new WebhookNotifier(target);
     const result = await notifier.send(testMessage, {
       notificationType: validatedType,
       data: buildTestData(validatedType),
       timezone,
+      titlePrefix: settings.titlePrefix,
     });
 
     const latencyMs = Date.now() - start;

@@ -8,6 +8,7 @@ export { createRenderer, type Renderer } from "./renderers";
 export {
   buildCacheHitRateAlertMessage,
   buildCircuitBreakerMessage,
+  buildClientProblemMessage,
   buildCostAlertMessage,
   buildDailyLeaderboardMessage,
 } from "./templates";
@@ -19,6 +20,11 @@ export type {
   CacheHitRateAlertSettingsSnapshot,
   CacheHitRateAlertWindow,
   CircuitBreakerAlertData,
+  ClientProblemAlertData,
+  ClientProblemAlertSample,
+  ClientProblemBucket,
+  ClientProblemFlushJobData,
+  ClientProblemKind,
   CostAlertData,
   DailyLeaderboardData,
   DailyLeaderboardEntry,

@@ -1,6 +1,13 @@
 "use client";
 
-import { AlertTriangle, Database, DollarSign, Settings2, TrendingUp } from "lucide-react";
+import {
+  AlertTriangle,
+  Database,
+  DollarSign,
+  Settings2,
+  ShieldAlert,
+  TrendingUp,
+} from "lucide-react";
 import { useTranslations } from "next-intl";
 import type { ComponentProps, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -66,6 +73,13 @@ function getTypeConfig(type: NotificationType): TypeConfig {
         iconBgColor: "bg-blue-500/10",
         borderColor: "border-blue-500/20 hover:border-blue-500/30",
         IconComponent: Database,
+      };
+    case "client_problem":
+      return {
+        iconColor: "text-orange-400",
+        iconBgColor: "bg-orange-500/10",
+        borderColor: "border-orange-500/20 hover:border-orange-500/30",
+        IconComponent: ShieldAlert,
       };
   }
 }
@@ -186,7 +200,8 @@ export function NotificationTypeCard({
     | "circuitBreakerEnabled"
     | "dailyLeaderboardEnabled"
     | "costAlertEnabled"
-    | "cacheHitRateAlertEnabled";
+    | "cacheHitRateAlertEnabled"
+    | "clientProblemEnabled";
 
   type TypeMeta = {
     title: string;
@@ -229,6 +244,14 @@ export function NotificationTypeCard({
           enabled: settings.cacheHitRateAlertEnabled,
           enabledKey: "cacheHitRateAlertEnabled" as const,
           enableLabel: t("notifications.cacheHitRateAlert.enable"),
+        };
+      case "client_problem":
+        return {
+          title: t("notifications.clientProblem.title"),
+          description: t("notifications.clientProblem.description"),
+          enabled: settings.clientProblemEnabled,
+          enabledKey: "clientProblemEnabled" as const,
+          enableLabel: t("notifications.clientProblem.enable"),
         };
     }
   }, [settings, t, type]);
@@ -586,6 +609,71 @@ export function NotificationTypeCard({
                   />
                 </LabeledControl>
               </div>
+            </div>
+          )}
+
+          {type === "client_problem" && (
+            <div className="grid gap-3 md:grid-cols-2">
+              <LabeledControl
+                id="clientProblemCountThreshold"
+                label={t("notifications.clientProblem.countThreshold")}
+              >
+                <NumberInput
+                  id="clientProblemCountThreshold"
+                  min={1}
+                  max={10000}
+                  value={settings.clientProblemCountThreshold}
+                  disabled={!settings.enabled}
+                  onValueChange={(v) => onUpdateSettings({ clientProblemCountThreshold: v })}
+                  constraints={{ integer: true, min: 1, max: 10000 }}
+                  className={settingsControlClassName}
+                />
+              </LabeledControl>
+              <LabeledControl
+                id="clientProblemWindowMinutes"
+                label={t("notifications.clientProblem.windowMinutes")}
+              >
+                <NumberInput
+                  id="clientProblemWindowMinutes"
+                  min={1}
+                  max={1440}
+                  value={settings.clientProblemWindowMinutes}
+                  disabled={!settings.enabled}
+                  onValueChange={(v) => onUpdateSettings({ clientProblemWindowMinutes: v })}
+                  constraints={{ integer: true, min: 1, max: 1440 }}
+                  className={settingsControlClassName}
+                />
+              </LabeledControl>
+              <LabeledControl
+                id="clientProblemCyberCountThreshold"
+                label={t("notifications.clientProblem.cyberCountThreshold")}
+              >
+                <NumberInput
+                  id="clientProblemCyberCountThreshold"
+                  min={1}
+                  max={10000}
+                  value={settings.clientProblemCyberCountThreshold}
+                  disabled={!settings.enabled}
+                  onValueChange={(v) => onUpdateSettings({ clientProblemCyberCountThreshold: v })}
+                  constraints={{ integer: true, min: 1, max: 10000 }}
+                  className={settingsControlClassName}
+                />
+              </LabeledControl>
+              <LabeledControl
+                id="clientProblemCyberWindowMinutes"
+                label={t("notifications.clientProblem.cyberWindowMinutes")}
+              >
+                <NumberInput
+                  id="clientProblemCyberWindowMinutes"
+                  min={1}
+                  max={1440}
+                  value={settings.clientProblemCyberWindowMinutes}
+                  disabled={!settings.enabled}
+                  onValueChange={(v) => onUpdateSettings({ clientProblemCyberWindowMinutes: v })}
+                  constraints={{ integer: true, min: 1, max: 1440 }}
+                  className={settingsControlClassName}
+                />
+              </LabeledControl>
             </div>
           )}
 

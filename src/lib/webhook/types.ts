@@ -152,6 +152,44 @@ export interface CacheHitRateAlertData {
   generatedAt: string;
 }
 
+export type ClientProblemBucket = "general" | "cyber";
+
+export type ClientProblemKind = "timeout" | "server" | "cyber";
+
+export interface ClientProblemAlertSample {
+  at: string;
+  userName: string;
+  providerName: string;
+  model: string;
+  statusCode: number;
+  kind: ClientProblemKind;
+  error: string;
+}
+
+export interface ClientProblemAlertCount {
+  key: string;
+  count: number;
+}
+
+export interface ClientProblemAlertData {
+  bucket: ClientProblemBucket;
+  kindCounts: { timeout: number; server: number; cyber: number };
+  totalCount: number;
+  windowStartedAt: string;
+  windowMinutes: number;
+  trigger: "count" | "window";
+  byStatus: ClientProblemAlertCount[];
+  byUser: ClientProblemAlertCount[];
+  byProvider: ClientProblemAlertCount[];
+  byModel: ClientProblemAlertCount[];
+  samples: ClientProblemAlertSample[];
+}
+
+export type ClientProblemFlushJobData = {
+  flush: true;
+  bucket: ClientProblemBucket;
+};
+
 /**
  * Webhook 相关类型
  */
@@ -162,7 +200,8 @@ export type WebhookNotificationType =
   | "circuit_breaker"
   | "daily_leaderboard"
   | "cost_alert"
-  | "cache_hit_rate_alert";
+  | "cache_hit_rate_alert"
+  | "client_problem";
 
 export interface WebhookTargetConfig {
   id?: number;
@@ -189,6 +228,8 @@ export interface WebhookSendOptions {
   templateOverride?: Record<string, unknown> | null;
   /** IANA timezone identifier for date/time formatting */
   timezone?: string;
+  /** Optional instance title prefix, e.g. PROXY */
+  titlePrefix?: string | null;
 }
 
 export interface WebhookPayload {

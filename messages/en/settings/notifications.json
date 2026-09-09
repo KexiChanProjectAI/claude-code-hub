@@ -54,6 +54,15 @@
     "windowMode": "Window",
     "windowModeAuto": "Auto"
   },
+  "clientProblem": {
+    "countThreshold": "General error count threshold",
+    "cyberCountThreshold": "Cyber risk count threshold",
+    "cyberWindowMinutes": "Cyber risk window (minutes)",
+    "description": "Digest timeouts, server errors, and cyber risk seen by clients (excluding 499). Two independent thresholds: count or time window, whichever hits first.",
+    "enable": "Enable client problem alerts",
+    "title": "Client problem alerts",
+    "windowMinutes": "General error window (minutes)"
+  },
   "dailyLeaderboard": {
     "description": "Send daily scheduled user consumption Top N leaderboard",
     "enable": "Enable Daily Leaderboard",
@@ -89,7 +98,10 @@
     "on": "On",
     "legacyModeDescription": "You are using legacy single-URL notifications. Create a push target to switch to multi-target mode.",
     "legacyModeTitle": "Legacy Mode",
-    "title": "Notification Master Switch"
+    "title": "Notification Master Switch",
+    "titlePrefix": "Alert title prefix",
+    "titlePrefixHelp": "Distinguishes instances. Prepended as [PROXY] to alert titles. Leave empty for no prefix. Webhooks can egress via a target proxy or PROXY/HTTPS_PROXY.",
+    "titlePrefixPlaceholder": "PROXY"
   },
   "targetDialog": {
     "createTitle": "Add Push Target",

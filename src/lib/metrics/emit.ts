@@ -1,5 +1,6 @@
 import type { ProxySession } from "@/app/v1/_lib/proxy/session";
 import { logger } from "@/lib/logger";
+import { emitClientProblemAlert } from "@/lib/notification/client-problem-alert";
 import type { ProxyMetricEvent } from "./catalog";
 import { isMetricsEnabled } from "./config";
 import { getCchMetrics } from "./metrics";
@@ -58,6 +59,7 @@ export function toProxyMetricEvent(
  * First call wins per session object so finalize + Langfuse/error paths do not double-count.
  */
 export function emitProxyMetrics(session: ProxySession, data: EmitProxyMetricsData): void {
+  emitClientProblemAlert(session, data.statusCode);
   if (!isMetricsEnabled()) return;
   if (recordedSessions.has(session)) return;
   recordedSessions.add(session);

@@ -4221,7 +4221,7 @@ export interface operations {
                      * @description Notification type used for sending a test webhook message.
                      * @enum {string}
                      */
-                    notificationType: "circuit_breaker" | "daily_leaderboard" | "cost_alert" | "cache_hit_rate_alert";
+                    notificationType: "circuit_breaker" | "daily_leaderboard" | "cost_alert" | "cache_hit_rate_alert" | "client_problem";
                 };
             };
         };
@@ -11354,6 +11354,8 @@ export interface operations {
                         enabled: boolean;
                         /** @description Whether legacy single-webhook mode is enabled. */
                         useLegacyMode: boolean;
+                        /** @description Instance title prefix prepended to alert titles, e.g. PROXY. */
+                        titlePrefix: string | null;
                         /** @description Whether circuit breaker notifications are enabled. */
                         circuitBreakerEnabled: boolean;
                         /** @description Legacy circuit breaker webhook URL. */
@@ -11398,6 +11400,18 @@ export interface operations {
                         cacheHitRateAlertCooldownMinutes: number | null;
                         /** @description Top N cache hit-rate alerts. */
                         cacheHitRateAlertTopN: number | null;
+                        /** @description Whether client problem alerts are enabled. */
+                        clientProblemEnabled: boolean;
+                        /** @description Legacy client problem webhook URL. */
+                        clientProblemWebhook: string | null;
+                        /** @description General client-problem count threshold. */
+                        clientProblemCountThreshold: number | null;
+                        /** @description General client-problem window in minutes. */
+                        clientProblemWindowMinutes: number | null;
+                        /** @description Cyber-risk count threshold. */
+                        clientProblemCyberCountThreshold: number | null;
+                        /** @description Cyber-risk window in minutes. */
+                        clientProblemCyberWindowMinutes: number | null;
                         /**
                          * Format: date-time
                          * @description Creation time.
@@ -11541,6 +11555,8 @@ export interface operations {
                     enabled?: boolean;
                     /** @description Whether legacy single-webhook mode is enabled. */
                     useLegacyMode?: boolean;
+                    /** @description Instance title prefix prepended to alert titles, e.g. PROXY. */
+                    titlePrefix?: string | null;
                     /** @description Whether circuit breaker notifications are enabled. */
                     circuitBreakerEnabled?: boolean;
                     /** @description Legacy circuit breaker webhook URL. */
@@ -11585,6 +11601,18 @@ export interface operations {
                     cacheHitRateAlertCooldownMinutes?: number | null;
                     /** @description Top N cache hit-rate alerts. */
                     cacheHitRateAlertTopN?: number | null;
+                    /** @description Whether client problem alerts are enabled. */
+                    clientProblemEnabled?: boolean;
+                    /** @description Legacy client problem webhook URL. */
+                    clientProblemWebhook?: string | null;
+                    /** @description General client-problem count threshold. */
+                    clientProblemCountThreshold?: number | null;
+                    /** @description General client-problem window in minutes. */
+                    clientProblemWindowMinutes?: number | null;
+                    /** @description Cyber-risk count threshold. */
+                    clientProblemCyberCountThreshold?: number | null;
+                    /** @description Cyber-risk window in minutes. */
+                    clientProblemCyberWindowMinutes?: number | null;
                 };
             };
         };
@@ -11602,6 +11630,8 @@ export interface operations {
                         enabled: boolean;
                         /** @description Whether legacy single-webhook mode is enabled. */
                         useLegacyMode: boolean;
+                        /** @description Instance title prefix prepended to alert titles, e.g. PROXY. */
+                        titlePrefix: string | null;
                         /** @description Whether circuit breaker notifications are enabled. */
                         circuitBreakerEnabled: boolean;
                         /** @description Legacy circuit breaker webhook URL. */
@@ -11646,6 +11676,18 @@ export interface operations {
                         cacheHitRateAlertCooldownMinutes: number | null;
                         /** @description Top N cache hit-rate alerts. */
                         cacheHitRateAlertTopN: number | null;
+                        /** @description Whether client problem alerts are enabled. */
+                        clientProblemEnabled: boolean;
+                        /** @description Legacy client problem webhook URL. */
+                        clientProblemWebhook: string | null;
+                        /** @description General client-problem count threshold. */
+                        clientProblemCountThreshold: number | null;
+                        /** @description General client-problem window in minutes. */
+                        clientProblemWindowMinutes: number | null;
+                        /** @description Cyber-risk count threshold. */
+                        clientProblemCyberCountThreshold: number | null;
+                        /** @description Cyber-risk window in minutes. */
+                        clientProblemCyberWindowMinutes: number | null;
                         /**
                          * Format: date-time
                          * @description Creation time.
@@ -11794,7 +11836,7 @@ export interface operations {
                      * @description Notification job type.
                      * @enum {string}
                      */
-                    type: "circuit_breaker" | "daily_leaderboard" | "cost_alert" | "cache_hit_rate_alert";
+                    type: "circuit_breaker" | "daily_leaderboard" | "cost_alert" | "cache_hit_rate_alert" | "client_problem";
                 };
             };
         };
@@ -11932,7 +11974,7 @@ export interface operations {
             header?: never;
             path: {
                 /** @description Notification job type. */
-                type: "circuit_breaker" | "daily_leaderboard" | "cost_alert" | "cache_hit_rate_alert";
+                type: "circuit_breaker" | "daily_leaderboard" | "cost_alert" | "cache_hit_rate_alert" | "client_problem";
             };
             cookie?: never;
         };
@@ -11953,7 +11995,7 @@ export interface operations {
                              * @description Notification job type.
                              * @enum {string}
                              */
-                            notificationType: "circuit_breaker" | "daily_leaderboard" | "cost_alert" | "cache_hit_rate_alert";
+                            notificationType: "circuit_breaker" | "daily_leaderboard" | "cost_alert" | "cache_hit_rate_alert" | "client_problem";
                             /** @description Webhook target id. */
                             targetId: number;
                             /** @description Whether this binding is enabled. */
@@ -12155,7 +12197,7 @@ export interface operations {
             };
             path: {
                 /** @description Notification job type. */
-                type: "circuit_breaker" | "daily_leaderboard" | "cost_alert" | "cache_hit_rate_alert";
+                type: "circuit_breaker" | "daily_leaderboard" | "cost_alert" | "cache_hit_rate_alert" | "client_problem";
             };
             cookie?: never;
         };

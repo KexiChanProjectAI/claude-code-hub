@@ -1817,6 +1817,7 @@ const { route: updateNotificationSettingsRoute, handler: updateNotificationSetti
       requestSchema: z.object({
         enabled: z.boolean().optional().describe("通知总开关"),
         useLegacyMode: z.boolean().optional().describe("是否启用旧版单 Webhook 模式"),
+        titlePrefix: z.string().max(64).nullable().optional().describe("告警标题前缀，例如 PROXY"),
 
         circuitBreakerEnabled: z.boolean().optional().describe("是否启用熔断告警"),
         circuitBreakerWebhook: z
@@ -1922,6 +1923,41 @@ const { route: updateNotificationSettingsRoute, handler: updateNotificationSetti
           .max(100)
           .optional()
           .describe("TopN（最多返回/推送条数）"),
+        clientProblemEnabled: z.boolean().optional().describe("是否启用客户端故障告警"),
+        clientProblemWebhook: z
+          .string()
+          .url()
+          .nullable()
+          .optional()
+          .describe("客户端故障告警 Webhook URL（旧版模式）"),
+        clientProblemCountThreshold: z
+          .number()
+          .int()
+          .min(1)
+          .max(10000)
+          .optional()
+          .describe("一般错误条数阈值"),
+        clientProblemWindowMinutes: z
+          .number()
+          .int()
+          .min(1)
+          .max(1440)
+          .optional()
+          .describe("一般错误时间窗口（分钟）"),
+        clientProblemCyberCountThreshold: z
+          .number()
+          .int()
+          .min(1)
+          .max(10000)
+          .optional()
+          .describe("Cyber risk 条数阈值"),
+        clientProblemCyberWindowMinutes: z
+          .number()
+          .int()
+          .min(1)
+          .max(1440)
+          .optional()
+          .describe("Cyber risk 时间窗口（分钟）"),
       }),
       summary: "更新通知设置",
       description: "更新通知开关与各类型通知配置（生产环境会触发重新调度定时任务）",
@@ -1960,6 +1996,7 @@ const WebhookNotificationTypeSchema = z.enum([
   "daily_leaderboard",
   "cost_alert",
   "cache_hit_rate_alert",
+  "client_problem",
 ]);
 
 const WebhookTargetSchema = z.object({

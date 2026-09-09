@@ -15,10 +15,13 @@ import { resolveSystemTimezone } from "@/lib/utils/timezone";
 import {
   buildCacheHitRateAlertMessage,
   buildCircuitBreakerMessage,
+  buildClientProblemMessage,
   buildCostAlertMessage,
   buildDailyLeaderboardMessage,
   type CacheHitRateAlertData,
   type CircuitBreakerAlertData,
+  type ClientProblemAlertData,
+  type ClientProblemFlushJobData,
   type CostAlertData,
   type DailyLeaderboardData,
   type StructuredMessage,
@@ -26,6 +29,19 @@ import {
   type WebhookNotificationType,
 } from "@/lib/webhook";
 import { isCacheHitRateAlertSettingsWindowMode } from "@/lib/webhook/types";
+import {
+  handleClientProblemFlush,
+  isClientProblemAlertData,
+  isClientProblemFlushJobData,
+} from "./client-problem-alert";
+
+type NotificationPayload =
+  | CircuitBreakerAlertData
+  | DailyLeaderboardData
+  | CostAlertData
+  | CacheHitRateAlertData
+  | ClientProblemAlertData
+  | ClientProblemFlushJobData;
 
 /**
  * 通知任务数据
@@ -37,7 +53,7 @@ export interface NotificationJobData {
   // 新模式使用（多目标）
   targetId?: number;
   bindingId?: number;
-  data?: CircuitBreakerAlertData | DailyLeaderboardData | CostAlertData | CacheHitRateAlertData; // 可选：定时任务会在执行时动态生成
+  data?: NotificationPayload;
 }
 
 function toWebhookNotificationType(type: NotificationJobType): WebhookNotificationType {
@@ -50,6 +66,8 @@ function toWebhookNotificationType(type: NotificationJobType): WebhookNotificati
       return "cost_alert";
     case "cache-hit-rate-alert":
       return "cache_hit_rate_alert";
+    case "client-problem":
+      return "client_problem";
   }
 }
 
@@ -307,7 +325,10 @@ function setupQueueProcessor(queue: Queue.Queue<NotificationJobData>): void {
           }
 
           const message = buildCacheHitRateAlertMessage(payload, timezone);
-          const sendResult = await sendWebhookMessage(url, message, { timezone });
+          const sendResult = await sendWebhookMessage(url, message, {
+            timezone,
+            titlePrefix: settings.titlePrefix,
+          });
 
           if (!sendResult.success) {
             throw new Error(sendResult.error || "Failed to send cache hit rate alert");
@@ -390,12 +411,7 @@ function setupQueueProcessor(queue: Queue.Queue<NotificationJobData>): void {
 
       // 构建结构化消息
       let message: StructuredMessage;
-      let templateData:
-        | CircuitBreakerAlertData
-        | DailyLeaderboardData
-        | CostAlertData
-        | CacheHitRateAlertData
-        | undefined = data;
+      let templateData: NotificationPayload | undefined = data;
       let cooldownCommit: { keys: string[]; cooldownMinutes: number } | undefined;
       switch (type) {
         case "circuit-breaker": {
@@ -544,14 +560,49 @@ function setupQueueProcessor(queue: Queue.Queue<NotificationJobData>): void {
           };
           break;
         }
+        case "client-problem": {
+          const { getNotificationSettings } = await import("@/repository/notifications");
+          const settings = await getNotificationSettings();
+
+          if (!settings.enabled || !settings.clientProblemEnabled) {
+            if (isClientProblemFlushJobData(data)) {
+              await handleClientProblemFlush(data.bucket);
+            }
+            logger.info({ action: "client_problem_disabled", jobId: job.id });
+            return { success: true, skipped: true };
+          }
+
+          if (isClientProblemFlushJobData(data)) {
+            await handleClientProblemFlush(data.bucket);
+            return { success: true };
+          }
+
+          if (!isClientProblemAlertData(data)) {
+            logger.error({
+              action: "client_problem_invalid_payload",
+              jobId: job.id,
+            });
+            return { success: true, skipped: true };
+          }
+
+          templateData = data;
+          message = buildClientProblemMessage(data, timezone);
+          break;
+        }
         default:
           throw new Error(`Unknown notification type: ${type}`);
       }
 
       // 发送通知
+      const { getNotificationSettings: getSettingsForSend } = await import(
+        "@/repository/notifications"
+      );
+      const sendSettings = await getSettingsForSend();
+      const titlePrefix = sendSettings.titlePrefix;
+
       let result;
       if (webhookUrl) {
-        result = await sendWebhookMessage(webhookUrl, message, { timezone });
+        result = await sendWebhookMessage(webhookUrl, message, { timezone, titlePrefix });
       } else if (targetId) {
         const { getWebhookTargetById } = await import("@/repository/webhook-targets");
         const target = await getWebhookTargetById(targetId);
@@ -580,6 +631,7 @@ function setupQueueProcessor(queue: Queue.Queue<NotificationJobData>): void {
           data: templateData,
           templateOverride,
           timezone,
+          titlePrefix,
         });
       } else {
         throw new Error("Missing notification destination (webhookUrl/targetId)");
@@ -647,7 +699,7 @@ function setupQueueProcessor(queue: Queue.Queue<NotificationJobData>): void {
 export async function addNotificationJob(
   type: NotificationJobType,
   webhookUrl: string,
-  data: CircuitBreakerAlertData | DailyLeaderboardData | CostAlertData | CacheHitRateAlertData
+  data: NotificationPayload
 ): Promise<void> {
   try {
     const queue = getNotificationQueue();
@@ -677,7 +729,7 @@ export async function addNotificationJobForTarget(
   type: NotificationJobType,
   targetId: number,
   bindingId: number | null,
-  data: CircuitBreakerAlertData | DailyLeaderboardData | CostAlertData | CacheHitRateAlertData
+  data: NotificationPayload
 ): Promise<void> {
   try {
     const queue = getNotificationQueue();
@@ -698,6 +750,61 @@ export async function addNotificationJobForTarget(
       action: "notification_job_add_error",
       type,
       targetId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+function clientProblemFlushJobId(
+  bucket: ClientProblemAlertData["bucket"] | ClientProblemFlushJobData["bucket"]
+): string {
+  return `client-problem-flush:${bucket}`;
+}
+
+export async function addClientProblemFlushJob(
+  bucket: ClientProblemFlushJobData["bucket"],
+  delayMs: number
+): Promise<void> {
+  const queue = getNotificationQueue();
+  const jobId = clientProblemFlushJobId(bucket);
+  try {
+    const existing = await queue.getJob(jobId);
+    if (existing) {
+      const state = await existing.getState();
+      if (state === "delayed" || state === "waiting" || state === "active") {
+        return;
+      }
+      await existing.remove();
+    }
+    await queue.add(
+      {
+        type: "client-problem",
+        data: { flush: true, bucket },
+      },
+      { jobId, delay: delayMs }
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/already exists|JobId already/i.test(message)) return;
+    logger.error({
+      action: "add_client_problem_flush_job_error",
+      bucket,
+      error: message,
+    });
+  }
+}
+
+export async function removeClientProblemFlushJob(
+  bucket: ClientProblemFlushJobData["bucket"]
+): Promise<void> {
+  try {
+    const queue = getNotificationQueue();
+    const existing = await queue.getJob(clientProblemFlushJobId(bucket));
+    if (existing) await existing.remove();
+  } catch (error) {
+    logger.warn({
+      action: "remove_client_problem_flush_job_error",
+      bucket,
       error: error instanceof Error ? error.message : String(error),
     });
   }

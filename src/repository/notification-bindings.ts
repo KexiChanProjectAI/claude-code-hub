@@ -10,7 +10,8 @@ export type NotificationType =
   | "circuit_breaker"
   | "daily_leaderboard"
   | "cost_alert"
-  | "cache_hit_rate_alert";
+  | "cache_hit_rate_alert"
+  | "client_problem";
 
 export interface NotificationBinding {
   id: number;

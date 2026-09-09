@@ -54,6 +54,15 @@
     "windowMode": "ウィンドウ",
     "windowModeAuto": "自動"
   },
+  "clientProblem": {
+    "countThreshold": "一般エラー件数の閾値",
+    "cyberCountThreshold": "Cyber risk 件数の閾値",
+    "cyberWindowMinutes": "Cyber risk の時間窓（分）",
+    "description": "クライアントがタイムアウト、サーバーエラー、または cyber risk に遭遇したときにまとめて通知します（499 は除外）。2 つの閾値は独立し、件数または時間窓の先に達した方で送信します。",
+    "enable": "クライアント障害アラートを有効にする",
+    "title": "クライアント障害アラート",
+    "windowMinutes": "一般エラーの時間窓（分）"
+  },
   "dailyLeaderboard": {
     "description": "毎日定時でユーザー消費トップNランキングを送信",
     "enable": "日次ランキングを有効にする",
@@ -89,7 +98,10 @@
     "on": "オン",
     "legacyModeDescription": "現在は旧来の単一URL通知設定を使用しています。プッシュ先を作成するとマルチターゲットモードに切り替わります。",
     "legacyModeTitle": "互換モード",
-    "title": "通知マスタースイッチ"
+    "title": "通知マスタースイッチ",
+    "titlePrefix": "アラートタイトル接頭辞",
+    "titlePrefixHelp": "インスタンス識別用。タイトル先頭に [PROXY] のように付きます。空なら付与しません。Webhook はターゲットのプロキシまたは PROXY/HTTPS_PROXY で送信できます。",
+    "titlePrefixPlaceholder": "PROXY"
   },
   "targetDialog": {
     "createTitle": "プッシュ先を追加",

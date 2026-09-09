@@ -56,8 +56,12 @@ export default function NotificationsPage() {
 
       <GlobalSettingsCard
         enabled={settings.enabled}
+        titlePrefix={settings.titlePrefix}
         onEnabledChange={async (enabled) => {
           await handleUpdateSettings({ enabled });
+        }}
+        onTitlePrefixChange={async (titlePrefix) => {
+          await handleUpdateSettings({ titlePrefix });
         }}
       />
 
