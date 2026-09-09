@@ -3,7 +3,10 @@ import type { ProxySession } from "@/app/v1/_lib/proxy/session";
 import { emitProxyMetrics, toProxyMetricEvent } from "./emit";
 import { CchMetrics, resetCchMetricsForTests } from "./metrics";
 
-const { recordSpy } = vi.hoisted(() => ({ recordSpy: vi.fn() }));
+const { recordSpy, emitClientProblemAlert } = vi.hoisted(() => ({
+  recordSpy: vi.fn(),
+  emitClientProblemAlert: vi.fn(),
+}));
 
 vi.mock("./metrics", async () => {
   const actual = await vi.importActual<typeof import("./metrics")>("./metrics");
@@ -12,6 +15,10 @@ vi.mock("./metrics", async () => {
     getCchMetrics: () => ({ record: recordSpy }),
   };
 });
+
+vi.mock("@/lib/notification/client-problem-alert", () => ({
+  emitClientProblemAlert,
+}));
 
 function createSession(overrides: Partial<ProxySession> = {}): ProxySession {
   return {
@@ -59,6 +66,7 @@ describe("emitProxyMetrics", () => {
 
   afterEach(() => {
     recordSpy.mockClear();
+    emitClientProblemAlert.mockClear();
     resetCchMetricsForTests();
     if (originalEnabled === undefined) delete process.env.METRICS_ENABLED;
     else process.env.METRICS_ENABLED = originalEnabled;
@@ -70,12 +78,14 @@ describe("emitProxyMetrics", () => {
     emitProxyMetrics(session, { statusCode: 500, durationMs: 20 });
     expect(recordSpy).toHaveBeenCalledTimes(1);
     expect(recordSpy.mock.calls[0][0].statusCode).toBe(200);
+    expect(emitClientProblemAlert).toHaveBeenCalledTimes(2);
   });
 
   it("no-ops when metrics are disabled", () => {
     process.env.METRICS_ENABLED = "false";
     emitProxyMetrics(createSession(), { statusCode: 200, durationMs: 10 });
     expect(recordSpy).not.toHaveBeenCalled();
+    expect(emitClientProblemAlert).toHaveBeenCalledTimes(1);
   });
 });
 

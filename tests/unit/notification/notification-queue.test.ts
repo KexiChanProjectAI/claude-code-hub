@@ -23,6 +23,7 @@ class MockQueue {
   add = queueAdd;
   getRepeatableJobs = queueGetRepeatableJobs;
   removeRepeatableByKey = queueRemoveRepeatableByKey;
+  getJob = vi.fn(async () => null);
   process = vi.fn((fn: (job: MockJob) => Promise<unknown>) => {
     this.processHandler = fn;
   });
@@ -63,6 +64,13 @@ function makeSettings(overrides: Record<string, unknown> = {}) {
     cacheHitRateAlertDropAbs: "0.1",
     cacheHitRateAlertCooldownMinutes: 30,
     cacheHitRateAlertTopN: 10,
+    titlePrefix: null,
+    clientProblemEnabled: false,
+    clientProblemWebhook: null,
+    clientProblemCountThreshold: 10,
+    clientProblemWindowMinutes: 5,
+    clientProblemCyberCountThreshold: 3,
+    clientProblemCyberWindowMinutes: 5,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
@@ -107,6 +115,7 @@ beforeEach(() => {
   vi.doMock("@/lib/webhook", () => ({
     buildCacheHitRateAlertMessage: vi.fn(() => ({})),
     buildCircuitBreakerMessage: vi.fn(() => ({})),
+    buildClientProblemMessage: vi.fn(() => ({})),
     buildCostAlertMessage: vi.fn(() => ({})),
     buildDailyLeaderboardMessage: vi.fn(() => ({})),
     sendWebhookMessage: mockSendWebhookMessage,

@@ -57,6 +57,13 @@ const settings = {
   cacheHitRateAlertDropAbs: null,
   cacheHitRateAlertCooldownMinutes: null,
   cacheHitRateAlertTopN: null,
+  titlePrefix: null,
+  clientProblemEnabled: false,
+  clientProblemWebhook: null,
+  clientProblemCountThreshold: null,
+  clientProblemWindowMinutes: null,
+  clientProblemCyberCountThreshold: null,
+  clientProblemCyberWindowMinutes: null,
   createdAt: new Date("2026-04-28T00:00:00.000Z"),
   updatedAt: new Date("2026-04-28T00:00:00.000Z"),
 };
@@ -128,7 +135,7 @@ describe("v1 notification endpoints", () => {
       method: "PUT",
       pathname: "/api/v1/notifications/settings",
       headers: { Authorization: "Bearer admin-token" },
-      body: { enabled: false },
+      body: { enabled: false, clientProblemCountThreshold: 2 },
     });
     expect(updated.response.status).toBe(200);
     expect(updated.json).toMatchObject({
@@ -137,7 +144,10 @@ describe("v1 notification endpoints", () => {
       costAlertWebhook: "[REDACTED]",
       cacheHitRateAlertWebhook: "[REDACTED]",
     });
-    expect(updateNotificationSettingsActionMock).toHaveBeenCalledWith({ enabled: false });
+    expect(updateNotificationSettingsActionMock).toHaveBeenCalledWith({
+      enabled: false,
+      clientProblemCountThreshold: 2,
+    });
   });
 
   test("preserves legacy notification webhooks when redacted values are echoed", async () => {
@@ -182,7 +192,7 @@ describe("v1 notification endpoints", () => {
   test("lists and replaces notification bindings with redacted target secrets", async () => {
     const list = await callV1Route({
       method: "GET",
-      pathname: "/api/v1/notifications/types/cost_alert/bindings",
+      pathname: "/api/v1/notifications/types/client_problem/bindings",
       headers: { Authorization: "Bearer admin-token" },
     });
     expect(list.response.status).toBe(200);
@@ -209,14 +219,15 @@ describe("v1 notification endpoints", () => {
 
     const replaced = await callV1Route({
       method: "PUT",
-      pathname: "/api/v1/notifications/types/cost_alert/bindings",
+      pathname: "/api/v1/notifications/types/client_problem/bindings",
       headers: { Authorization: "Bearer admin-token" },
       body: { items: [{ targetId: 10, isEnabled: true }] },
     });
     expect(replaced.response.status).toBe(204);
-    expect(updateBindingsActionMock).toHaveBeenCalledWith("cost_alert", [
+    expect(updateBindingsActionMock).toHaveBeenCalledWith("client_problem", [
       { targetId: 10, isEnabled: true },
     ]);
+    expect(getBindingsForTypeActionMock).toHaveBeenCalledWith("client_problem");
   });
 
   test("maps notification action failures to problem+json responses", async () => {

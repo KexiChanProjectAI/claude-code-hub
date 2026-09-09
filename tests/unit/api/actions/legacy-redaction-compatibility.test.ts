@@ -112,6 +112,13 @@ describe("legacy actions API redaction compatibility", () => {
       cacheHitRateAlertDropAbs: null,
       cacheHitRateAlertCooldownMinutes: null,
       cacheHitRateAlertTopN: null,
+      titlePrefix: null,
+      clientProblemEnabled: false,
+      clientProblemWebhook: "https://client.example.com/hook?token=client-secret",
+      clientProblemCountThreshold: null,
+      clientProblemWindowMinutes: null,
+      clientProblemCyberCountThreshold: null,
+      clientProblemCyberWindowMinutes: null,
       createdAt: new Date("2026-04-29T00:00:00.000Z"),
       updatedAt: new Date("2026-04-29T00:00:00.000Z"),
     });
@@ -140,11 +147,13 @@ describe("legacy actions API redaction compatibility", () => {
       dailyLeaderboardWebhook: "[REDACTED]",
       costAlertWebhook: "[REDACTED]",
       cacheHitRateAlertWebhook: "[REDACTED]",
+      clientProblemWebhook: "[REDACTED]",
     });
     expect(JSON.stringify(body)).not.toContain("circuit-secret");
     expect(JSON.stringify(body)).not.toContain("leaderboard-secret");
     expect(JSON.stringify(body)).not.toContain("cost-secret");
     expect(JSON.stringify(body)).not.toContain("cache-secret");
+    expect(JSON.stringify(body)).not.toContain("client-secret");
   }, 20_000);
 
   test("redacts legacy notification settings webhook URLs after updates", async () => {
@@ -178,6 +187,13 @@ describe("legacy actions API redaction compatibility", () => {
         cacheHitRateAlertDropAbs: null,
         cacheHitRateAlertCooldownMinutes: null,
         cacheHitRateAlertTopN: null,
+        titlePrefix: null,
+        clientProblemEnabled: false,
+        clientProblemWebhook: null,
+        clientProblemCountThreshold: null,
+        clientProblemWindowMinutes: null,
+        clientProblemCyberCountThreshold: null,
+        clientProblemCyberWindowMinutes: null,
         createdAt: new Date("2026-04-29T00:00:00.000Z"),
         updatedAt: new Date("2026-04-29T00:00:00.000Z"),
       },
