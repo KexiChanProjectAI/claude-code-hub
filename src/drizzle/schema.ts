@@ -221,6 +221,9 @@ export const providers = pgTable('providers', {
   preserveClientIp: boolean('preserve_client_ip').notNull().default(false),
   // 是否跳过当前供应商的 sticky session 复用
   disableSessionReuse: boolean('disable_session_reuse').notNull().default(false),
+  // 强制将响应中的模型 ID 复写为用户请求的模型 ID，隐藏上游实际模型
+  overwriteResponseModel: boolean('overwrite_response_model').notNull().default(false),
+
 
   // 模型重定向：将请求的模型名称重定向到另一个模型
   modelRedirects: jsonb('model_redirects').$type<

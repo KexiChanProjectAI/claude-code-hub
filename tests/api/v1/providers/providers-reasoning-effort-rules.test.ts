@@ -53,6 +53,7 @@ function provider(overrides: Record<string, unknown> = {}) {
     providerVendorId: 1,
     preserveClientIp: false,
     disableSessionReuse: false,
+    overwriteResponseModel: false,
     modelRedirects: null,
     activeTimeStart: null,
     activeTimeEnd: null,

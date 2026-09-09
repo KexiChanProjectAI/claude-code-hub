@@ -94,9 +94,9 @@ describe("analyzeBatchProviderSettings", () => {
   describe("mixed 值", () => {
     it("应该识别供应商有不同的基本类型值", () => {
       const providers: ProviderDisplay[] = [
-        { priority: 10, disableSessionReuse: false } as ProviderDisplay,
-        { priority: 20, disableSessionReuse: true } as ProviderDisplay,
-        { priority: 30, disableSessionReuse: false } as ProviderDisplay,
+        { priority: 10, disableSessionReuse: false, overwriteResponseModel: false } as ProviderDisplay,
+        { priority: 20, disableSessionReuse: true, overwriteResponseModel: false } as ProviderDisplay,
+        { priority: 30, disableSessionReuse: false, overwriteResponseModel: false } as ProviderDisplay,
       ];
 
       const result = analyzeBatchProviderSettings(providers);

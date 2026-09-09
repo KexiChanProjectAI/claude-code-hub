@@ -223,6 +223,7 @@ export async function createProvider(
     providerType: providerData.provider_type,
     preserveClientIp: providerData.preserve_client_ip ?? false,
     disableSessionReuse: providerData.disable_session_reuse ?? false,
+    overwriteResponseModel: providerData.overwrite_response_model ?? false,
     modelRedirects: normalizeProviderModelRedirectRules(providerData.model_redirects),
     allowedModels: normalizeAllowedModelRules(providerData.allowed_models),
     allowedClients: providerData.allowed_clients ?? [],
@@ -313,6 +314,7 @@ export async function createProvider(
         providerType: providers.providerType,
         preserveClientIp: providers.preserveClientIp,
         disableSessionReuse: providers.disableSessionReuse,
+        overwriteResponseModel: providers.overwriteResponseModel,
         modelRedirects: providers.modelRedirects,
         allowedModels: providers.allowedModels,
         allowedClients: providers.allowedClients,
@@ -403,6 +405,7 @@ export async function findProviderList(
       providerType: providers.providerType,
       preserveClientIp: providers.preserveClientIp,
       disableSessionReuse: providers.disableSessionReuse,
+      overwriteResponseModel: providers.overwriteResponseModel,
       modelRedirects: providers.modelRedirects,
       allowedModels: providers.allowedModels,
       allowedClients: providers.allowedClients,
@@ -493,6 +496,7 @@ export async function findAllProvidersFresh(): Promise<ProviderWithReasoningEffo
       providerType: providers.providerType,
       preserveClientIp: providers.preserveClientIp,
       disableSessionReuse: providers.disableSessionReuse,
+      overwriteResponseModel: providers.overwriteResponseModel,
       modelRedirects: providers.modelRedirects,
       allowedModels: providers.allowedModels,
       allowedClients: providers.allowedClients,
@@ -589,6 +593,7 @@ export async function findProviderById(
       providerType: providers.providerType,
       preserveClientIp: providers.preserveClientIp,
       disableSessionReuse: providers.disableSessionReuse,
+      overwriteResponseModel: providers.overwriteResponseModel,
       modelRedirects: providers.modelRedirects,
       allowedModels: providers.allowedModels,
       allowedClients: providers.allowedClients,
@@ -677,6 +682,8 @@ export async function updateProvider(
     dbData.preserveClientIp = providerData.preserve_client_ip;
   if (providerData.disable_session_reuse !== undefined)
     dbData.disableSessionReuse = providerData.disable_session_reuse;
+  if (providerData.overwrite_response_model !== undefined)
+    dbData.overwriteResponseModel = providerData.overwrite_response_model;
   if (providerData.model_redirects !== undefined)
     dbData.modelRedirects = normalizeProviderModelRedirectRules(providerData.model_redirects);
   if (providerData.allowed_models !== undefined)
@@ -843,6 +850,7 @@ export async function updateProvider(
         providerType: providers.providerType,
         preserveClientIp: providers.preserveClientIp,
         disableSessionReuse: providers.disableSessionReuse,
+        overwriteResponseModel: providers.overwriteResponseModel,
         modelRedirects: providers.modelRedirects,
         allowedModels: providers.allowedModels,
         allowedClients: providers.allowedClients,
@@ -1111,6 +1119,7 @@ export interface BatchProviderUpdates {
   // Routing
   preserveClientIp?: boolean;
   disableSessionReuse?: boolean;
+  overwriteResponseModel?: boolean;
   activeTimeStart?: string | null;
   activeTimeEnd?: string | null;
   groupPriorities?: Record<string, number> | null;
@@ -1290,6 +1299,9 @@ export async function updateProvidersBatch(
   }
   if (updates.disableSessionReuse !== undefined) {
     setClauses.disableSessionReuse = updates.disableSessionReuse;
+  }
+  if (updates.overwriteResponseModel !== undefined) {
+    setClauses.overwriteResponseModel = updates.overwriteResponseModel;
   }
   if (updates.activeTimeStart !== undefined) {
     setClauses.activeTimeStart = updates.activeTimeStart;

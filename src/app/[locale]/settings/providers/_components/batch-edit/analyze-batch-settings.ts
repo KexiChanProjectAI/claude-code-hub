@@ -35,6 +35,7 @@ export interface BatchSettingsAnalysis {
     groupTag: FieldAnalysisResult<string[]>;
     preserveClientIp: FieldAnalysisResult<boolean>;
     disableSessionReuse: FieldAnalysisResult<boolean>;
+    overwriteResponseModel: FieldAnalysisResult<boolean>;
     modelRedirects: FieldAnalysisResult<ProviderModelRedirectRule[]>;
     allowedModels: FieldAnalysisResult<AllowedModelRule[]>;
     allowedClients: FieldAnalysisResult<string[]>;
@@ -129,6 +130,7 @@ export function analyzeBatchProviderSettings(providers: ProviderDisplay[]): Batc
       groupTag: analyzeField(providers, (p) => parseProviderGroups(p.groupTag)),
       preserveClientIp: analyzeField(providers, (p) => p.preserveClientIp),
       disableSessionReuse: analyzeField(providers, (p) => p.disableSessionReuse),
+      overwriteResponseModel: analyzeField(providers, (p) => p.overwriteResponseModel),
       modelRedirects: analyzeField(providers, (p) => p.modelRedirects ?? []),
       allowedModels: analyzeField(
         providers,

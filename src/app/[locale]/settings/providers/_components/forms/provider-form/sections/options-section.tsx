@@ -90,6 +90,20 @@ export function OptionsSection({ subSectionRefs }: OptionsSectionProps) {
                 />
               </ToggleRow>
 
+              <ToggleRow
+                label={t("sections.routing.overwriteResponseModel.label")}
+                description={t("sections.routing.overwriteResponseModel.desc")}
+              >
+                <Switch
+                  id={isEdit ? "edit-overwrite-response-model" : "overwrite-response-model"}
+                  checked={state.routing.overwriteResponseModel}
+                  onCheckedChange={(checked) =>
+                    dispatch({ type: "SET_OVERWRITE_RESPONSE_MODEL", payload: checked })
+                  }
+                  disabled={state.ui.isPending}
+                />
+              </ToggleRow>
+
               {/* Swap Cache TTL Billing */}
               <ToggleRow
                 label={t("sections.routing.swapCacheTtlBilling.label")}
@@ -105,7 +119,7 @@ export function OptionsSection({ subSectionRefs }: OptionsSectionProps) {
                 />
               </ToggleRow>
 
-              {/* Static Custom Request Headers - persistent provider config (not exposed in batch mode) */}
+              {/* Custom request headers: static values or request-time templates */}
               {!isBatch && (
                 <SmartInputWrapper
                   label={t("sections.routing.customHeaders.label")}
@@ -119,7 +133,7 @@ export function OptionsSection({ subSectionRefs }: OptionsSectionProps) {
                     }
                     placeholder={CUSTOM_HEADERS_PLACEHOLDER}
                     disabled={state.ui.isPending}
-                    rows={3}
+                    rows={6}
                     spellCheck={false}
                   />
                 </SmartInputWrapper>

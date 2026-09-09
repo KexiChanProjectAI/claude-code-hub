@@ -4,6 +4,7 @@
  * 统一执行模板探测，并在协议不匹配时自动切换到同套件里的下一个模板。
  */
 
+import { mergeResolvedCustomHeaders } from "@/lib/custom-headers";
 import {
   createProxyAgentForProvider,
   fetchWithDispatcher,
@@ -52,6 +53,19 @@ interface VersionlessFallbackState {
 const RETRYABLE_HTTP_STATUS_CODES = [400, 404, 405, 415, 422] as const;
 const INVALID_OPENAI_URL_MARKER = /Invalid URL \(POST \/v1\/.+\)/i;
 
+function mergeTestCustomHeaders(
+  base: Record<string, string>,
+  customHeaders?: Record<string, string>
+): Record<string, string> {
+  const headers = { ...base };
+  if (!customHeaders) return headers;
+  const lookup = new Headers(base);
+  mergeResolvedCustomHeaders(headers, customHeaders, {
+    getHeader: (name) => lookup.get(name),
+  });
+  return headers;
+}
+
 function buildAttemptPlans(config: ProviderTestConfig): AttemptPlan[] {
   const customPayload = config.customPayload?.trim();
   if (customPayload) {
@@ -60,12 +74,12 @@ function buildAttemptPlans(config: ProviderTestConfig): AttemptPlan[] {
       return [
         {
           body: parsed,
-          headers: {
-            ...getTestHeaders(config.providerType, config.apiKey, config.providerUrl, {
+          headers: mergeTestCustomHeaders(
+            getTestHeaders(config.providerType, config.apiKey, config.providerUrl, {
               geminiBearerAuth: config.geminiBearerAuth,
             }),
-            ...(config.customHeaders || {}),
-          },
+            config.customHeaders
+          ),
           model: config.model,
           successContains: config.successContains ?? DEFAULT_SUCCESS_CONTAINS[config.providerType],
           url: getTestUrl(config.providerUrl, config.providerType, config.model),
@@ -95,12 +109,12 @@ function buildAttemptPlans(config: ProviderTestConfig): AttemptPlan[] {
     return [
       {
         body: getTestBody(config.providerType, config.model),
-        headers: {
-          ...getTestHeaders(config.providerType, config.apiKey, config.providerUrl, {
+        headers: mergeTestCustomHeaders(
+          getTestHeaders(config.providerType, config.apiKey, config.providerUrl, {
             geminiBearerAuth: config.geminiBearerAuth,
           }),
-          ...(config.customHeaders || {}),
-        },
+          config.customHeaders
+        ),
         model: config.model,
         successContains: config.successContains ?? DEFAULT_SUCCESS_CONTAINS[config.providerType],
         url: getTestUrl(config.providerUrl, config.providerType, config.model),
@@ -113,14 +127,14 @@ function buildAttemptPlans(config: ProviderTestConfig): AttemptPlan[] {
     return {
       preset,
       body: getPresetPayload(preset.id, effectiveModel),
-      headers: {
-        ...getTestHeaders(config.providerType, config.apiKey, config.providerUrl, {
+      headers: mergeTestCustomHeaders(
+        getTestHeaders(config.providerType, config.apiKey, config.providerUrl, {
           userAgent: preset.userAgent,
           extraHeaders: preset.extraHeaders,
           geminiBearerAuth: config.geminiBearerAuth,
         }),
-        ...(config.customHeaders || {}),
-      },
+        config.customHeaders
+      ),
       model: effectiveModel,
       successContains:
         config.successContains ??

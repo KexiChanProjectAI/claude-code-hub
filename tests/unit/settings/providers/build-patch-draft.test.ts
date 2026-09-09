@@ -14,6 +14,7 @@ function createBatchState(): ProviderFormState {
       groupTag: [],
       preserveClientIp: false,
       disableSessionReuse: false,
+      overwriteResponseModel: false,
       modelRedirects: [],
       allowedModels: [],
       allowedClients: [],
@@ -264,6 +265,16 @@ describe("buildPatchDraftFromFormState", () => {
     const draft = buildPatchDraftFromFormState(state, dirty);
 
     expect(draft.disable_session_reuse).toEqual({ set: true });
+  });
+
+  it("sets overwriteResponseModel when dirty", () => {
+    const state = createBatchState();
+    state.routing.overwriteResponseModel = true;
+    const dirty = new Set(["routing.overwriteResponseModel"]);
+
+    const draft = buildPatchDraftFromFormState(state, dirty);
+
+    expect(draft.overwrite_response_model).toEqual({ set: true });
   });
 
   it("sets swapCacheTtlBilling when dirty", () => {

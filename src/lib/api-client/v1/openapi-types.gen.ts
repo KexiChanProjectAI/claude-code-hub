@@ -4412,6 +4412,8 @@ export interface operations {
                             preserveClientIp: boolean;
                             /** @description Whether sticky session reuse is disabled. */
                             disableSessionReuse: boolean;
+                            /** @description Whether client-facing response model IDs are overwritten with the requested model. */
+                            overwriteResponseModel: boolean;
                             /** @description Model redirect rules. */
                             modelRedirects: unknown[] | null;
                             /** @description Scheduled active start time in HH:mm. */
@@ -4460,7 +4462,7 @@ export interface operations {
                             proxyUrl: string | null;
                             /** @description Whether proxy failures fall back to direct calls. */
                             proxyFallbackToDirect: boolean;
-                            /** @description Custom upstream headers with sensitive values redacted. */
+                            /** @description Custom upstream headers with sensitive values redacted. Values may be static or templates such as {{header.Name}}, {{session.id}}, {{session.client_id}}. */
                             customHeaders: {
                                 [key: string]: string;
                             } | null;
@@ -4743,6 +4745,8 @@ export interface operations {
                     preserve_client_ip?: boolean;
                     /** @description Whether sticky session reuse is disabled. */
                     disable_session_reuse?: boolean;
+                    /** @description Whether client-facing response model IDs are overwritten with the requested model. */
+                    overwrite_response_model?: boolean;
                     /** @description Model redirect rules. */
                     model_redirects?: unknown[] | null;
                     /** @description Scheduled active start time. */
@@ -4801,7 +4805,7 @@ export interface operations {
                     proxy_url?: string | null;
                     /** @description Whether proxy failures fall back to direct calls. */
                     proxy_fallback_to_direct?: boolean;
-                    /** @description Custom upstream headers. */
+                    /** @description Custom upstream headers. Values may be static or templates such as {{header.Name}}, {{session.id}}, {{session.client_id}}. */
                     custom_headers?: {
                         [key: string]: string;
                     } | null;
@@ -4911,6 +4915,8 @@ export interface operations {
                         preserveClientIp: boolean;
                         /** @description Whether sticky session reuse is disabled. */
                         disableSessionReuse: boolean;
+                        /** @description Whether client-facing response model IDs are overwritten with the requested model. */
+                        overwriteResponseModel: boolean;
                         /** @description Model redirect rules. */
                         modelRedirects: unknown[] | null;
                         /** @description Scheduled active start time in HH:mm. */
@@ -4959,7 +4965,7 @@ export interface operations {
                         proxyUrl: string | null;
                         /** @description Whether proxy failures fall back to direct calls. */
                         proxyFallbackToDirect: boolean;
-                        /** @description Custom upstream headers with sensitive values redacted. */
+                        /** @description Custom upstream headers with sensitive values redacted. Values may be static or templates such as {{header.Name}}, {{session.id}}, {{session.client_id}}. */
                         customHeaders: {
                             [key: string]: string;
                         } | null;
@@ -5250,6 +5256,8 @@ export interface operations {
                         preserveClientIp: boolean;
                         /** @description Whether sticky session reuse is disabled. */
                         disableSessionReuse: boolean;
+                        /** @description Whether client-facing response model IDs are overwritten with the requested model. */
+                        overwriteResponseModel: boolean;
                         /** @description Model redirect rules. */
                         modelRedirects: unknown[] | null;
                         /** @description Scheduled active start time in HH:mm. */
@@ -5298,7 +5306,7 @@ export interface operations {
                         proxyUrl: string | null;
                         /** @description Whether proxy failures fall back to direct calls. */
                         proxyFallbackToDirect: boolean;
-                        /** @description Custom upstream headers with sensitive values redacted. */
+                        /** @description Custom upstream headers with sensitive values redacted. Values may be static or templates such as {{header.Name}}, {{session.id}}, {{session.client_id}}. */
                         customHeaders: {
                             [key: string]: string;
                         } | null;
@@ -5756,6 +5764,8 @@ export interface operations {
                     preserve_client_ip?: boolean;
                     /** @description Whether sticky session reuse is disabled. */
                     disable_session_reuse?: boolean;
+                    /** @description Whether client-facing response model IDs are overwritten with the requested model. */
+                    overwrite_response_model?: boolean;
                     /** @description Model redirect rules. */
                     model_redirects?: unknown[] | null;
                     /** @description Scheduled active start time. */
@@ -5814,7 +5824,7 @@ export interface operations {
                     proxy_url?: string | null;
                     /** @description Whether proxy failures fall back to direct calls. */
                     proxy_fallback_to_direct?: boolean;
-                    /** @description Custom upstream headers. */
+                    /** @description Custom upstream headers. Values may be static or templates such as {{header.Name}}, {{session.id}}, {{session.client_id}}. */
                     custom_headers?: {
                         [key: string]: string;
                     } | null;
@@ -5930,6 +5940,8 @@ export interface operations {
                         preserveClientIp: boolean;
                         /** @description Whether sticky session reuse is disabled. */
                         disableSessionReuse: boolean;
+                        /** @description Whether client-facing response model IDs are overwritten with the requested model. */
+                        overwriteResponseModel: boolean;
                         /** @description Model redirect rules. */
                         modelRedirects: unknown[] | null;
                         /** @description Scheduled active start time in HH:mm. */
@@ -5978,7 +5990,7 @@ export interface operations {
                         proxyUrl: string | null;
                         /** @description Whether proxy failures fall back to direct calls. */
                         proxyFallbackToDirect: boolean;
-                        /** @description Custom upstream headers with sensitive values redacted. */
+                        /** @description Custom upstream headers with sensitive values redacted. Values may be static or templates such as {{header.Name}}, {{session.id}}, {{session.client_id}}. */
                         customHeaders: {
                             [key: string]: string;
                         } | null;
@@ -9467,7 +9479,7 @@ export interface operations {
                     preset?: string;
                     /** @description Optional custom JSON payload. */
                     customPayload?: string;
-                    /** @description Optional custom headers. */
+                    /** @description Optional custom headers. Values may be static or templates such as {{header.Name}}, {{session.id}}, {{session.client_id}}. */
                     customHeaders?: {
                         [key: string]: string;
                     };

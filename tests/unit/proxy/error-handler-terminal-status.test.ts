@@ -53,6 +53,7 @@ const PROVIDER = {
   providerType: "claude",
   preserveClientIp: false,
   disableSessionReuse: false,
+  overwriteResponseModel: false,
   modelRedirects: null,
   activeTimeStart: null,
   activeTimeEnd: null,

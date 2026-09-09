@@ -188,6 +188,7 @@ const PATCH_FIELDS: ProviderBatchPatchFieldWithReasoningEffortRules[] = [
   "active_time_end",
   "preserve_client_ip",
   "disable_session_reuse",
+  "overwrite_response_model",
   "group_priorities",
   "cache_ttl_preference",
   "swap_cache_ttl_billing",
@@ -245,6 +246,7 @@ const CLEARABLE_FIELDS: Record<ProviderBatchPatchFieldWithReasoningEffortRules, 
   active_time_end: true,
   preserve_client_ip: false,
   disable_session_reuse: false,
+  overwrite_response_model: false,
   group_priorities: true,
   cache_ttl_preference: true,
   swap_cache_ttl_billing: false,
@@ -362,6 +364,7 @@ function isValidSetValue(
     case "is_enabled":
     case "preserve_client_ip":
     case "disable_session_reuse":
+    case "overwrite_response_model":
     case "swap_cache_ttl_billing":
     case "proxy_fallback_to_direct":
       return typeof value === "boolean";
@@ -638,6 +641,12 @@ export function normalizeProviderBatchPatchDraft(
   );
   if (!disableSessionReuse.ok) return disableSessionReuse;
 
+  const overwriteResponseModel = normalizePatchField(
+    "overwrite_response_model",
+    typedDraft.overwrite_response_model
+  );
+  if (!overwriteResponseModel.ok) return overwriteResponseModel;
+
   const groupPriorities = normalizePatchField("group_priorities", typedDraft.group_priorities);
   if (!groupPriorities.ok) return groupPriorities;
 
@@ -821,6 +830,7 @@ export function normalizeProviderBatchPatchDraft(
       active_time_end: activeTimeEnd.data,
       preserve_client_ip: preserveClientIp.data,
       disable_session_reuse: disableSessionReuse.data,
+      overwrite_response_model: overwriteResponseModel.data,
       group_priorities: groupPriorities.data,
       cache_ttl_preference: cacheTtlPref.data,
       swap_cache_ttl_billing: swapCacheTtlBilling.data,
@@ -927,6 +937,10 @@ function applyPatchField<T>(
       case "disable_session_reuse":
         updates.disable_session_reuse =
           patch.value as ProviderBatchApplyUpdates["disable_session_reuse"];
+        return { ok: true, data: undefined };
+      case "overwrite_response_model":
+        updates.overwrite_response_model =
+          patch.value as ProviderBatchApplyUpdates["overwrite_response_model"];
         return { ok: true, data: undefined };
       case "group_priorities":
         updates.group_priorities = patch.value as ProviderBatchApplyUpdates["group_priorities"];
@@ -1181,6 +1195,7 @@ export function buildProviderBatchApplyUpdates(
     ["active_time_end", patch.active_time_end],
     ["preserve_client_ip", patch.preserve_client_ip],
     ["disable_session_reuse", patch.disable_session_reuse],
+    ["overwrite_response_model", patch.overwrite_response_model],
     ["group_priorities", patch.group_priorities],
     ["cache_ttl_preference", patch.cache_ttl_preference],
     ["swap_cache_ttl_billing", patch.swap_cache_ttl_billing],
@@ -1253,6 +1268,7 @@ export function hasProviderBatchPatchChanges(
     patch.active_time_end.mode !== "no_change" ||
     patch.preserve_client_ip.mode !== "no_change" ||
     patch.disable_session_reuse.mode !== "no_change" ||
+    patch.overwrite_response_model.mode !== "no_change" ||
     patch.group_priorities.mode !== "no_change" ||
     patch.cache_ttl_preference.mode !== "no_change" ||
     patch.swap_cache_ttl_billing.mode !== "no_change" ||

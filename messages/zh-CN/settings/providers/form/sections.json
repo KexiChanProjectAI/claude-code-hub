@@ -44,6 +44,10 @@
       "label": "不遵循会话复用",
       "desc": "开启后，下次请求不会继续复用当前供应商的 sticky 绑定，而是重新走优先级与健康检查。适合高优先级便宜渠道恢复后尽快切回的场景。"
     },
+    "overwriteResponseModel": {
+      "label": "复写响应模型 ID",
+      "desc": "开启后，返回给客户端的 model 字段始终是用户请求的模型 ID，而不是上游实际返回或重定向后的模型。"
+    },
     "options": {
       "title": "选项",
       "desc": "附加供应商选项和覆写设置"
@@ -148,7 +152,7 @@
     },
     "customHeaders": {
       "label": "自定义请求头（JSON）",
-      "desc": "静态请求头会合并到出站请求；不会覆盖鉴权头或最终 request filter。",
+      "desc": "静态值或动态模板会合并到出站请求；不会覆盖鉴权头或最终 request filter。可用 '{{header.Name}}' 复制入站请求头，'{{session.id}}' 写入 Session ID，'{{session.client_id}}' 写入客户端 Session ID。来源缺失时跳过该头。",
       "errors": {
         "invalidJson": "自定义请求头必须是合法 JSON",
         "notObject": "自定义请求头必须是 JSON 对象",
@@ -157,7 +161,8 @@
         "protectedName": "鉴权请求头不能通过自定义请求头设置",
         "invalidValue": "请求头值必须为字符串",
         "emptyName": "请求头名称不能为空",
-        "crlf": "请求头名称和值不能包含换行符"
+        "crlf": "请求头名称和值不能包含换行符",
+        "invalidTemplate": "动态模板语法无效。支持 '{{header.Name}}'、'{{session.id}}'、'{{session.client_id}}'"
       }
     },
     "effortRules": {

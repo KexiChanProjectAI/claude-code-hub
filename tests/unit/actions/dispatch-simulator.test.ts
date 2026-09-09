@@ -66,6 +66,7 @@ function createProvider(id: number, overrides: Partial<Provider> = {}): Provider
     providerType: "claude",
     preserveClientIp: false,
     disableSessionReuse: false,
+    overwriteResponseModel: false,
     modelRedirects: null,
     activeTimeStart: null,
     activeTimeEnd: null,

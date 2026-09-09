@@ -122,6 +122,11 @@ export const ProviderSummarySchema = z
     providerVendorId: z.number().int().nullable().describe("Provider vendor id."),
     preserveClientIp: z.boolean().describe("Whether client IP is preserved upstream."),
     disableSessionReuse: z.boolean().describe("Whether sticky session reuse is disabled."),
+    overwriteResponseModel: z
+      .boolean()
+      .describe(
+        "Whether client-facing response model IDs are overwritten with the requested model."
+      ),
     modelRedirects: z.array(z.unknown()).nullable().describe("Model redirect rules."),
     activeTimeStart: NullableStringSchema.describe("Scheduled active start time in HH:mm."),
     activeTimeEnd: NullableStringSchema.describe("Scheduled active end time in HH:mm."),
@@ -165,7 +170,9 @@ export const ProviderSummarySchema = z
     customHeaders: z
       .record(z.string(), z.string())
       .nullable()
-      .describe("Custom upstream headers with sensitive values redacted."),
+      .describe(
+        "Custom upstream headers with sensitive values redacted. Values may be static or templates such as {{header.Name}}, {{session.id}}, {{session.client_id}}."
+      ),
     firstByteTimeoutStreamingMs: z
       .number()
       .int()
@@ -405,7 +412,12 @@ export const ProviderUnifiedTestSchema = ProviderApiTestSchema.extend({
   successContains: z.string().optional().describe("Expected response content."),
   preset: z.string().optional().describe("Optional preset id."),
   customPayload: z.string().optional().describe("Optional custom JSON payload."),
-  customHeaders: z.record(z.string(), z.string()).optional().describe("Optional custom headers."),
+  customHeaders: z
+    .record(z.string(), z.string())
+    .optional()
+    .describe(
+      "Optional custom headers. Values may be static or templates such as {{header.Name}}, {{session.id}}, {{session.client_id}}."
+    ),
 }).strict();
 
 export const ProviderTestByIdSchema = z
@@ -460,6 +472,12 @@ const ProviderCreateObjectSchema = z
       .boolean()
       .optional()
       .describe("Whether sticky session reuse is disabled."),
+    overwrite_response_model: z
+      .boolean()
+      .optional()
+      .describe(
+        "Whether client-facing response model IDs are overwritten with the requested model."
+      ),
     model_redirects: z.array(z.unknown()).nullable().optional().describe("Model redirect rules."),
     active_time_start: TimeOfDaySchema.nullable()
       .optional()
@@ -535,7 +553,9 @@ const ProviderCreateObjectSchema = z
       .record(z.string(), z.string())
       .nullable()
       .optional()
-      .describe("Custom upstream headers."),
+      .describe(
+        "Custom upstream headers. Values may be static or templates such as {{header.Name}}, {{session.id}}, {{session.client_id}}."
+      ),
     first_byte_timeout_streaming_ms: z
       .number()
       .int()

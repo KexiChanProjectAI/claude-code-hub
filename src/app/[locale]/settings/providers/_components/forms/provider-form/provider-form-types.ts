@@ -53,6 +53,7 @@ export interface RoutingState {
   groupTag: string[];
   preserveClientIp: boolean;
   disableSessionReuse: boolean;
+  overwriteResponseModel: boolean;
   modelRedirects: ProviderModelRedirectRule[];
   allowedModels: AllowedModelRule[];
   allowedClients: string[];
@@ -81,7 +82,7 @@ export interface RoutingState {
   // Scheduled active time window (HH:mm format, null = always active)
   activeTimeStart: string | null;
   activeTimeEnd: string | null;
-  // Static custom request headers as JSON text (parsed on submit, null/empty cleared on save)
+  // Custom request headers as JSON text: static values or {{header.*}} / {{session.*}} templates
   customHeadersText: string;
 }
 
@@ -151,6 +152,7 @@ export type ProviderFormAction =
   | { type: "SET_GROUP_TAG"; payload: string[] }
   | { type: "SET_PRESERVE_CLIENT_IP"; payload: boolean }
   | { type: "SET_DISABLE_SESSION_REUSE"; payload: boolean }
+  | { type: "SET_OVERWRITE_RESPONSE_MODEL"; payload: boolean }
   | { type: "SET_MODEL_REDIRECTS"; payload: ProviderModelRedirectRule[] }
   | { type: "SET_ALLOWED_MODELS"; payload: AllowedModelRule[] }
   | { type: "SET_ALLOWED_CLIENTS"; payload: string[] }

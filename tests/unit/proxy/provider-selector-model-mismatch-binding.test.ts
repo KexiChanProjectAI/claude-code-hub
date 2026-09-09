@@ -69,6 +69,7 @@ function createHaikuOnlyProvider(): Provider {
     priority: 1,
     costMultiplier: 1,
     disableSessionReuse: false,
+    overwriteResponseModel: false,
     allowedModels: ["claude-haiku-4-5-20251001", "claude-haiku-4-5"],
     providerVendorId: null,
     limit5hUsd: null,
@@ -330,6 +331,7 @@ function createFallbackProvider(overrides: Partial<Provider> = {}): Provider {
     priority: 0,
     costMultiplier: 1,
     disableSessionReuse: false,
+    overwriteResponseModel: false,
     allowedModels: null, // supports every claude model
     allowedClients: [],
     blockedClients: [],
@@ -358,6 +360,7 @@ function createOtherRestrictedProvider(): Provider {
     priority: 0,
     costMultiplier: 1,
     disableSessionReuse: false,
+    overwriteResponseModel: false,
     allowedModels: null,
     allowedClients: [],
     blockedClients: ["test-suite"], // also rejects RESTRICTED_USER_AGENT
@@ -385,6 +388,7 @@ function createBoundRestrictedProvider(): Provider {
     priority: 0,
     costMultiplier: 1,
     disableSessionReuse: false,
+    overwriteResponseModel: false,
     allowedModels: null, // model support is fine — restriction is client-side
     allowedClients: [],
     blockedClients: ["test-suite"], // rejects RESTRICTED_USER_AGENT

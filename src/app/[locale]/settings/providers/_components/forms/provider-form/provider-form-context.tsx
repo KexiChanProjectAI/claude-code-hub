@@ -78,6 +78,7 @@ const ACTION_TO_FIELD_PATH: Partial<Record<ProviderFormActionWith5hResetMode["ty
   SET_GROUP_TAG: "routing.groupTag",
   SET_PRESERVE_CLIENT_IP: "routing.preserveClientIp",
   SET_DISABLE_SESSION_REUSE: "routing.disableSessionReuse",
+  SET_OVERWRITE_RESPONSE_MODEL: "routing.overwriteResponseModel",
   SET_MODEL_REDIRECTS: "routing.modelRedirects",
   SET_ALLOWED_MODELS: "routing.allowedModels",
   SET_ALLOWED_CLIENTS: "routing.allowedClients",
@@ -160,6 +161,10 @@ export function createInitialState(
         disableSessionReuse:
           analysis.routing.disableSessionReuse.status === "uniform"
             ? analysis.routing.disableSessionReuse.value
+            : false,
+        overwriteResponseModel:
+          analysis.routing.overwriteResponseModel.status === "uniform"
+            ? analysis.routing.overwriteResponseModel.value
             : false,
         modelRedirects:
           analysis.routing.modelRedirects.status === "uniform"
@@ -356,6 +361,7 @@ export function createInitialState(
         groupTag: [],
         preserveClientIp: false,
         disableSessionReuse: false,
+        overwriteResponseModel: false,
         modelRedirects: [],
         allowedModels: [],
         allowedClients: [],
@@ -435,6 +441,7 @@ export function createInitialState(
       groupTag: parseProviderGroups(sourceProvider?.groupTag),
       preserveClientIp: sourceProvider?.preserveClientIp ?? false,
       disableSessionReuse: sourceProvider?.disableSessionReuse ?? false,
+      overwriteResponseModel: sourceProvider?.overwriteResponseModel ?? false,
       modelRedirects: normalizeProviderModelRedirectRules(sourceProvider?.modelRedirects) ?? [],
       allowedModels: normalizeAllowedModelRules(sourceProvider?.allowedModels) ?? [],
       allowedClients: sourceProvider?.allowedClients ?? [],
@@ -543,6 +550,8 @@ export function providerFormReducer(
       return { ...state, routing: { ...state.routing, preserveClientIp: action.payload } };
     case "SET_DISABLE_SESSION_REUSE":
       return { ...state, routing: { ...state.routing, disableSessionReuse: action.payload } };
+    case "SET_OVERWRITE_RESPONSE_MODEL":
+      return { ...state, routing: { ...state.routing, overwriteResponseModel: action.payload } };
     case "SET_MODEL_REDIRECTS":
       return { ...state, routing: { ...state.routing, modelRedirects: action.payload } };
     case "SET_ALLOWED_MODELS":

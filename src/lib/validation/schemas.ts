@@ -539,7 +539,7 @@ export const KeyFormSchema = z.object({
   cacheTtlPreference: CACHE_TTL_PREFERENCE.optional().default("inherit"),
 });
 
-// 共享：静态自定义请求头的 zod 校验器，复用 normalizeCustomHeadersRecord 中的全部规则。
+// 共享：自定义请求头的 zod 校验器，复用 normalizeCustomHeadersRecord 中的全部规则（含动态模板）。
 // 行为：
 // - 缺失 → 输出中省略字段（保留可选性，不修改既有行为）
 // - 显式 null → null（清空）
@@ -601,6 +601,7 @@ export const CreateProviderSchema = z
       .default("claude"),
     preserve_client_ip: z.boolean().optional().default(false),
     disable_session_reuse: z.boolean().optional().default(false),
+    overwrite_response_model: z.boolean().optional().default(false),
     model_redirects: PROVIDER_MODEL_REDIRECT_RULES_SCHEMA,
     // Scheduled active time window (HH:mm format)
     active_time_start: z
@@ -850,6 +851,7 @@ export const UpdateProviderSchema = z
       .optional(),
     preserve_client_ip: z.boolean().optional(),
     disable_session_reuse: z.boolean().optional(),
+    overwrite_response_model: z.boolean().optional(),
     model_redirects: PROVIDER_MODEL_REDIRECT_RULES_SCHEMA,
     active_time_start: z
       .string()

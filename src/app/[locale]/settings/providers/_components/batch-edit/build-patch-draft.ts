@@ -49,6 +49,9 @@ export function buildPatchDraftFromFormState(
   if (dirtyFields.has("routing.disableSessionReuse")) {
     draft.disable_session_reuse = { set: state.routing.disableSessionReuse };
   }
+  if (dirtyFields.has("routing.overwriteResponseModel")) {
+    draft.overwrite_response_model = { set: state.routing.overwriteResponseModel };
+  }
   if (dirtyFields.has("routing.activeTimeStart")) {
     if (state.routing.activeTimeStart === null) {
       draft.active_time_start = { clear: true };

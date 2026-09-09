@@ -352,6 +352,7 @@ export async function getProviders(): Promise<ProviderDisplay[]> {
         providerVendorId: provider.providerVendorId,
         preserveClientIp: provider.preserveClientIp,
         disableSessionReuse: provider.disableSessionReuse,
+        overwriteResponseModel: provider.overwriteResponseModel,
         modelRedirects: provider.modelRedirects,
         activeTimeStart: provider.activeTimeStart,
         activeTimeEnd: provider.activeTimeEnd,
@@ -1512,6 +1513,7 @@ const SINGLE_EDIT_PREIMAGE_FIELD_TO_PROVIDER_KEY: Record<
   provider_type: "providerType",
   preserve_client_ip: "preserveClientIp",
   disable_session_reuse: "disableSessionReuse",
+  overwrite_response_model: "overwriteResponseModel",
   active_time_start: "activeTimeStart",
   active_time_end: "activeTimeEnd",
   model_redirects: "modelRedirects",
@@ -1739,6 +1741,9 @@ function mapApplyUpdatesToRepositoryFormat(
   if (applyUpdates.disable_session_reuse !== undefined) {
     result.disableSessionReuse = applyUpdates.disable_session_reuse;
   }
+  if (applyUpdates.overwrite_response_model !== undefined) {
+    result.overwriteResponseModel = applyUpdates.overwrite_response_model;
+  }
   if (applyUpdates.active_time_start !== undefined) {
     result.activeTimeStart = applyUpdates.active_time_start;
   }
@@ -1868,6 +1873,7 @@ const PATCH_FIELD_TO_PROVIDER_KEY: Record<
   reasoning_effort_override_rules: "reasoningEffortOverrideRules",
   preserve_client_ip: "preserveClientIp",
   disable_session_reuse: "disableSessionReuse",
+  overwrite_response_model: "overwriteResponseModel",
   active_time_start: "activeTimeStart",
   active_time_end: "activeTimeEnd",
   group_priorities: "groupPriorities",

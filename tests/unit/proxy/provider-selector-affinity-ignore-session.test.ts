@@ -122,6 +122,7 @@ function makeProvider(id: number, overrides: Partial<Provider> = {}): Provider {
     priority: 0,
     costMultiplier: 1,
     disableSessionReuse: false,
+    overwriteResponseModel: false,
     allowedModels: null,
     allowedClients: [],
     blockedClients: [],

@@ -88,6 +88,7 @@ function createProvider(): Provider {
     dailyResetMode: "fixed",
     dailyResetTime: "00:00",
     disableSessionReuse: false,
+    overwriteResponseModel: false,
     faviconUrl: null,
     firstByteTimeoutStreamingMs: 0,
     geminiGoogleSearchPreference: null,

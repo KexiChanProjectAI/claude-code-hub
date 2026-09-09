@@ -110,6 +110,7 @@ function createMockState(
       groupTag: [],
       preserveClientIp: false,
       disableSessionReuse: false,
+      overwriteResponseModel: false,
       modelRedirects: {},
       allowedModels: [],
       allowedClients: [],
@@ -251,6 +252,7 @@ describe("OptionsSection", () => {
       const { unmount } = renderSection();
 
       expect(document.getElementById("disable-session-reuse")).toBeTruthy();
+      expect(document.getElementById("overwrite-response-model")).toBeTruthy();
 
       unmount();
     });
@@ -520,7 +522,7 @@ describe("OptionsSection", () => {
         container.querySelectorAll('[data-testid="switch"]')
       ) as HTMLButtonElement[];
 
-      expect(switches).toHaveLength(4);
+      expect(switches).toHaveLength(5);
       for (const toggle of switches) {
         expect(toggle.hasAttribute("disabled")).toBe(true);
       }

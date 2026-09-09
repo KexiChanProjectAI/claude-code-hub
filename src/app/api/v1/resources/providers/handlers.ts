@@ -764,6 +764,7 @@ function sanitizeProvider(
     providerVendorId: provider.providerVendorId,
     preserveClientIp: provider.preserveClientIp,
     disableSessionReuse: provider.disableSessionReuse,
+    overwriteResponseModel: provider.overwriteResponseModel,
     modelRedirects: provider.modelRedirects,
     activeTimeStart: provider.activeTimeStart,
     activeTimeEnd: provider.activeTimeEnd,

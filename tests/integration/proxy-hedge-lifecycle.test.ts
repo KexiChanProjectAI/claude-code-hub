@@ -334,6 +334,7 @@ function createProvider(id: number, url: string, firstByteTimeoutStreamingMs: nu
     dailyResetMode: "fixed",
     dailyResetTime: "00:00",
     disableSessionReuse: false,
+    overwriteResponseModel: false,
     faviconUrl: null,
     firstByteTimeoutStreamingMs,
     geminiGoogleSearchPreference: null,

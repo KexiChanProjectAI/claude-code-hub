@@ -101,6 +101,7 @@ function provider(overrides: Partial<ProviderDisplay> = {}): ProviderDisplay {
     providerVendorId: 1,
     preserveClientIp: false,
     disableSessionReuse: false,
+    overwriteResponseModel: false,
     modelRedirects: null,
     activeTimeStart: null,
     activeTimeEnd: null,

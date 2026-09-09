@@ -6,6 +6,12 @@
 
 ## Unreleased
 
+### 新增
+
+- 供应商自定义请求头支持动态模板：可用 `{{header.Name}}` 复制入站请求头，`{{session.id}}` 写入 Session ID，`{{session.client_id}}` 写入客户端 Session ID；来源缺失时跳过该头
+- 保存供应商时，若 API URL 为 `https://opencode.ai/*` 且尚未配置 `x-opencode-session`，弹出 OpenCode Go 适配确认；开启后写入 `{{session.id}}`
+- 供应商选项新增「复写响应模型 ID」：开启后把返回给客户端的 model 字段强制写成用户请求的模型 ID，用于隐藏上游映射
+
 ### 修复
 
 - 修复上游响应流发生 error 后 Node/Undici body 未完成销毁的问题：Node-to-Web adapter 和 demand-driven pump

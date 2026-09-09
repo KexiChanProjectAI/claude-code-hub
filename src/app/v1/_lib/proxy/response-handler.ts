@@ -75,6 +75,12 @@ import {
 import { isDiscoveryProtocolErrorPayload } from "./discovery-validity";
 import { isClientAbortError, isTransportError } from "./errors";
 import {
+  overwriteClientFacingJsonResponse,
+  overwriteClientFacingStream,
+  overwriteResponseModelInText,
+  shouldOverwriteResponseModel,
+} from "./overwrite-response-model";
+import {
   abortReplayOwnership,
   createReplaySpoolIfOwner,
   releaseReplayOwnership,
@@ -3175,7 +3181,11 @@ export class ProxyResponseHandler {
           });
         }
 
-        return response;
+        return overwriteClientFacingJsonResponse(
+          provider.overwriteResponseModel,
+          session.getOriginalModel(),
+          response
+        );
       } else {
         // ❌ 需要转换：客户端不是 Gemini 格式（如 OpenAI/Claude）
         try {
@@ -3860,8 +3870,22 @@ export class ProxyResponseHandler {
         staleTimeoutMs: resolveNonStreamTaskStaleTimeoutMs(provider),
       }
     );
+    const requestedModel = session.getOriginalModel();
+    if (
+      shouldOverwriteResponseModel(provider.overwriteResponseModel, requestedModel) &&
+      finalResponseBodyForSnapshot
+    ) {
+      finalResponseBodyForSnapshot = overwriteResponseModelInText(
+        finalResponseBodyForSnapshot,
+        requestedModel
+      );
+    }
 
-    return finalResponse;
+    return overwriteClientFacingJsonResponse(
+      provider.overwriteResponseModel,
+      requestedModel,
+      finalResponse
+    );
   }
 
   private static async handleStream(session: ProxySession, response: Response): Promise<Response> {
@@ -4496,11 +4520,18 @@ export class ProxyResponseHandler {
           });
         }
 
-        return new Response(passthroughPump.stream, {
-          status: response.status,
-          statusText: response.statusText,
-          headers: cleanResponseHeaders(response.headers),
-        });
+        return new Response(
+          overwriteClientFacingStream(
+            provider.overwriteResponseModel,
+            session.getOriginalModel(),
+            passthroughPump.stream
+          ),
+          {
+            status: response.status,
+            statusText: response.statusText,
+            headers: cleanResponseHeaders(response.headers),
+          }
+        );
       } else {
         // ❌ 需要转换：客户端不是 Gemini 格式（如 OpenAI/Claude）
         logger.debug("[ResponseHandler] Transforming Gemini stream to client format", {
@@ -5876,11 +5907,18 @@ export class ProxyResponseHandler {
       });
     }
 
-    return new Response(activeResponsePump.stream, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: finalStreamHeaders,
-    });
+    return new Response(
+      overwriteClientFacingStream(
+        provider.overwriteResponseModel,
+        session.getOriginalModel(),
+        activeResponsePump.stream
+      ),
+      {
+        status: response.status,
+        statusText: response.statusText,
+        headers: finalStreamHeaders,
+      }
+    );
   }
 }
 
