@@ -18,7 +18,13 @@ export type ClientProblemClass =
   | { bucket: "general"; kind: "timeout" | "server" }
   | null;
 
-const CYBER_RE = /cyber_policy|flagged for possible cybersecurity risk/iu;
+const CYBER_KEYWORD_RES: readonly RegExp[] = [
+  /\bcyber_policy\b/iu,
+  /flagged\s+for\s+possible\s+cybersecurity\s+risk/iu,
+  /trusted\s+access\s+for\s+cyber/iu,
+  /cybersecurity\s+risk/iu,
+];
+
 const TIMEOUT_RE =
   /ETIMEDOUT|UND_ERR_CONNECT_TIMEOUT|UND_ERR_HEADERS_TIMEOUT|UND_ERR_BODY_TIMEOUT|STREAM_IDLE_TIMEOUT|STREAM_RESPONSE_TIMEOUT|\btimeout\b/i;
 const TIMEOUT_STATUS = new Set([408, 504, 524]);
@@ -105,7 +111,7 @@ export function classifyClientProblem(input: {
 }): ClientProblemClass {
   if (input.isWarmup) return null;
   if (input.statusCode === 499) return null;
-  if (CYBER_RE.test(input.errorText)) return { bucket: "cyber", kind: "cyber" };
+  if (matchCyberKeyword(input.errorText)) return { bucket: "cyber", kind: "cyber" };
   if (TIMEOUT_STATUS.has(input.statusCode) || TIMEOUT_RE.test(input.errorText)) {
     return { bucket: "general", kind: "timeout" };
   }
@@ -122,22 +128,59 @@ export function collectClientProblemHaystack(session: ProxySession): string {
 
   const parts: string[] = [];
   const last = chain[chain.length - 1];
-  if (last) {
-    pushHaystackPart(parts, last.errorMessage);
-    pushHaystackPart(parts, last.errorDetails?.clientError);
-    pushHaystackPart(parts, last.errorDetails?.matchedRule?.pattern);
-    pushHaystackPart(parts, last.errorDetails?.matchedRule?.description);
-    pushHaystackPart(parts, last.errorDetails?.system?.errorMessage);
-    pushHaystackPart(parts, last.errorDetails?.system?.errorCode);
-    const upstreamBody = last.errorDetails?.provider?.upstreamBody;
-    if (typeof upstreamBody === "string") pushHaystackPart(parts, upstreamBody);
-  }
+  if (last) collectItemErrorParts(last, parts);
   for (const item of chain) {
     pushHaystackPart(parts, item.reason);
+  }
+  for (let i = 0; i < chain.length - 1; i++) {
+    collectItemErrorParts(chain[i], parts);
   }
 
   const joined = parts.join("\n");
   return joined.length > HAYSTACK_MAX_CHARS ? joined.slice(0, HAYSTACK_MAX_CHARS) : joined;
+}
+
+function collectItemErrorParts(item: ProviderChainItem, parts: string[]): void {
+  pushHaystackPart(parts, item.errorMessage);
+  pushHaystackPart(parts, item.errorDetails?.clientError);
+  pushHaystackPart(parts, item.errorDetails?.matchedRule?.pattern);
+  pushHaystackPart(parts, item.errorDetails?.matchedRule?.description);
+  pushHaystackPart(parts, item.errorDetails?.system?.errorMessage);
+  pushHaystackPart(parts, item.errorDetails?.system?.errorCode);
+  const provider = item.errorDetails?.provider;
+  if (!provider) return;
+  pushHaystackPart(parts, provider.statusText);
+  if (typeof provider.upstreamBody === "string") {
+    pushHaystackPart(parts, provider.upstreamBody);
+  }
+  if (provider.upstreamParsed != null) {
+    try {
+      const json = JSON.stringify(provider.upstreamParsed);
+      if (json && json !== "null") pushHaystackPart(parts, json);
+    } catch {
+      // Parsed body may contain circular refs; skip rather than drop the rest of the haystack.
+    }
+  }
+}
+
+function matchCyberKeyword(text: string): string | null {
+  for (const re of CYBER_KEYWORD_RES) {
+    const match = text.match(re);
+    if (match?.[0]) return match[0];
+  }
+  return null;
+}
+
+function extractSampleError(errorText: string, kind: ClientProblemKind): string {
+  if (kind === "cyber") {
+    const keyword = matchCyberKeyword(errorText);
+    if (keyword) return clipSampleError(keyword);
+  }
+  return clipSampleError(errorText);
+}
+
+function clipSampleError(text: string): string {
+  return text.length > SAMPLE_ERROR_MAX_CHARS ? text.slice(0, SAMPLE_ERROR_MAX_CHARS) : text;
 }
 
 function pushHaystackPart(parts: string[], value: string | undefined): void {
@@ -204,7 +247,7 @@ export async function recordClientProblemAlert(
     model,
     statusCode,
     kind: classified.kind,
-    error: errorText.slice(0, SAMPLE_ERROR_MAX_CHARS),
+    error: extractSampleError(errorText, classified.kind),
   };
 
   const prefix = bucketPrefix(classified.bucket);
