@@ -216,7 +216,6 @@ describe("SystemSettingsForm upstream error message toggles", () => {
     unmount();
   });
 
-
   test("旧开关仍可独立提交，不会连带修改新开关", async () => {
     systemConfigActionMocks.saveSystemSettings.mockResolvedValueOnce({
       ok: true,

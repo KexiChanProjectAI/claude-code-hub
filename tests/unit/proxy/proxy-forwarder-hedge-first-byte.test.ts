@@ -2961,15 +2961,7 @@ describe("ProxyForwarder - first-byte hedge scheduling", () => {
       );
 
       doForward.mockImplementationOnce(
-        async (
-          _attemptSession,
-          _provider,
-          _baseUrl,
-          _audit,
-          _count,
-          _stream,
-          signal
-        ) => {
+        async (_attemptSession, _provider, _baseUrl, _audit, _count, _stream, signal) => {
           await new Promise<never>((_resolve, reject) => {
             const timer = setTimeout(() => reject(new Error("high tier failed")), 30);
             signal?.addEventListener(
@@ -2984,15 +2976,7 @@ describe("ProxyForwarder - first-byte hedge scheduling", () => {
         }
       );
       doForward.mockImplementationOnce(
-        async (
-          _attemptSession,
-          _provider,
-          _baseUrl,
-          _audit,
-          _count,
-          _stream,
-          signal
-        ) => {
+        async (_attemptSession, _provider, _baseUrl, _audit, _count, _stream, signal) => {
           const stream = new ReadableStream<Uint8Array>({
             start(controller) {
               const timer = setTimeout(() => {
@@ -5709,15 +5693,7 @@ describe("ProxyForwarder - first-byte hedge scheduling", () => {
         "doForward"
       );
       doForward.mockImplementation(
-        async (
-          attemptSession,
-          _provider,
-          _baseUrl,
-          _audit,
-          _count,
-          _stream,
-          signal
-        ) => {
+        async (attemptSession, _provider, _baseUrl, _audit, _count, _stream, signal) => {
           const providerId = (attemptSession as ProxySession).provider!.id;
           return new Response(
             new ReadableStream<Uint8Array>({
