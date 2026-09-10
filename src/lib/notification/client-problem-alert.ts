@@ -34,6 +34,7 @@ const SAMPLE_LIMIT = 10;
 const TOP_GROUP_LIMIT = 8;
 const SETTINGS_CACHE_TTL_MS = 15_000;
 const REDIS_SKIP_LOG_INTERVAL_MS = 60_000;
+const SENT_CONTENT_MIN_TTL_SECONDS = 60 * 60;
 const KEY_PREFIX = "cch:client-problem";
 
 const CLIENT_PROBLEM_INCR_LUA = `
@@ -57,7 +58,14 @@ redis.call("HINCRBY", prefix .. ":status", status, 1)
 redis.call("HINCRBY", prefix .. ":user", userKey, 1)
 redis.call("HINCRBY", prefix .. ":provider", providerKey, 1)
 redis.call("HINCRBY", prefix .. ":model", modelKey, 1)
-if redis.call("LLEN", prefix .. ":samples") < 10 then
+local fingerprint = ARGV[9]
+local fpKey = prefix .. ":sampleFingerprints"
+if fingerprint ~= "" then
+  if redis.call("SISMEMBER", fpKey, fingerprint) == 0 and redis.call("LLEN", prefix .. ":samples") < 10 then
+    redis.call("LPUSH", prefix .. ":samples", sampleJson)
+    redis.call("SADD", fpKey, fingerprint)
+  end
+elseif redis.call("LLEN", prefix .. ":samples") < 10 then
   redis.call("LPUSH", prefix .. ":samples", sampleJson)
 end
 if count == countThreshold then
@@ -91,6 +99,9 @@ type RedisLike = {
   del: (...keys: string[]) => Promise<number>;
   hgetall: (key: string) => Promise<Record<string, string>>;
   lrange: (key: string, start: number, stop: number) => Promise<string[]>;
+  sismember: (key: string, member: string) => Promise<number>;
+  sadd: (key: string, ...members: string[]) => Promise<number>;
+  expire: (key: string, seconds: number) => Promise<number>;
 };
 
 export type ClientProblemBucketSnapshot = {
@@ -101,8 +112,25 @@ export type ClientProblemBucketSnapshot = {
   user: Record<string, number>;
   provider: Record<string, number>;
   model: Record<string, number>;
-  samples: ClientProblemAlertSample[];
+  samples: StoredClientProblemSample[];
 };
+
+type StoredClientProblemSample = ClientProblemAlertSample & { fingerprint: string };
+
+export function buildClientProblemContentFingerprint(input: {
+  kind: ClientProblemKind;
+  statusCode: number;
+  providerId: number | null;
+  model: string;
+  error: string;
+}): string {
+  return createHash("sha1")
+    .update(
+      `${input.kind}|${input.statusCode}|${input.providerId ?? "unknown"}|${orUnknown(input.model)}|${input.error}`,
+      "utf8"
+    )
+    .digest("hex");
+}
 
 export function classifyClientProblem(input: {
   statusCode: number;
@@ -238,16 +266,27 @@ export async function recordClientProblemAlert(
     (typeof session.getCurrentModel === "function" ? session.getCurrentModel() : null) ?? "unknown";
   const userKey = user ? `${user.id}:${user.name}` : "unknown";
   const providerKey = provider ? `${provider.id}:${provider.name}` : "unknown";
-  const sample = {
-    at: new Date().toISOString(),
-    userId: user?.id ?? null,
-    userName: user?.name ?? "unknown",
+  const sampleError = extractSampleError(errorText, classified.kind);
+  const fingerprint = buildClientProblemContentFingerprint({
+    kind: classified.kind,
+    statusCode,
     providerId: provider?.id ?? null,
+    model,
+    error: sampleError,
+  });
+  if (await isContentFingerprintSent(redis, classified.bucket, fingerprint)) {
+    return;
+  }
+
+  const sample: StoredClientProblemSample = {
+    at: new Date().toISOString(),
+    userName: user?.name ?? "unknown",
     providerName: provider?.name ?? "unknown",
     model,
     statusCode,
     kind: classified.kind,
-    error: extractSampleError(errorText, classified.kind),
+    error: sampleError,
+    fingerprint,
   };
 
   const prefix = bucketPrefix(classified.bucket);
@@ -261,6 +300,7 @@ export async function recordClientProblemAlert(
     orUnknown(providerKey),
     orUnknown(model),
     countThreshold,
+    fingerprint,
   ]);
   const code = luaResult[1];
 
@@ -296,6 +336,18 @@ export async function sendClientProblemAlert(data: ClientProblemAlertData): Prom
     if (!settings.enabled || !settings.clientProblemEnabled) {
       return;
     }
+
+    const redis = getRedisClient({ allowWhenRateLimitDisabled: true }) as RedisLike | null;
+    const outbound = redis ? await dropAlreadySentContent(redis, data) : data;
+    if (!outbound) {
+      logger.info({
+        action: "client_problem_alert_skipped",
+        reason: "content_already_sent",
+        bucket: data.bucket,
+      });
+      return;
+    }
+
     // Dynamic import: notification-queue pulls Bull; keep it off the emit/metrics path.
     const { addNotificationJob, addNotificationJobForTarget } = await import(
       "./notification-queue"
@@ -304,15 +356,23 @@ export async function sendClientProblemAlert(data: ClientProblemAlertData): Prom
     if (settings.useLegacyMode) {
       const url = settings.clientProblemWebhook?.trim();
       if (!url) return;
-      await addNotificationJob("client-problem", url, data);
+      await addNotificationJob("client-problem", url, stripSampleFingerprints(outbound));
+      if (redis) await markContentFingerprintsSent(redis, outbound);
       return;
     }
 
     const { getEnabledBindingsByType } = await import("@/repository/notification-bindings");
     const bindings = await getEnabledBindingsByType("client_problem");
+    if (bindings.length === 0) return;
     for (const binding of bindings) {
-      await addNotificationJobForTarget("client-problem", binding.targetId, binding.id, data);
+      await addNotificationJobForTarget(
+        "client-problem",
+        binding.targetId,
+        binding.id,
+        stripSampleFingerprints(outbound)
+      );
     }
+    if (redis) await markContentFingerprintsSent(redis, outbound);
   } catch (error) {
     logger.error({
       action: "send_client_problem_alert_error",
@@ -380,7 +440,7 @@ export async function loadAndClearBucket(
     model: toCountMap(model),
     samples: (sampleRaw ?? [])
       .map(parseSample)
-      .filter((sample): sample is ClientProblemAlertSample => sample != null),
+      .filter((sample): sample is StoredClientProblemSample => sample != null),
   };
 }
 
@@ -432,6 +492,99 @@ export function resetClientProblemAlertForTests(): void {
   lastRedisSkipLogAt = 0;
 }
 
+function contentSentKey(bucket: ClientProblemBucket): string {
+  return `${KEY_PREFIX}:${bucket}:sent-content`;
+}
+
+function sentContentTtlSeconds(windowMinutes: number): number {
+  return Math.max(windowMinutes * 12 * 60, SENT_CONTENT_MIN_TTL_SECONDS);
+}
+
+function storedSamples(data: ClientProblemAlertData): StoredClientProblemSample[] {
+  return data.samples.map((sample) => {
+    const fingerprint = (sample as StoredClientProblemSample).fingerprint;
+    if (typeof fingerprint === "string" && fingerprint.length > 0) {
+      return { ...sample, fingerprint };
+    }
+    return {
+      ...sample,
+      fingerprint: buildClientProblemContentFingerprint({
+        kind: sample.kind,
+        statusCode: sample.statusCode,
+        providerId: null,
+        model: sample.model,
+        error: sample.error,
+      }),
+    };
+  });
+}
+
+function stripSampleFingerprints(data: ClientProblemAlertData): ClientProblemAlertData {
+  return {
+    ...data,
+    samples: data.samples.map((sample) => {
+      const { fingerprint: _fingerprint, ...rest } = sample as StoredClientProblemSample;
+      return rest;
+    }),
+  };
+}
+
+async function isContentFingerprintSent(
+  redis: RedisLike,
+  bucket: ClientProblemBucket,
+  fingerprint: string
+): Promise<boolean> {
+  try {
+    return (await redis.sismember(contentSentKey(bucket), fingerprint)) === 1;
+  } catch (error) {
+    logger.warn({
+      action: "client_problem_alert_sent_content_read_failed",
+      bucket,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
+}
+
+async function dropAlreadySentContent(
+  redis: RedisLike,
+  data: ClientProblemAlertData
+): Promise<ClientProblemAlertData | null> {
+  const samples = storedSamples(data);
+  if (samples.length === 0) return data;
+
+  const remaining: StoredClientProblemSample[] = [];
+  for (const sample of samples) {
+    if (await isContentFingerprintSent(redis, data.bucket, sample.fingerprint)) continue;
+    remaining.push(sample);
+  }
+
+  if (remaining.length === 0) return null;
+  return { ...data, samples: remaining };
+}
+
+async function markContentFingerprintsSent(
+  redis: RedisLike,
+  data: ClientProblemAlertData
+): Promise<void> {
+  const fingerprints = [...new Set(storedSamples(data).map((sample) => sample.fingerprint))].filter(
+    Boolean
+  );
+  if (fingerprints.length === 0) return;
+  try {
+    const key = contentSentKey(data.bucket);
+    await redis.sadd(key, ...fingerprints);
+    await redis.expire(key, sentContentTtlSeconds(data.windowMinutes));
+  } catch (error) {
+    logger.warn({
+      action: "client_problem_alert_sent_content_write_failed",
+      bucket: data.bucket,
+      keysCount: fingerprints.length,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 function bucketPrefix(bucket: ClientProblemBucket): string {
   return `${KEY_PREFIX}:${bucket}`;
 }
@@ -446,6 +599,7 @@ function bucketKeys(prefix: string): string[] {
     `${prefix}:provider`,
     `${prefix}:model`,
     `${prefix}:samples`,
+    `${prefix}:sampleFingerprints`,
     `${prefix}:timer`,
   ];
 }
@@ -512,22 +666,39 @@ function topCounts(hash: Record<string, number>): Array<{ key: string; count: nu
     .slice(0, TOP_GROUP_LIMIT);
 }
 
-function parseSample(raw: string): ClientProblemAlertSample | null {
+function parseSample(raw: string): StoredClientProblemSample | null {
   try {
-    const parsed = JSON.parse(raw) as Partial<ClientProblemAlertSample> & { kind?: string };
+    const parsed = JSON.parse(raw) as Partial<StoredClientProblemSample> & {
+      kind?: string;
+      providerId?: number | null;
+    };
     if (!parsed || typeof parsed !== "object") return null;
     const kind: ClientProblemKind =
       parsed.kind === "timeout" || parsed.kind === "server" || parsed.kind === "cyber"
         ? parsed.kind
         : "server";
+    const statusCode = Number(parsed.statusCode) || 0;
+    const model = typeof parsed.model === "string" ? parsed.model : "unknown";
+    const error = typeof parsed.error === "string" ? parsed.error : "";
+    const fingerprint =
+      typeof parsed.fingerprint === "string" && parsed.fingerprint.length > 0
+        ? parsed.fingerprint
+        : buildClientProblemContentFingerprint({
+            kind,
+            statusCode,
+            providerId: typeof parsed.providerId === "number" ? parsed.providerId : null,
+            model,
+            error,
+          });
     return {
       at: typeof parsed.at === "string" ? parsed.at : new Date().toISOString(),
       userName: typeof parsed.userName === "string" ? parsed.userName : "unknown",
       providerName: typeof parsed.providerName === "string" ? parsed.providerName : "unknown",
-      model: typeof parsed.model === "string" ? parsed.model : "unknown",
-      statusCode: Number(parsed.statusCode) || 0,
+      model,
+      statusCode,
       kind,
-      error: typeof parsed.error === "string" ? parsed.error : "",
+      error,
+      fingerprint,
     };
   } catch {
     return null;

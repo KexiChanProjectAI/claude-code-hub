@@ -12,6 +12,10 @@
 - 保存供应商时，若 API URL 为 `https://opencode.ai/*` 且尚未配置 `x-opencode-session`，弹出 OpenCode Go 适配确认；开启后写入 `{{session.id}}`
 - 供应商选项新增「复写响应模型 ID」：开启后把返回给客户端的 model 字段强制写成用户请求的模型 ID，用于隐藏上游映射
 
+### 优化
+
+- 客户端故障告警不再重复已发送内容：相同错误指纹在冷却期内不入桶、不重推，后续窗口只报新样本
+
 ### 修复
 
 - 修复客户端故障告警对 OpenAI cyber risk 关键词匹配过窄的问题：覆盖完整报错文案、Trusted Access 以及结构化 `cyber_policy` 响应体，样本只保留命中关键词

@@ -54,12 +54,39 @@ function createRedisMock(store: Store) {
       const end = stop < 0 ? list.length : stop + 1;
       return list.slice(start, end);
     }),
+    sismember: vi.fn(async (key: string, member: string) => {
+      const value = store.get(key);
+      return value instanceof Set && value.has(member) ? 1 : 0;
+    }),
+    sadd: vi.fn(async (key: string, ...members: string[]) => {
+      const set = (store.get(key) as Set<string> | undefined) ?? new Set<string>();
+      let added = 0;
+      for (const member of members) {
+        if (!set.has(member)) {
+          set.add(member);
+          added += 1;
+        }
+      }
+      store.set(key, set);
+      return added;
+    }),
+    expire: vi.fn(async () => 1),
   };
   return redis;
 }
 
 function runIncrLua(store: Store, prefix: string, args: Array<string | number>): [number, number] {
-  const [nowMs, sampleJson, kind, status, userKey, providerKey, modelKey, thresholdRaw] = args;
+  const [
+    nowMs,
+    sampleJson,
+    kind,
+    status,
+    userKey,
+    providerKey,
+    modelKey,
+    thresholdRaw,
+    fingerprintRaw,
+  ] = args;
   const countKey = `${prefix}:count`;
   const count = Number(store.get(countKey) ?? 0) + 1;
   store.set(countKey, String(count));
@@ -70,7 +97,17 @@ function runIncrLua(store: Store, prefix: string, args: Array<string | number>):
   hincr(store, `${prefix}:provider`, String(providerKey));
   hincr(store, `${prefix}:model`, String(modelKey));
   const samples = (store.get(`${prefix}:samples`) as string[] | undefined) ?? [];
-  if (samples.length < 10) {
+  const fingerprint = String(fingerprintRaw ?? "");
+  const fpSet =
+    (store.get(`${prefix}:sampleFingerprints`) as Set<string> | undefined) ?? new Set<string>();
+  if (fingerprint) {
+    if (!fpSet.has(fingerprint) && samples.length < 10) {
+      samples.unshift(String(sampleJson));
+      fpSet.add(fingerprint);
+      store.set(`${prefix}:samples`, samples);
+      store.set(`${prefix}:sampleFingerprints`, fpSet);
+    }
+  } else if (samples.length < 10) {
     samples.unshift(String(sampleJson));
     store.set(`${prefix}:samples`, samples);
   }
@@ -400,6 +437,74 @@ describe("client problem redis accumulator", () => {
     expect(sample.kind).toBe("cyber");
     expect(sample.error).toBe("flagged for possible cybersecurity risk");
     expect(sample.error).not.toContain("Trusted Access");
+  });
+
+  it("keeps one unique sample while still counting duplicate content", async () => {
+    getNotificationSettings.mockResolvedValue({
+      ...enabledSettings,
+      clientProblemCountThreshold: 5,
+    });
+    const { recordClientProblemAlert, resetClientProblemAlertForTests } = await import(
+      "@/lib/notification/client-problem-alert"
+    );
+    resetClientProblemAlertForTests();
+    await recordClientProblemAlert(createSession(), 502);
+    await recordClientProblemAlert(createSession(), 502);
+    await recordClientProblemAlert(createSession(), 502);
+    expect(addNotificationJob).not.toHaveBeenCalled();
+    const samples = store.get("cch:client-problem:general:samples") as string[];
+    expect(samples).toHaveLength(1);
+    expect(store.get("cch:client-problem:general:count")).toBe("3");
+  });
+
+  it("does not resend the same content after a successful flush", async () => {
+    getNotificationSettings.mockResolvedValue({
+      ...enabledSettings,
+      clientProblemCountThreshold: 3,
+    });
+    const { recordClientProblemAlert, resetClientProblemAlertForTests } = await import(
+      "@/lib/notification/client-problem-alert"
+    );
+    resetClientProblemAlertForTests();
+    await recordClientProblemAlert(createSession(), 502);
+    await recordClientProblemAlert(createSession(), 502);
+    await recordClientProblemAlert(createSession(), 502);
+    expect(addNotificationJob).toHaveBeenCalledTimes(1);
+    const firstPayload = addNotificationJob.mock.calls[0][2] as {
+      samples: Array<{ fingerprint?: string }>;
+    };
+    expect(firstPayload.samples.every((sample) => sample.fingerprint == null)).toBe(true);
+
+    addNotificationJob.mockClear();
+    await recordClientProblemAlert(createSession(), 502);
+    await recordClientProblemAlert(createSession(), 502);
+    await recordClientProblemAlert(createSession(), 502);
+    expect(addNotificationJob).not.toHaveBeenCalled();
+    expect(store.get("cch:client-problem:general:count")).toBeUndefined();
+  });
+
+  it("still sends a later window when the error content is new", async () => {
+    getNotificationSettings.mockResolvedValue({
+      ...enabledSettings,
+      clientProblemCountThreshold: 2,
+    });
+    const { recordClientProblemAlert, resetClientProblemAlertForTests } = await import(
+      "@/lib/notification/client-problem-alert"
+    );
+    resetClientProblemAlertForTests();
+    await recordClientProblemAlert(createSession(), 502);
+    await recordClientProblemAlert(createSession(), 502);
+    expect(addNotificationJob).toHaveBeenCalledTimes(1);
+
+    addNotificationJob.mockClear();
+    await recordClientProblemAlert(createSession(), 504);
+    await recordClientProblemAlert(createSession(), 504);
+    expect(addNotificationJob).toHaveBeenCalledTimes(1);
+    const payload = addNotificationJob.mock.calls[0][2] as {
+      samples: Array<{ statusCode: number; error: string }>;
+    };
+    expect(payload.samples).toHaveLength(1);
+    expect(payload.samples[0]?.statusCode).toBe(504);
   });
 });
 
