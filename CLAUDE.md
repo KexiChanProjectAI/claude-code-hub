@@ -141,3 +141,87 @@ Critical variables (see `.env.example` for full list):
 - `ENABLE_RATE_LIMIT`: Toggle rate limiting
 - `SESSION_TTL`: Session cache TTL (default 300s)
 - `AUTO_MIGRATE`: Auto-run migrations on startup
+
+## Production Deploy (systemd, traced standalone)
+
+This project's live install is **~288–292M**, not 1.5G. The 292M tree is Next's file-traced standalone. It is **not** `bun install --production` on the server.
+
+### Why the size jumps
+
+`next.config.ts` sets `output: "standalone"`. `bun run build` then:
+
+1. Next traces runtime files into `.next/standalone/` (app, `.next/server`, **a trimmed `node_modules`**)
+2. `scripts/copy-version-to-standalone.cjs` copies `VERSION`, `.next/static`, `public`
+3. `scripts/copy-custom-server-to-standalone.cjs` copies `server.js`, `cluster.js`, `server-lib/`
+
+Traced `node_modules` is ~116 packages (~247M). It already contains the server-external packages Next does not bundle (`ioredis`, `postgres`, `drizzle-orm`, `bull`, `@bull-board/*`, `pino`, `ws`, `undici`, `fetch-socks`, `@next/env`) plus native `sharp` for the build arch.
+
+The trap: standalone `package.json` is a copy of the **root** file (all 78 `dependencies`). `bun install --production --frozen-lockfile` ignores tracing and installs the full graph (~869 packages, ~1.5G). `bun.lock` is gitignored (`.gitignore`); copying it only matters if you are intentionally doing a remote install.
+
+`.next/node_modules/<name>-<hash>` entries are **symlinks** into `../../node_modules/<pkg>` (`ioredis`, `postgres`, `drizzle-orm`, `bull`, `pino`, …). `rsync --exclude '/node_modules/'` while keeping `.next/node_modules` leaves those stubs dangling unless you then `bun install` (and that is the 1.5G path).
+
+Docker already uses the traced tree: `COPY --from=builder /app/.next/standalone ./` (see `Dockerfile`). systemd hosts should do the same.
+
+### Extra trim to ~288M (same-arch glibc x86_64)
+
+Local traced tree is ~399M. Two runtime-unused cuts bring it to the historical 292M:
+
+| Cut | Typical size | Safe? |
+|---|---|---|
+| `find .next/standalone -name '*.map' -delete` | ~89M, almost all `node_modules/next/dist` | yes, source maps are not loaded at runtime |
+| remove `@img/sharp-linuxmusl-x64` and `@img/sharp-libvips-linuxmusl-x64` | ~18M | yes on glibc hosts only |
+
+Do **not** delete glibc sharp (`sharp-linux-x64`, `sharp-libvips-linux-x64`). Do **not** strip maps/native binaries on a cross-arch copy.
+
+### Copy set (include these)
+
+- traced `node_modules/` (top-level, ~116 packages)
+- `.next/` (`server`, `static`, hashed `node_modules` stubs)
+- `cluster.js`, `server.js`, `server-lib/`, `package.json`, `VERSION`
+- `drizzle/`, `public/`
+
+Do **not** copy `.env` / `.env.*`. Preserve the live `.env` across the swap (`install -m 600 -o cch -g cch`).
+
+Do **not** copy `bun.lock` / `bunfig.toml` unless the target will run `bun install`. Same-arch systemd deploys should not.
+
+### Do not
+
+- Remote `bun install --production` on x86_64 hosts (inflates 292M → 1.5G)
+- `rsync --exclude node_modules` blindly (drops hashed Next externals *and* the traced packages they point at)
+- Ship an x86 `node_modules` to aarch64 (native `sharp` / optional extracts). Rebuild on the target, or use the 1.5G remote-install path there only
+- Keep `/opt/claude-code-hub.prev` on `172.16.96.115` (12G disk; live + prev will not fit)
+
+### Same-arch procedure
+
+```bash
+bun run build
+# optional same-arch trim
+find .next/standalone -name '*.map' -delete
+rm -rf .next/standalone/node_modules/@img/sharp-linuxmusl-x64 \
+       .next/standalone/node_modules/@img/sharp-libvips-linuxmusl-x64
+
+# stage, then atomic swap; LIVE/NEXT/PREV differ per host
+rsync -a --delete --exclude '/.env' --exclude '/.env.*' \
+  .next/standalone/ "$HOST:$NEXT/"
+# or tar-over-ssh when the host has no rsync:
+# tar -C .next/standalone --exclude './.env' --exclude './.env.*' -cf - . \
+#   | ssh "$HOST" "tar -C $NEXT -xf -"
+
+ssh "$HOST" "install -m 600 -o cch -g cch $LIVE/.env $NEXT/.env
+             chown -R cch:cch $NEXT
+             systemctl stop cch
+             rm -rf $PREV && mv $LIVE $PREV && mv $NEXT $LIVE   # 115: rm -rf \$LIVE instead of keeping PREV
+             systemctl start cch"
+```
+
+ExecStart is `/usr/bin/node cluster.js` (or `/opt/cch/cluster.js` on dslab), **not** bun. After restart, `/api/health` may report redis `down` for ~15s (client connect race); `/api/health/ready` should be `healthy` once workers are up. Confirm `version` is `0.9.5` (or current `VERSION`) and `du -sh $LIVE` is ~288M with ~116 `node_modules` entries.
+
+### Hosts
+
+| Host | Live dir | Copy | Staging | Notes |
+|---|---|---|---|---|
+| `root@100.64.1.38` | `/opt/claude-code-hub` | rsync | `.next` / `.prev` | `HOSTNAME=127.0.0.1` `LOG_LEVEL=error`; MemoryMax=6G; do not kill `/opt/cch-go/ui` (`PORT=13501`) |
+| `root@cch.in.dslab.top` | `/opt/cch` | rsync | `/opt/cch.next` / `.prev` | `HOSTNAME=0.0.0.0`; bun `/usr/bin/bun` |
+| `root@172.16.96.115` | `/opt/claude-code-hub` | tar-over-ssh (no rsync) | no `.prev` | 12G disk; `CCH_MULTICORE_WORKERS=6`; bun `/usr/local/bin/bun` |
+
+aarch64 (`xiaol@cpa1`) cannot reuse an x86 traced `node_modules`. Build on that host, or copy the tree **without** native `node_modules` and `bun install --production` there (accept ~1.5G).
