@@ -12,7 +12,8 @@ const removeClientProblemFlushJob = vi.fn(async () => {});
 const getNotificationSettings = vi.fn();
 const getEnabledBindingsByType = vi.fn(async () => []);
 
-type Store = Map<string, unknown>;
+const CANONICAL_CYBER_MESSAGE =
+  "This content was flagged for possible cybersecurity risk. If this seems wrong, try rephrasing your request. To get authorized for security work, join the Trusted Access for Cybersecurity program.";
 
 function createRedisMock(store: Store) {
   const redis = {
@@ -148,9 +149,27 @@ describe("classifyClientProblem", () => {
       { bucket: "cyber", kind: "cyber" },
     ],
     [
+      { statusCode: 400, isWarmup: false, errorText: CANONICAL_CYBER_MESSAGE },
+      { bucket: "cyber", kind: "cyber" },
+    ],
+    [
+      {
+        statusCode: 400,
+        isWarmup: false,
+        errorText:
+          "To get authorized for security work, join the Trusted Access for Cybersecurity program.",
+      },
+      { bucket: "cyber", kind: "cyber" },
+    ],
+    [
+      { statusCode: 400, isWarmup: false, errorText: "possible cybersecurity risk detected" },
+      { bucket: "cyber", kind: "cyber" },
+    ],
+    [
       { statusCode: 400, isWarmup: false, errorText: "命中规则 cyber_policy" },
       { bucket: "cyber", kind: "cyber" },
     ],
+    [{ statusCode: 400, isWarmup: false, errorText: "This content was flagged by safety" }, null],
     [{ statusCode: 400, isWarmup: false, errorText: "内容被安全过滤器拦截" }, null],
     [
       { statusCode: 502, isWarmup: false, errorText: "" },
@@ -203,6 +222,33 @@ describe("collectClientProblemHaystack", () => {
     expect(text).toContain("cyber_policy");
     expect(text).toContain("flagged for possible cybersecurity risk");
     expect(text).toContain("timeout");
+  });
+
+  it("includes upstreamParsed JSON so cyber_policy in structured bodies is visible", () => {
+    const text = collectClientProblemHaystack(
+      createSession({
+        getProviderChain: () => [
+          {
+            reason: "client_error_non_retryable",
+            errorMessage: "Provider foo returned 400: invalid_request_error",
+            errorDetails: {
+              provider: {
+                statusText: "Bad Request",
+                upstreamParsed: {
+                  type: "error",
+                  error: {
+                    code: "cyber_policy",
+                    message: CANONICAL_CYBER_MESSAGE,
+                  },
+                },
+              },
+            },
+          },
+        ],
+      })
+    );
+    expect(text).toContain("cyber_policy");
+    expect(text).toContain("Trusted Access for Cybersecurity");
   });
 });
 
@@ -330,6 +376,30 @@ describe("client problem redis accumulator", () => {
     );
     expect(store.get("cch:client-problem:cyber:count")).toBe("1");
     expect(addClientProblemFlushJob).toHaveBeenCalledWith("cyber", 5 * 60_000);
+  });
+
+  it("stores the matched cyber keyword instead of the full boilerplate", async () => {
+    const { recordClientProblemAlert, resetClientProblemAlertForTests } = await import(
+      "@/lib/notification/client-problem-alert"
+    );
+    resetClientProblemAlertForTests();
+    await recordClientProblemAlert(
+      createSession({
+        getProviderChain: () => [
+          {
+            errorMessage: CANONICAL_CYBER_MESSAGE,
+            reason: "client_error_non_retryable",
+          },
+        ],
+      }),
+      400
+    );
+    const samples = store.get("cch:client-problem:cyber:samples") as string[];
+    expect(samples).toHaveLength(1);
+    const sample = JSON.parse(samples[0] as string) as { error: string; kind: string };
+    expect(sample.kind).toBe("cyber");
+    expect(sample.error).toBe("flagged for possible cybersecurity risk");
+    expect(sample.error).not.toContain("Trusted Access");
   });
 });
 
