@@ -14,6 +14,7 @@
 
 ### 修复
 
+- 修复客户端故障告警对 OpenAI cyber risk 关键词匹配过窄的问题：覆盖完整报错文案、Trusted Access 以及结构化 `cyber_policy` 响应体，样本只保留命中关键词
 - 修复上游响应流发生 error 后 Node/Undici body 未完成销毁的问题：Node-to-Web adapter 和 demand-driven pump
   现在在源流错误终态显式取消、销毁底层流，并为异步 destroy error 保留有界保护；同时将 raw body 的兜底错误监听改为一次性监听，
   避免 HTTP/2 reset、客户端断开和竞速取消路径长期保留 socket 与 ArrayBuffer backing store (#1430)
