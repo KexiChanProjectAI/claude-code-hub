@@ -248,6 +248,17 @@ export async function runApplicationCleanup(
       "stopRoutingTraceOutboxReplay"
     );
 
+    // 7d. ClickHouse 同步 worker：必须在 DB pool 关闭前停下，因为在飞的 tick 持有
+    //     message_request 读游标。未发送的行留在 PG 里，下次启动从同一游标继续。
+    await awaitQuiescenceBestEffort(
+      (async () => {
+        const { stopClickHouseSyncWorker } = await import("@/lib/clickhouse/sync-worker");
+        await stopClickHouseSyncWorker();
+      })(),
+      stepMs,
+      "stopClickHouseSyncWorker"
+    );
+
     // 8. writer flush 完成后再关闭数据库 pool。pool close 也是 critical barrier，
     //    单步 deadline 只能告警，不能让底层 client.end() 脱离 shutdown 生命周期。
     const dbWarningTimer = setTimeout(() => {

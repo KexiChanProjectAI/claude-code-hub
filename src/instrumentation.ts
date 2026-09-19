@@ -813,6 +813,15 @@ export async function register() {
         });
       }
 
+      try {
+        const { startClickHouseSyncWorker } = await import("@/lib/clickhouse/sync-worker");
+        startClickHouseSyncWorker();
+      } catch (error) {
+        logger.warn("[Instrumentation] Failed to start ClickHouse sync worker", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+
       await startCacheEffectivenessScheduler();
       await startReplayCleanupScheduler();
 
@@ -982,6 +991,15 @@ export async function register() {
           startEndpointProbeLogCleanup();
         } catch (error) {
           logger.warn("[Instrumentation] Failed to start endpoint probe log cleanup", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+
+        try {
+          const { startClickHouseSyncWorker } = await import("@/lib/clickhouse/sync-worker");
+          startClickHouseSyncWorker();
+        } catch (error) {
+          logger.warn("[Instrumentation] Failed to start ClickHouse sync worker", {
             error: error instanceof Error ? error.message : String(error),
           });
         }
