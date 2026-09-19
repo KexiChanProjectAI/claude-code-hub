@@ -88,6 +88,34 @@ export async function cleanupLogs(
       };
     }
 
+    // ClickHouse 同步围栏：只允许删除已经进入 ClickHouse 的行。
+    // 刻意放在"条件为空"检查之后 —— 围栏本身不构成删除条件，否则条件为空时
+    // 会退化成"删除围栏以前的所有日志"。
+    // 进度不可读时中止本次清理：宁可多留数据，也不能删掉还没同步出去的行。
+    try {
+      const { getClickHouseSyncFence } = await import("@/lib/clickhouse/sync-state");
+      const fence = await getClickHouseSyncFence();
+      if (fence !== null) {
+        whereConditions.push(lte(messageRequest.id, fence));
+        logger.info({ action: "log_cleanup_clickhouse_fence", maxId: fence });
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.warn({
+        action: "log_cleanup_clickhouse_fence_unavailable",
+        error: errorMessage,
+        triggerType: triggerInfo.type,
+      });
+      return {
+        totalDeleted: 0,
+        batchCount: 0,
+        durationMs: Date.now() - startTime,
+        softDeletedPurged: 0,
+        vacuumPerformed: false,
+        error: `ClickHouse sync fence unavailable: ${errorMessage}`,
+      };
+    }
+
     if (options.dryRun) {
       const result = await db
         .select({ count: sql<number>`count(*)::int` })
