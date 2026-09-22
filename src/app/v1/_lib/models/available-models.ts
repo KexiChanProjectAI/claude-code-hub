@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import { request as undiciRequest } from "undici";
 import { normalizeAllowedModelRules } from "@/lib/allowed-model-rules";
 import { logger } from "@/lib/logger";
+import { applyProviderPrefix } from "@/lib/provider-prefix";
 import { createProxyAgentForProvider } from "@/lib/proxy-agent";
 import { ERROR_CODES, getErrorMessageServer } from "@/lib/utils/error-messages";
 import { isProviderActiveNow } from "@/lib/utils/provider-schedule";
@@ -24,6 +25,8 @@ export interface FetchedModel {
   id: string;
   displayName?: string;
   createdAt?: string;
+  /** 模型所有者（带供应商前缀的模型按裸模型名推断） */
+  ownedBy?: ModelOwner;
 }
 
 /** 模型列表请求的默认超时（毫秒） */
@@ -300,6 +303,21 @@ async function fetchModelsWithConfig(
  * 2. 否则根据 providerType 查询上游
  */
 async function fetchModelsFromProvider(provider: Provider): Promise<FetchedModel[]> {
+  const models = await fetchBareModelsFromProvider(provider);
+  const prefix = provider.providerPrefix;
+  if (!prefix) {
+    return models;
+  }
+
+  // 配置了供应商前缀：对外展示带前缀的模型 ID，与调度时的前缀匹配保持一致
+  return models.map((model) => ({
+    ...model,
+    id: applyProviderPrefix(model.id, prefix),
+    ownedBy: model.ownedBy ?? inferOwner(model.id),
+  }));
+}
+
+async function fetchBareModelsFromProvider(provider: Provider): Promise<FetchedModel[]> {
   if (provider.allowedModels && provider.allowedModels.length > 0) {
     logger.debug(`[AvailableModels] Using configured allowedModels for ${provider.name}`, {
       modelCount: provider.allowedModels.length,
@@ -383,7 +401,7 @@ export function formatOpenAIResponse(models: FetchedModel[]): OpenAIModelsRespon
     id: m.id,
     object: "model" as const,
     created: now,
-    owned_by: inferOwner(m.id),
+    owned_by: m.ownedBy ?? inferOwner(m.id),
   }));
 
   return { object: "list" as const, data };
