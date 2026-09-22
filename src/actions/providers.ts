@@ -383,6 +383,7 @@ export async function getProviders(): Promise<ProviderDisplay[]> {
         requestTimeoutNonStreamingMs: provider.requestTimeoutNonStreamingMs,
         websiteUrl: provider.websiteUrl,
         faviconUrl: provider.faviconUrl,
+        providerPrefix: provider.providerPrefix ?? null,
         cacheTtlPreference: provider.cacheTtlPreference,
         swapCacheTtlBilling: provider.swapCacheTtlBilling,
         context1mPreference: provider.context1mPreference,
@@ -593,6 +594,7 @@ export async function addProvider(data: {
   streaming_idle_timeout_ms?: number;
   request_timeout_non_streaming_ms?: number;
   website_url?: string | null;
+  provider_prefix?: string | null;
   mcp_passthrough_type?: "none" | "minimax" | "glm" | "custom";
   mcp_passthrough_url?: string | null;
   tpm: number | null;
@@ -688,6 +690,7 @@ export async function addProvider(data: {
       codex_image_generation_preference: validated.codex_image_generation_preference,
       codex_service_tier_preference: validated.codex_service_tier_preference ?? "inherit",
       website_url: validated.website_url ?? null,
+      provider_prefix: validated.provider_prefix ?? null,
       favicon_url: faviconUrl,
       tpm: validated.tpm ?? null,
       rpm: validated.rpm ?? null,
@@ -821,6 +824,7 @@ export async function editProvider(
     streaming_idle_timeout_ms?: number;
     request_timeout_non_streaming_ms?: number;
     website_url?: string | null;
+    provider_prefix?: string | null;
     mcp_passthrough_type?: "none" | "minimax" | "glm" | "custom";
     mcp_passthrough_url?: string | null;
     tpm?: number | null;
@@ -1514,6 +1518,7 @@ const SINGLE_EDIT_PREIMAGE_FIELD_TO_PROVIDER_KEY: Record<
   preserve_client_ip: "preserveClientIp",
   disable_session_reuse: "disableSessionReuse",
   overwrite_response_model: "overwriteResponseModel",
+  provider_prefix: "providerPrefix",
   active_time_start: "activeTimeStart",
   active_time_end: "activeTimeEnd",
   model_redirects: "modelRedirects",

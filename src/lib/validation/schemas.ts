@@ -13,6 +13,7 @@ import { normalizeCustomHeadersRecord } from "@/lib/custom-headers";
 import { PROVIDER_ALLOWED_MODEL_RULES_SCHEMA } from "@/lib/provider-allowed-model-schema";
 import { PROVIDER_MODEL_REDIRECT_RULES_SCHEMA } from "@/lib/provider-model-redirect-schema";
 import { resolveProviderPatternRegex } from "@/lib/provider-pattern-regex";
+import { normalizeProviderPrefix, PROVIDER_PREFIX_MAX_LENGTH } from "@/lib/provider-prefix";
 import {
   MAX_PUBLIC_STATUS_RANGE_HOURS,
   PUBLIC_STATUS_INTERVAL_OPTIONS,
@@ -194,6 +195,19 @@ export const REASONING_EFFORT_OVERRIDE_RULES_SCHEMA =
 // - 'enabled': force inject googleSearch tool
 // - 'disabled': force remove googleSearch tool from request
 const GEMINI_GOOGLE_SEARCH_PREFERENCE = z.enum(["inherit", "enabled", "disabled"]);
+
+// 供应商前缀：去除首尾空白与末尾所有 "/" 后追加一个 "/"；空值规范化为 null
+const PROVIDER_PREFIX_SCHEMA = z
+  .string()
+  .max(256, "供应商前缀过长")
+  .transform((value) => normalizeProviderPrefix(value))
+  .refine((value) => value === null || !/\s/.test(value), "供应商前缀不能包含空白字符")
+  .refine(
+    (value) => value === null || value.length <= PROVIDER_PREFIX_MAX_LENGTH,
+    `供应商前缀长度不能超过${PROVIDER_PREFIX_MAX_LENGTH}个字符`
+  )
+  .nullable()
+  .optional();
 const XFF_PICK_SCHEMA = z.union([
   z.literal("leftmost"),
   z.literal("rightmost"),
@@ -602,6 +616,7 @@ export const CreateProviderSchema = z
     preserve_client_ip: z.boolean().optional().default(false),
     disable_session_reuse: z.boolean().optional().default(false),
     overwrite_response_model: z.boolean().optional().default(false),
+    provider_prefix: PROVIDER_PREFIX_SCHEMA,
     model_redirects: PROVIDER_MODEL_REDIRECT_RULES_SCHEMA,
     // Scheduled active time window (HH:mm format)
     active_time_start: z
@@ -852,6 +867,7 @@ export const UpdateProviderSchema = z
     preserve_client_ip: z.boolean().optional(),
     disable_session_reuse: z.boolean().optional(),
     overwrite_response_model: z.boolean().optional(),
+    provider_prefix: PROVIDER_PREFIX_SCHEMA,
     model_redirects: PROVIDER_MODEL_REDIRECT_RULES_SCHEMA,
     active_time_start: z
       .string()

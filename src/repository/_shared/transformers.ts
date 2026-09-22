@@ -153,6 +153,7 @@ export function toProvider(dbProvider: any): ProviderWithReasoningEffortOverride
     requestTimeoutNonStreamingMs:
       dbProvider?.requestTimeoutNonStreamingMs ??
       PROVIDER_TIMEOUT_DEFAULTS.REQUEST_TIMEOUT_NON_STREAMING_MS,
+    providerPrefix: dbProvider?.providerPrefix ?? null,
     websiteUrl: dbProvider?.websiteUrl ?? null,
     faviconUrl: dbProvider?.faviconUrl ?? null,
     cacheTtlPreference: dbProvider?.cacheTtlPreference ?? null,

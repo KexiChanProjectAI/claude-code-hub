@@ -16,6 +16,7 @@ import { resetEndpointCircuit } from "@/lib/endpoint-circuit-breaker";
 import { logger } from "@/lib/logger";
 import { SENSITIVE_PROVIDER_BATCH_UNDO_KEYS } from "@/lib/provider-batch-patch-error-codes";
 import { normalizeProviderModelRedirectRules } from "@/lib/provider-model-redirects";
+import { normalizeProviderPrefix } from "@/lib/provider-prefix";
 import { getOrComputeWithRedisLock } from "@/lib/redis/cache-aside";
 import { getRedisClient } from "@/lib/redis/client";
 import { resolveDashboardCacheTtlSeconds } from "@/lib/redis/dashboard-cache-ttl";
@@ -265,6 +266,7 @@ export async function createProvider(
       providerData.request_timeout_non_streaming_ms ??
       PROVIDER_TIMEOUT_DEFAULTS.REQUEST_TIMEOUT_NON_STREAMING_MS,
     websiteUrl: providerData.website_url ?? null,
+    providerPrefix: normalizeProviderPrefix(providerData.provider_prefix),
     faviconUrl: providerData.favicon_url ?? null,
     cacheTtlPreference: providerData.cache_ttl_preference ?? null,
     swapCacheTtlBilling: providerData.swap_cache_ttl_billing ?? false,
@@ -347,6 +349,7 @@ export async function createProvider(
         streamingIdleTimeoutMs: providers.streamingIdleTimeoutMs,
         requestTimeoutNonStreamingMs: providers.requestTimeoutNonStreamingMs,
         websiteUrl: providers.websiteUrl,
+        providerPrefix: providers.providerPrefix,
         faviconUrl: providers.faviconUrl,
         cacheTtlPreference: providers.cacheTtlPreference,
         swapCacheTtlBilling: providers.swapCacheTtlBilling,
@@ -438,6 +441,7 @@ export async function findProviderList(
       streamingIdleTimeoutMs: providers.streamingIdleTimeoutMs,
       requestTimeoutNonStreamingMs: providers.requestTimeoutNonStreamingMs,
       websiteUrl: providers.websiteUrl,
+      providerPrefix: providers.providerPrefix,
       faviconUrl: providers.faviconUrl,
       cacheTtlPreference: providers.cacheTtlPreference,
       swapCacheTtlBilling: providers.swapCacheTtlBilling,
@@ -529,6 +533,7 @@ export async function findAllProvidersFresh(): Promise<ProviderWithReasoningEffo
       streamingIdleTimeoutMs: providers.streamingIdleTimeoutMs,
       requestTimeoutNonStreamingMs: providers.requestTimeoutNonStreamingMs,
       websiteUrl: providers.websiteUrl,
+      providerPrefix: providers.providerPrefix,
       faviconUrl: providers.faviconUrl,
       cacheTtlPreference: providers.cacheTtlPreference,
       swapCacheTtlBilling: providers.swapCacheTtlBilling,
@@ -626,6 +631,7 @@ export async function findProviderById(
       streamingIdleTimeoutMs: providers.streamingIdleTimeoutMs,
       requestTimeoutNonStreamingMs: providers.requestTimeoutNonStreamingMs,
       websiteUrl: providers.websiteUrl,
+      providerPrefix: providers.providerPrefix,
       faviconUrl: providers.faviconUrl,
       cacheTtlPreference: providers.cacheTtlPreference,
       swapCacheTtlBilling: providers.swapCacheTtlBilling,
@@ -747,6 +753,9 @@ export async function updateProvider(
   if (providerData.request_timeout_non_streaming_ms !== undefined)
     dbData.requestTimeoutNonStreamingMs = providerData.request_timeout_non_streaming_ms;
   if (providerData.website_url !== undefined) dbData.websiteUrl = providerData.website_url;
+  if (providerData.provider_prefix !== undefined) {
+    dbData.providerPrefix = normalizeProviderPrefix(providerData.provider_prefix);
+  }
   if (providerData.favicon_url !== undefined) dbData.faviconUrl = providerData.favicon_url;
   if (providerData.cache_ttl_preference !== undefined)
     dbData.cacheTtlPreference = providerData.cache_ttl_preference ?? null;
@@ -883,6 +892,7 @@ export async function updateProvider(
         streamingIdleTimeoutMs: providers.streamingIdleTimeoutMs,
         requestTimeoutNonStreamingMs: providers.requestTimeoutNonStreamingMs,
         websiteUrl: providers.websiteUrl,
+        providerPrefix: providers.providerPrefix,
         faviconUrl: providers.faviconUrl,
         cacheTtlPreference: providers.cacheTtlPreference,
         swapCacheTtlBilling: providers.swapCacheTtlBilling,

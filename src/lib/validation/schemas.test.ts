@@ -413,3 +413,45 @@ describe("Provider schemas - custom_headers templates", () => {
     });
   });
 });
+
+describe("Provider schemas - provider_prefix", () => {
+  const baseCreate = {
+    name: "测试供应商",
+    url: "https://api.example.com",
+    key: "sk-test",
+  };
+
+  test("create 规范化末尾斜杠为单个 /", () => {
+    expect(
+      CreateProviderSchema.parse({ ...baseCreate, provider_prefix: " openai// " }).provider_prefix
+    ).toBe("openai/");
+    expect(
+      CreateProviderSchema.parse({ ...baseCreate, provider_prefix: "openai" }).provider_prefix
+    ).toBe("openai/");
+  });
+
+  test("create 未提供时保持 undefined", () => {
+    expect(CreateProviderSchema.parse(baseCreate).provider_prefix).toBeUndefined();
+  });
+
+  test("update 空字符串与纯斜杠归一化为 null", () => {
+    expect(UpdateProviderSchema.parse({ provider_prefix: "" }).provider_prefix).toBeNull();
+    expect(UpdateProviderSchema.parse({ provider_prefix: "///" }).provider_prefix).toBeNull();
+    expect(UpdateProviderSchema.parse({ provider_prefix: null }).provider_prefix).toBeNull();
+  });
+
+  test("update 保留内部斜杠", () => {
+    expect(UpdateProviderSchema.parse({ provider_prefix: "org/team//" }).provider_prefix).toBe(
+      "org/team/"
+    );
+  });
+
+  test("拒绝包含空白字符的前缀", () => {
+    expect(UpdateProviderSchema.safeParse({ provider_prefix: "open ai" }).success).toBe(false);
+  });
+
+  test("拒绝规范化后超过 64 个字符的前缀", () => {
+    expect(UpdateProviderSchema.safeParse({ provider_prefix: "a".repeat(63) }).success).toBe(true);
+    expect(UpdateProviderSchema.safeParse({ provider_prefix: "a".repeat(64) }).success).toBe(false);
+  });
+});

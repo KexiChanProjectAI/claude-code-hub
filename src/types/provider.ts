@@ -383,6 +383,8 @@ export interface Provider {
   // 强制将响应中的模型 ID 复写为用户请求的模型 ID
   overwriteResponseModel: boolean;
   modelRedirects: ProviderModelRedirectRule[] | null;
+  // 供应商前缀：配置后仅带此前缀的模型 ID 才能命中，转发上游前剥离
+  providerPrefix: string | null;
 
   // Scheduled active time window (HH:mm format, null = always active)
   activeTimeStart: string | null;
@@ -511,6 +513,7 @@ export interface ProviderDisplay {
   // 强制将响应中的模型 ID 复写为用户请求的模型 ID
   overwriteResponseModel: boolean;
   modelRedirects: ProviderModelRedirectRule[] | null;
+  providerPrefix: string | null;
   // Scheduled active time window
   activeTimeStart: string | null;
   activeTimeEnd: string | null;
@@ -632,6 +635,8 @@ export interface CreateProviderData {
   disable_session_reuse?: boolean;
   overwrite_response_model?: boolean;
   model_redirects?: ProviderModelRedirectRule[] | null;
+  // 供应商前缀（规范化为以 "/" 结尾；null 表示未配置）
+  provider_prefix?: string | null;
   active_time_start?: string | null;
   active_time_end?: string | null;
   allowed_models?: AllowedModelRuleInput[] | null;
@@ -718,6 +723,8 @@ export interface UpdateProviderData {
   disable_session_reuse?: boolean;
   overwrite_response_model?: boolean;
   model_redirects?: ProviderModelRedirectRule[] | null;
+  // 供应商前缀（规范化为以 "/" 结尾；null 表示未配置）
+  provider_prefix?: string | null;
   active_time_start?: string | null;
   active_time_end?: string | null;
   allowed_models?: AllowedModelRuleInput[] | null;
