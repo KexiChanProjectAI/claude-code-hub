@@ -203,24 +203,53 @@ export function retainRequestMemoryUntil<T>(promise: Promise<T>, label?: string)
   return promise.finally(retainCurrentRequestMemory(label));
 }
 
-/** EOF、读错、取消和无正文响应均确定性释放根所有者，无需触发 V8 GC。 */
-function responseOwner(lifetime: RequestMemoryLifetime) {
+/** EOF、读错、取消、客户端 abort 和无正文响应均确定性释放根所有者，无需触发 V8 GC。 */
+function responseOwner(lifetime: RequestMemoryLifetime, signal?: AbortSignal) {
   const token = {};
   let released = false;
+  let pendingAbort = false;
+  let innerReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   const release = () => {
     if (released) return;
     released = true;
     abandonedResponses.unregister(token);
+    signal?.removeEventListener("abort", onAbort);
     lifetime.releaseRoot();
   };
-  return { token, release };
+  const onAbort = () => {
+    const reader = innerReader;
+    innerReader = null;
+    if (!reader) {
+      pendingAbort = true;
+      return;
+    }
+    // 外层 body 可能已被 Next.js getReader 锁定；cancel 外层会 ERR_INVALID_STATE
+    // 并变成 unhandledRejection → lifecycle process.exit(1) → nginx 502。
+    // 内层 reader 由本函数持有，与 request-body-store 一样 catch 后仍释放额度。
+    try {
+      void reader.cancel(signal?.reason).catch(() => undefined);
+    } catch {
+      // locked/closed reader
+    }
+    release();
+  };
+  if (signal && !signal.aborted) signal.addEventListener("abort", onAbort, { once: true });
+  return {
+    token,
+    release,
+    trackReader(reader: ReadableStreamDefaultReader<Uint8Array>) {
+      innerReader = reader;
+      if (pendingAbort || signal?.aborted) onAbort();
+    },
+  };
 }
 
 export async function withRequestMemoryLifetime(
-  operation: () => Promise<Response>
+  operation: () => Promise<Response>,
+  signal?: AbortSignal
 ): Promise<Response> {
   const lifetime = new RequestMemoryLifetime();
-  const { token, release } = responseOwner(lifetime);
+  const { token, release, trackReader } = responseOwner(lifetime, signal);
   return storage.run(lifetime, async () => {
     try {
       const response = await operation();
@@ -229,43 +258,45 @@ export async function withRequestMemoryLifetime(
         return response;
       }
       const reader = response.body.getReader();
-      const wrapped = new Response(
-        new ReadableStream<Uint8Array>(
-          {
-            pull(controller) {
-              return storage.run(lifetime, async () => {
-                try {
-                  const result = await reader.read();
-                  if (result.done) {
-                    reader.releaseLock();
-                    release();
-                    controller.close();
-                  } else controller.enqueue(result.value);
-                } catch (error) {
+      const body = new ReadableStream<Uint8Array>(
+        {
+          pull(controller) {
+            return storage.run(lifetime, async () => {
+              try {
+                const result = await reader.read();
+                if (result.done) {
                   reader.releaseLock();
                   release();
-                  controller.error(error);
-                }
-              });
-            },
-            cancel(reason) {
-              return storage.run(lifetime, async () => {
-                try {
-                  await reader.cancel(reason);
-                } finally {
-                  reader.releaseLock();
-                  release();
-                }
-              });
-            },
+                  controller.close();
+                } else controller.enqueue(result.value);
+              } catch (error) {
+                reader.releaseLock();
+                release();
+                controller.error(error);
+              }
+            });
           },
-          { highWaterMark: 0 }
-        ),
-        { status: response.status, statusText: response.statusText, headers: response.headers }
+          cancel(reason) {
+            return storage.run(lifetime, async () => {
+              try {
+                await reader.cancel(reason);
+              } finally {
+                reader.releaseLock();
+                release();
+              }
+            });
+          },
+        },
+        { highWaterMark: 0 }
       );
       // 框架可能仅转交 body 并重建 Response；GC 兜底必须跟随仍被读取的流。
-      abandonedResponses.register(wrapped.body!, release, token);
-      return wrapped;
+      abandonedResponses.register(body, release, token);
+      trackReader(reader);
+      return new Response(body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      });
     } catch (error) {
       release();
       throw error;

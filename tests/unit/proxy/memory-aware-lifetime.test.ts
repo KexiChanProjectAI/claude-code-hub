@@ -84,6 +84,54 @@ describe("请求内存确定性回收", () => {
     expect(governor.snapshot().usedBytes).toBe(0);
   });
 
+  it("客户端 abort 时未读完的响应也释放根所有者", async () => {
+    const governor = new MemoryGovernor({ limit: 100, remote: false, monitor: false });
+    const signal = new AbortController();
+    await withRequestMemoryLifetime(async () => {
+      attachRequestMemory(governor.tryLease(100)!);
+      return new Response(new ReadableStream<Uint8Array>());
+    }, signal.signal);
+    expect(governor.snapshot().usedBytes).toBe(100);
+    expect(getRequestMemoryLifetimeStats()).toMatchObject({ active: 1, draining: 0 });
+
+    signal.abort();
+    expect(governor.snapshot().usedBytes).toBe(0);
+    expect(getRequestMemoryLifetimeStats().active).toBe(0);
+  });
+
+  it("abort 已锁定的响应体不产生 unhandledRejection，并释放额度", async () => {
+    const governor = new MemoryGovernor({ limit: 100, remote: false, monitor: false });
+    const signal = new AbortController();
+    const rejections: unknown[] = [];
+    const onUnhandled = (reason: unknown) => {
+      rejections.push(reason);
+    };
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const response = await withRequestMemoryLifetime(async () => {
+        attachRequestMemory(governor.tryLease(100)!);
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            pull(controller) {
+              controller.enqueue(new Uint8Array([1]));
+            },
+          })
+        );
+      }, signal.signal);
+      const consumer = response.body!.getReader();
+      await consumer.read();
+      signal.abort();
+      const { promise: drained, resolve: resolveDrained } = Promise.withResolvers<void>();
+      setImmediate(resolveDrained);
+      await drained;
+      expect(rejections).toEqual([]);
+      expect(governor.snapshot().usedBytes).toBe(0);
+      await consumer.cancel().catch(() => undefined);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
   it("取消响应后，后台消费者实际结束才释放；多个消费者不重复归还", async () => {
     const governor = new MemoryGovernor({ limit: 100, remote: false, monitor: false });
     const held = Promise.withResolvers<void>();
