@@ -162,6 +162,32 @@ describe("health/checker", () => {
       expect(result.status).toBe("up");
     });
 
+    it("waits for a connecting client to become ready before ping", async () => {
+      process.env.REDIS_URL = "redis://localhost:6379";
+      const listeners = new Map<string, Array<(...args: unknown[]) => void>>();
+      const client = {
+        status: "connecting",
+        ping: vi.fn().mockResolvedValue("PONG"),
+        once(event: string, listener: (...args: unknown[]) => void) {
+          listeners.set(event, [...(listeners.get(event) ?? []), listener]);
+        },
+        off(event: string, listener: (...args: unknown[]) => void) {
+          listeners.set(
+            event,
+            (listeners.get(event) ?? []).filter((item) => item !== listener)
+          );
+        },
+      };
+      mocks.getRedisClient.mockReturnValue(client);
+      const { checkRedis } = await import("@/lib/health/checker");
+      const pending = checkRedis();
+      client.status = "ready";
+      for (const listener of listeners.get("ready") ?? []) listener();
+      const result = await pending;
+      expect(result.status).toBe("up");
+      expect(client.ping).toHaveBeenCalledTimes(1);
+    });
+
     it("returns unchecked when REDIS_URL is not set", async () => {
       delete process.env.REDIS_URL;
       mocks.getRedisClient.mockReturnValue(null);

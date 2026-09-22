@@ -44,6 +44,40 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: str
   }
 }
 
+function waitForRedisReady(client: {
+  status: string;
+  once(event: string, listener: (...args: unknown[]) => void): unknown;
+  off(event: string, listener: (...args: unknown[]) => void): unknown;
+}): Promise<void> {
+  if (client.status === "ready") return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const onReady = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = (error: unknown) => {
+      cleanup();
+      reject(error instanceof Error ? error : new Error(String(error)));
+    };
+    const onEnd = () => {
+      cleanup();
+      reject(new Error("Redis client ended before ready"));
+    };
+    const cleanup = () => {
+      client.off("ready", onReady);
+      client.off("error", onError);
+      client.off("end", onEnd);
+    };
+    client.once("ready", onReady);
+    client.once("error", onError);
+    client.once("end", onEnd);
+    if (client.status === "ready") {
+      cleanup();
+      resolve();
+    }
+  });
+}
+
 // -- 数据库检查 --
 
 /**
@@ -125,6 +159,12 @@ export async function checkRedis(): Promise<ComponentHealth> {
         latencyMs: Math.round(performance.now() - start),
         message: `Redis client status: ${client.status}`,
       };
+    }
+    // ioredis + enableOfflineQueue:false: ping() while status is still
+    // "connecting" rejects locally ("Stream isn't writeable") and never
+    // sends PING. 16-worker boxes stay degraded even though Redis AUTH works.
+    if (client.status !== "ready") {
+      await withTimeout(waitForRedisReady(client), REDIS_CHECK_TIMEOUT_MS, "redis");
     }
     await withTimeout(client.ping(), REDIS_CHECK_TIMEOUT_MS, "redis");
     return { status: "up", latencyMs: Math.round(performance.now() - start) };
