@@ -15,5 +15,6 @@
   "matchType": "Match Type",
   "source": "Source Pattern",
   "target": "Redirect Target",
-  "pattern": "Allowlist Pattern"
+  "pattern": "Allowlist Pattern",
+  "prefixStripped": "Provider prefix removed. Rules are matched against {model}"
 }

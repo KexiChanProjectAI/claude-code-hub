@@ -32,6 +32,7 @@ import {
 } from "@/lib/custom-headers";
 import { applyOpenCodeGoSessionHeader, shouldPromptOpenCodeGoAdapter } from "@/lib/opencode-go";
 import { PROVIDER_BATCH_PATCH_ERROR_CODES } from "@/lib/provider-batch-patch-error-codes";
+import { normalizeProviderPrefix } from "@/lib/provider-prefix";
 import { isValidUrl } from "@/lib/utils/validation";
 import type { ProviderDisplay, ProviderEndpoint, ProviderType } from "@/types/provider";
 import { invalidateProviderQueries } from "../../invalidate-provider-queries";
@@ -361,6 +362,7 @@ function ProviderFormContent({
           preserve_client_ip: state.routing.preserveClientIp,
           disable_session_reuse: state.routing.disableSessionReuse,
           overwrite_response_model: state.routing.overwriteResponseModel,
+          provider_prefix: normalizeProviderPrefix(state.routing.providerPrefix),
           model_redirects:
             state.routing.modelRedirects.length > 0 ? state.routing.modelRedirects : null,
           allowed_models:

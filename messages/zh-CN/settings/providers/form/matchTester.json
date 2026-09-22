@@ -15,5 +15,6 @@
   "matchType": "匹配方式",
   "source": "源模型模式",
   "target": "重定向目标",
-  "pattern": "白名单模式"
+  "pattern": "白名单模式",
+  "prefixStripped": "已去掉供应商前缀，规则按 {model} 匹配"
 }

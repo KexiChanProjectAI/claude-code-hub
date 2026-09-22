@@ -593,6 +593,16 @@ function ProviderRichListItemInner({
               {tList("endpointCircuitBroken")}
             </Badge>
           )}
+          {/* Provider prefix badge */}
+          {provider.providerPrefix && (
+            <Badge
+              variant="outline"
+              className="font-mono text-xs"
+              title={tList("providerPrefixBadge", { prefix: provider.providerPrefix })}
+            >
+              {provider.providerPrefix}
+            </Badge>
+          )}
           {/* Schedule badge */}
           {provider.activeTimeStart && provider.activeTimeEnd && (
             <Badge variant="outline" className="flex items-center gap-1">

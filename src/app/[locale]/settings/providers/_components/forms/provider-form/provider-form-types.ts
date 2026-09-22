@@ -54,6 +54,7 @@ export interface RoutingState {
   preserveClientIp: boolean;
   disableSessionReuse: boolean;
   overwriteResponseModel: boolean;
+  providerPrefix: string;
   modelRedirects: ProviderModelRedirectRule[];
   allowedModels: AllowedModelRule[];
   allowedClients: string[];
@@ -153,6 +154,7 @@ export type ProviderFormAction =
   | { type: "SET_PRESERVE_CLIENT_IP"; payload: boolean }
   | { type: "SET_DISABLE_SESSION_REUSE"; payload: boolean }
   | { type: "SET_OVERWRITE_RESPONSE_MODEL"; payload: boolean }
+  | { type: "SET_PROVIDER_PREFIX"; payload: string }
   | { type: "SET_MODEL_REDIRECTS"; payload: ProviderModelRedirectRule[] }
   | { type: "SET_ALLOWED_MODELS"; payload: AllowedModelRule[] }
   | { type: "SET_ALLOWED_CLIENTS"; payload: string[] }

@@ -15,5 +15,6 @@
   "matchType": "匹配方式",
   "source": "來源模型模式",
   "target": "重定向目標",
-  "pattern": "白名單模式"
+  "pattern": "白名單模式",
+  "prefixStripped": "已去掉供應商前綴，規則以 {model} 比對"
 }

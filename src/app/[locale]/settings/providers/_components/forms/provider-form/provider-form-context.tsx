@@ -79,6 +79,7 @@ const ACTION_TO_FIELD_PATH: Partial<Record<ProviderFormActionWith5hResetMode["ty
   SET_PRESERVE_CLIENT_IP: "routing.preserveClientIp",
   SET_DISABLE_SESSION_REUSE: "routing.disableSessionReuse",
   SET_OVERWRITE_RESPONSE_MODEL: "routing.overwriteResponseModel",
+  SET_PROVIDER_PREFIX: "routing.providerPrefix",
   SET_MODEL_REDIRECTS: "routing.modelRedirects",
   SET_ALLOWED_MODELS: "routing.allowedModels",
   SET_ALLOWED_CLIENTS: "routing.allowedClients",
@@ -166,6 +167,8 @@ export function createInitialState(
           analysis.routing.overwriteResponseModel.status === "uniform"
             ? analysis.routing.overwriteResponseModel.value
             : false,
+        // 供应商前缀不支持批量编辑
+        providerPrefix: "",
         modelRedirects:
           analysis.routing.modelRedirects.status === "uniform"
             ? analysis.routing.modelRedirects.value
@@ -362,6 +365,7 @@ export function createInitialState(
         preserveClientIp: false,
         disableSessionReuse: false,
         overwriteResponseModel: false,
+        providerPrefix: "",
         modelRedirects: [],
         allowedModels: [],
         allowedClients: [],
@@ -442,6 +446,7 @@ export function createInitialState(
       preserveClientIp: sourceProvider?.preserveClientIp ?? false,
       disableSessionReuse: sourceProvider?.disableSessionReuse ?? false,
       overwriteResponseModel: sourceProvider?.overwriteResponseModel ?? false,
+      providerPrefix: sourceProvider?.providerPrefix ?? "",
       modelRedirects: normalizeProviderModelRedirectRules(sourceProvider?.modelRedirects) ?? [],
       allowedModels: normalizeAllowedModelRules(sourceProvider?.allowedModels) ?? [],
       allowedClients: sourceProvider?.allowedClients ?? [],
@@ -552,6 +557,8 @@ export function providerFormReducer(
       return { ...state, routing: { ...state.routing, disableSessionReuse: action.payload } };
     case "SET_OVERWRITE_RESPONSE_MODEL":
       return { ...state, routing: { ...state.routing, overwriteResponseModel: action.payload } };
+    case "SET_PROVIDER_PREFIX":
+      return { ...state, routing: { ...state.routing, providerPrefix: action.payload } };
     case "SET_MODEL_REDIRECTS":
       return { ...state, routing: { ...state.routing, modelRedirects: action.payload } };
     case "SET_ALLOWED_MODELS":

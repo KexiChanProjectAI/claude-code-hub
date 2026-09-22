@@ -15,5 +15,6 @@
   "matchType": "一致方式",
   "source": "元モデルパターン",
   "target": "リダイレクト先",
-  "pattern": "許可パターン"
+  "pattern": "許可パターン",
+  "prefixStripped": "プロバイダープレフィックスを除去し、{model} でルールを照合しました"
 }

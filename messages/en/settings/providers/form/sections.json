@@ -437,6 +437,13 @@
       "label": "Overwrite response model ID",
       "desc": "When enabled, the model field returned to clients is always the requested model ID, not the upstream or redirected model."
     },
+    "providerPrefix": {
+      "label": "Provider prefix",
+      "desc": "Optional. When set, only model IDs carrying this prefix reach this provider, e.g. prefix openai requires openai/gpt-5. The prefix is removed before forwarding upstream.",
+      "placeholder": "e.g. openai",
+      "help": "Trailing slashes are normalized to a single /. Prefix matching is case-insensitive. Model redirect and allowlist rules are written against the model name without the prefix. Model list endpoints show this provider's models with the prefix.",
+      "preview": "Only models starting with {prefix} match, e.g. {example}. {prefix} is removed before forwarding upstream."
+    },
     "options": {
       "title": "Options",
       "desc": "Additional provider options and overrides"

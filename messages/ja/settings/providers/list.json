@@ -2,6 +2,7 @@
   "cancelButton": "キャンセル",
   "circuitBroken": "遮断中",
   "keyCircuitBroken": "キー遮断",
+  "providerPrefixBadge": "プロバイダープレフィックス：{prefix}",
   "endpointCircuitBroken": "エンドポイント遮断",
   "clipboardUnavailable": "この環境ではクリップボードを使用できません。手動でコピーしてください。",
   "confirmDeleteMessage": "プロバイダー \"{name}\" を削除してもよろしいですか？この操作は元に戻せません。",

@@ -104,4 +104,38 @@ describe("AllowedModelTester", () => {
 
     unmount();
   });
+
+  test("strips the provider prefix before matching allowlist rules", async () => {
+    const messages = loadMessages();
+    const { unmount } = render(
+      <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+        <AllowedModelTester
+          rules={[{ matchType: "exact", pattern: "gpt-5.6-luna" }]}
+          providerPrefix="openai"
+        />
+      </NextIntlClientProvider>
+    );
+
+    const input = document.querySelector("input") as HTMLInputElement | null;
+    await act(async () => {
+      if (input) {
+        input.value = "openai/gpt-5.6-luna";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    });
+    await flushTicks();
+
+    const button = document.querySelector("button") as HTMLButtonElement | null;
+    await act(async () => {
+      button?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flushTicks();
+
+    const text = document.body.textContent || "";
+    expect(text).toContain("Provider prefix removed. Rules are matched against gpt-5.6-luna");
+    expect(text).toContain("This model is allowed");
+
+    unmount();
+  });
 });

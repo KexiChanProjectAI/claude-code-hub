@@ -10,26 +10,34 @@ import {
   findMatchingProviderModelRedirectRule,
   resolveProviderModelRedirectTarget,
 } from "@/lib/provider-model-redirects";
+import { normalizeProviderPrefix, stripProviderPrefix } from "@/lib/provider-prefix";
 import type { ProviderModelRedirectRule } from "@/types/provider";
 
 interface ModelRedirectTesterProps {
   rules: ProviderModelRedirectRule[];
+  /** 供应商前缀：命中时先剥离，规则按裸模型名匹配（与运行时一致） */
+  providerPrefix?: string | null;
 }
 
-export function ModelRedirectTester({ rules }: ModelRedirectTesterProps) {
+export function ModelRedirectTester({ rules, providerPrefix }: ModelRedirectTesterProps) {
   const t = useTranslations("settings.providers.form.matchTester");
   const tRedirect = useTranslations("settings.providers.form.modelRedirect");
   const [modelName, setModelName] = useState("");
   const [testedModel, setTestedModel] = useState("");
 
+  const prefixStrippedModel = useMemo(
+    () => stripProviderPrefix(testedModel, normalizeProviderPrefix(providerPrefix)),
+    [providerPrefix, testedModel]
+  );
+
   const matchedRule = useMemo(
-    () => findMatchingProviderModelRedirectRule(testedModel, rules),
-    [rules, testedModel]
+    () => findMatchingProviderModelRedirectRule(prefixStrippedModel, rules),
+    [rules, prefixStrippedModel]
   );
 
   // 展示实际转发出去的模型：regex 规则的 target 可能带 `$1` 之类的捕获组引用。
   const resolvedTarget = matchedRule
-    ? resolveProviderModelRedirectTarget(testedModel, matchedRule)
+    ? resolveProviderModelRedirectTarget(prefixStrippedModel, matchedRule)
     : null;
 
   const matchedIndex = matchedRule
@@ -67,6 +75,12 @@ export function ModelRedirectTester({ rules }: ModelRedirectTesterProps) {
             {t("testButton")}
           </Button>
         </div>
+
+        {testedModel && prefixStrippedModel !== testedModel ? (
+          <p className="text-xs text-muted-foreground" data-testid="tester-prefix-stripped">
+            {t("prefixStripped", { model: prefixStrippedModel })}
+          </p>
+        ) : null}
 
         {testedModel ? (
           <div className="rounded-lg border border-border/60 bg-background/80 p-3">

@@ -7,25 +7,32 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { findMatchingAllowedModelRule, matchesAllowedModelRules } from "@/lib/allowed-model-rules";
+import { normalizeProviderPrefix, stripProviderPrefix } from "@/lib/provider-prefix";
 import type { AllowedModelRule } from "@/types/provider";
 
 interface AllowedModelTesterProps {
   rules: AllowedModelRule[];
+  /** 供应商前缀：命中时先剥离，规则按裸模型名匹配（与运行时一致） */
+  providerPrefix?: string | null;
 }
 
-export function AllowedModelTester({ rules }: AllowedModelTesterProps) {
+export function AllowedModelTester({ rules, providerPrefix }: AllowedModelTesterProps) {
   const t = useTranslations("settings.providers.form.matchTester");
   const tAllowed = useTranslations("settings.providers.form.allowedModelRules");
   const [modelName, setModelName] = useState("");
   const [testedModel, setTestedModel] = useState("");
 
+  const prefixStrippedModel = useMemo(
+    () => stripProviderPrefix(testedModel, normalizeProviderPrefix(providerPrefix)),
+    [providerPrefix, testedModel]
+  );
   const matchedRule = useMemo(
-    () => findMatchingAllowedModelRule(testedModel, rules),
-    [rules, testedModel]
+    () => findMatchingAllowedModelRule(prefixStrippedModel, rules),
+    [rules, prefixStrippedModel]
   );
   const isAllowed = useMemo(
-    () => matchesAllowedModelRules(testedModel, rules),
-    [rules, testedModel]
+    () => matchesAllowedModelRules(prefixStrippedModel, rules),
+    [rules, prefixStrippedModel]
   );
   const matchedIndex = matchedRule
     ? rules.findIndex(
@@ -60,6 +67,12 @@ export function AllowedModelTester({ rules }: AllowedModelTesterProps) {
             {t("testButton")}
           </Button>
         </div>
+
+        {testedModel && prefixStrippedModel !== testedModel ? (
+          <p className="text-xs text-muted-foreground" data-testid="tester-prefix-stripped">
+            {t("prefixStripped", { model: prefixStrippedModel })}
+          </p>
+        ) : null}
 
         {testedModel ? (
           <div className="rounded-lg border border-border/60 bg-background/80 p-3">

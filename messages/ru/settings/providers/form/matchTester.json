@@ -15,5 +15,6 @@
   "matchType": "Тип совпадения",
   "source": "Исходный шаблон",
   "target": "Целевая модель",
-  "pattern": "Шаблон allowlist"
+  "pattern": "Шаблон allowlist",
+  "prefixStripped": "Префикс провайдера удалён. Правила сопоставляются с {model}"
 }

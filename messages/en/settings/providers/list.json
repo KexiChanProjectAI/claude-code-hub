@@ -2,6 +2,7 @@
   "cancelButton": "Cancel",
   "circuitBroken": "Circuit Broken",
   "keyCircuitBroken": "Key Circuit",
+  "providerPrefixBadge": "Provider prefix: {prefix}",
   "endpointCircuitBroken": "Endpoint Circuit",
   "clipboardUnavailable": "Clipboard access is blocked in this environment. Select and copy the key manually.",
   "confirmDeleteMessage": "Are you sure you want to delete provider \"{name}\"? This action cannot be undone.",

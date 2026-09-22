@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { TagInput } from "@/components/ui/tag-input";
+import { normalizeProviderPrefix } from "@/lib/provider-prefix";
 import { getProviderTypeConfig } from "@/lib/provider-type-utils";
 import type { ProviderType } from "@/types/provider";
 import { AllowedModelRuleEditor } from "../../../allowed-model-rule-editor";
@@ -51,6 +52,7 @@ export function RoutingSection({ subSectionRefs }: RoutingSectionProps) {
   } = useProviderForm();
   const isEdit = mode === "edit";
   const isBatch = mode === "batch";
+  const normalizedProviderPrefix = normalizeProviderPrefix(state.routing.providerPrefix);
 
   const renderProviderTypeLabel = (type: ProviderType) => {
     switch (type) {
@@ -188,6 +190,38 @@ export function RoutingSection({ subSectionRefs }: RoutingSectionProps) {
         icon={Layers}
       >
         <div className="space-y-3">
+          {/* Provider Prefix - single provider only */}
+          {!isBatch && (
+            <>
+              <SmartInputWrapper
+                label={t("sections.routing.providerPrefix.label")}
+                description={
+                  normalizedProviderPrefix
+                    ? t("sections.routing.providerPrefix.preview", {
+                        prefix: normalizedProviderPrefix,
+                        example: `${normalizedProviderPrefix}gpt-5`,
+                      })
+                    : t("sections.routing.providerPrefix.desc")
+                }
+                tooltip={t("sections.routing.providerPrefix.help")}
+              >
+                <Input
+                  id={isEdit ? "edit-provider-prefix" : "provider-prefix"}
+                  value={state.routing.providerPrefix}
+                  onChange={(e) =>
+                    dispatch({ type: "SET_PROVIDER_PREFIX", payload: e.target.value })
+                  }
+                  placeholder={t("sections.routing.providerPrefix.placeholder")}
+                  disabled={state.ui.isPending}
+                  autoComplete="off"
+                  maxLength={64}
+                />
+              </SmartInputWrapper>
+
+              <div className="border-t border-border/30" />
+            </>
+          )}
+
           {/* Model Redirects */}
           <FieldGroup
             label={t("sections.routing.modelRedirects.label")}
@@ -212,7 +246,10 @@ export function RoutingSection({ subSectionRefs }: RoutingSectionProps) {
                   label={t("sections.routing.testRule")}
                   tooltip={tTester("redirectDescription")}
                 >
-                  <ModelRedirectTester rules={state.routing.modelRedirects} />
+                  <ModelRedirectTester
+                    rules={state.routing.modelRedirects}
+                    providerPrefix={isBatch ? null : state.routing.providerPrefix}
+                  />
                 </RuleTesterDialogTrigger>
               </div>
               {isBatch && batchAnalysis?.routing.modelRedirects.status === "mixed" && (
@@ -253,7 +290,10 @@ export function RoutingSection({ subSectionRefs }: RoutingSectionProps) {
                   label={t("sections.routing.testRule")}
                   tooltip={tTester("allowedDescription")}
                 >
-                  <AllowedModelTester rules={state.routing.allowedModels} />
+                  <AllowedModelTester
+                    rules={state.routing.allowedModels}
+                    providerPrefix={isBatch ? null : state.routing.providerPrefix}
+                  />
                 </RuleTesterDialogTrigger>
               </div>
             </div>

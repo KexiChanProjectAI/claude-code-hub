@@ -110,4 +110,72 @@ describe("ModelRedirectTester", () => {
 
     unmount();
   });
+
+  test("strips the provider prefix before matching redirect rules", async () => {
+    const messages = loadMessages();
+    const { unmount } = render(
+      <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+        <ModelRedirectTester
+          rules={[{ matchType: "exact", source: "gpt-5.6-luna", target: "luna-upstream" }]}
+          providerPrefix="openai//"
+        />
+      </NextIntlClientProvider>
+    );
+
+    const input = document.querySelector("input") as HTMLInputElement | null;
+    await act(async () => {
+      if (input) {
+        input.value = "OpenAI/gpt-5.6-luna";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    });
+    await flushTicks();
+
+    const button = document.querySelector("button") as HTMLButtonElement | null;
+    await act(async () => {
+      button?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flushTicks();
+
+    const text = document.body.textContent || "";
+    expect(text).toContain("Provider prefix removed. Rules are matched against gpt-5.6-luna");
+    expect(text).toContain("Matched a redirect rule");
+    expect(text).toContain("luna-upstream");
+
+    unmount();
+  });
+
+  test("does not show the prefix note when the model lacks the prefix", async () => {
+    const messages = loadMessages();
+    const { unmount } = render(
+      <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+        <ModelRedirectTester
+          rules={[{ matchType: "exact", source: "gpt-5.6-luna", target: "luna-upstream" }]}
+          providerPrefix="openai"
+        />
+      </NextIntlClientProvider>
+    );
+
+    const input = document.querySelector("input") as HTMLInputElement | null;
+    await act(async () => {
+      if (input) {
+        input.value = "gpt-5.6-luna";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    });
+    await flushTicks();
+
+    const button = document.querySelector("button") as HTMLButtonElement | null;
+    await act(async () => {
+      button?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flushTicks();
+
+    expect(document.querySelector("[data-testid='tester-prefix-stripped']")).toBeNull();
+    expect(document.body.textContent || "").toContain("luna-upstream");
+
+    unmount();
+  });
 });

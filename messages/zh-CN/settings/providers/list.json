@@ -6,6 +6,7 @@
   "todayUsageCount": "{count} 次",
   "circuitBroken": "熔断中",
   "keyCircuitBroken": "Key 熔断",
+  "providerPrefixBadge": "供应商前缀：{prefix}",
   "endpointCircuitBroken": "端点熔断",
   "officialWebsite": "官网",
   "viewFullKey": "查看完整 API Key",
