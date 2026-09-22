@@ -13,7 +13,8 @@ import { getCircuitState, isCircuitOpen } from "@/lib/circuit-breaker";
 import { PROVIDER_GROUP } from "@/lib/constants/provider.constants";
 import { logger } from "@/lib/logger";
 import { getEndpointFilterStats } from "@/lib/provider-endpoints/endpoint-selector";
-import { getProviderModelRedirectTarget } from "@/lib/provider-model-redirects";
+import { matchesProviderPrefix } from "@/lib/provider-prefix";
+import { resolveUpstreamModel } from "@/lib/provider-upstream-model";
 import { RateLimitService } from "@/lib/rate-limit";
 import { resolveSystemTimezone } from "@/lib/utils/timezone";
 import { isVendorTypeCircuitOpen } from "@/lib/vendor-type-circuit-breaker";
@@ -116,9 +117,7 @@ async function buildPriorityTiers(
   const enriched = await Promise.all(
     providers.map(async (provider) => ({
       provider,
-      redirectedModel: modelName
-        ? getProviderModelRedirectTarget(modelName, provider.modelRedirects)
-        : null,
+      redirectedModel: modelName ? resolveUpstreamModel(provider, modelName).model : null,
       endpointStats: await getEndpointStats(provider),
     }))
   );
@@ -271,7 +270,11 @@ export async function simulateDispatchDecisionTree(
             )
             .map((provider) =>
               buildProviderSnapshot(provider, groupFilter, {
-                details: `model ${normalizedModelName} did not match allowlist`,
+                details:
+                  provider.providerPrefix &&
+                  !matchesProviderPrefix(normalizedModelName, provider.providerPrefix)
+                    ? `model ${normalizedModelName} did not match provider prefix ${provider.providerPrefix}`
+                    : `model ${normalizedModelName} did not match allowlist`,
               })
             ),
       groupFilter,
@@ -376,7 +379,7 @@ export async function simulateDispatchDecisionTree(
       .map((provider) =>
         buildProviderSnapshot(provider, groupFilter, {
           redirectedModel: normalizedModelName
-            ? getProviderModelRedirectTarget(normalizedModelName, provider.modelRedirects)
+            ? resolveUpstreamModel(provider, normalizedModelName).model
             : null,
         })
       ),
@@ -386,20 +389,26 @@ export async function simulateDispatchDecisionTree(
     selectedPriorityProviderIds.has(provider.id)
   );
 
-  const redirectedProviders = currentProviders.map((provider) =>
-    buildProviderSnapshot(provider, groupFilter, {
-      redirectedModel: normalizedModelName
-        ? getProviderModelRedirectTarget(normalizedModelName, provider.modelRedirects)
-        : null,
+  const redirectedProviders = currentProviders.map((provider) => {
+    if (normalizedModelName === "") {
+      return buildProviderSnapshot(provider, groupFilter, {
+        redirectedModel: null,
+        details: "no_model_name_provided",
+      });
+    }
+
+    const resolution = resolveUpstreamModel(provider, normalizedModelName);
+    return buildProviderSnapshot(provider, groupFilter, {
+      redirectedModel: resolution.model,
+      ...(resolution.prefixStripped ? { prefixStripped: true } : {}),
       details:
-        normalizedModelName === ""
-          ? "no_model_name_provided"
-          : getProviderModelRedirectTarget(normalizedModelName, provider.modelRedirects) !==
-              normalizedModelName
-            ? "redirect_rule_matched"
+        resolution.matchedRule && resolution.model !== normalizedModelName
+          ? "redirect_rule_matched"
+          : resolution.prefixStripped
+            ? "provider_prefix_stripped"
             : "no_redirect_rule_matched",
-    })
-  );
+    });
+  });
   steps.push({
     stepName: "modelRedirect",
     stepIndex: 8,

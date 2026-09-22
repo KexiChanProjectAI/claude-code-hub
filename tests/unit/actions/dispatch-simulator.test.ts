@@ -273,3 +273,101 @@ describe("dispatch simulator", () => {
     expect(result.errorCode).toBe("PERMISSION_DENIED");
   });
 });
+
+describe("dispatch simulator - provider prefix", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    endpointSelectorMocks.getEndpointFilterStats.mockResolvedValue({
+      total: 1,
+      enabled: 1,
+      circuitOpen: 0,
+      available: 1,
+    });
+  });
+
+  function prefixedProviders(): Provider[] {
+    return [
+      createProvider(40, {
+        name: "prefixed",
+        groupTag: "default",
+        providerType: "openai-compatible",
+        providerPrefix: "openai/",
+        allowedModels: [{ matchType: "exact", pattern: "gpt-5.6-luna" }],
+      }),
+      createProvider(41, {
+        name: "plain",
+        groupTag: "default",
+        providerType: "openai-compatible",
+      }),
+    ];
+  }
+
+  test("keeps the prefixed provider and previews the stripped upstream model", async () => {
+    const { simulateDispatchDecisionTree } = await import("@/actions/dispatch-simulator");
+
+    const result = await simulateDispatchDecisionTree(
+      prefixedProviders(),
+      { clientFormat: "openai", modelName: "openai/gpt-5.6-luna", groupTags: [] },
+      { systemTimezone: "UTC" }
+    );
+
+    const allowlist = result.steps.find((step) => step.stepName === "modelAllowlist");
+    expect(allowlist?.surviving.map((provider) => provider.name).sort()).toEqual([
+      "plain",
+      "prefixed",
+    ]);
+
+    const redirect = result.steps.find((step) => step.stepName === "modelRedirect");
+    const prefixed = redirect?.surviving.find((provider) => provider.name === "prefixed");
+    expect(prefixed?.redirectedModel).toBe("gpt-5.6-luna");
+    expect(prefixed?.prefixStripped).toBe(true);
+    expect(prefixed?.details).toBe("provider_prefix_stripped");
+
+    const plain = redirect?.surviving.find((provider) => provider.name === "plain");
+    expect(plain?.redirectedModel).toBe("openai/gpt-5.6-luna");
+    expect(plain?.details).toBe("no_redirect_rule_matched");
+    expect(plain && "prefixStripped" in plain).toBe(false);
+
+    const tierProvider = result.priorityTiers[0]?.providers.find(
+      (provider) => provider.name === "prefixed"
+    );
+    expect(tierProvider?.redirectedModel).toBe("gpt-5.6-luna");
+  });
+
+  test("filters the prefixed provider out for an unprefixed model with a prefix reason", async () => {
+    const { simulateDispatchDecisionTree } = await import("@/actions/dispatch-simulator");
+
+    const result = await simulateDispatchDecisionTree(
+      prefixedProviders(),
+      { clientFormat: "openai", modelName: "gpt-5.6-luna", groupTags: [] },
+      { systemTimezone: "UTC" }
+    );
+
+    const allowlist = result.steps.find((step) => step.stepName === "modelAllowlist");
+    expect(allowlist?.surviving.map((provider) => provider.name)).toEqual(["plain"]);
+    expect(allowlist?.filteredOut[0]?.name).toBe("prefixed");
+    expect(allowlist?.filteredOut[0]?.details).toContain("did not match provider prefix openai/");
+  });
+
+  test("reports redirect_rule_matched when a bare-name rule applies after the strip", async () => {
+    const { simulateDispatchDecisionTree } = await import("@/actions/dispatch-simulator");
+
+    const result = await simulateDispatchDecisionTree(
+      [
+        createProvider(42, {
+          name: "prefixed-redirect",
+          groupTag: "default",
+          providerType: "openai-compatible",
+          providerPrefix: "openai/",
+          modelRedirects: [{ matchType: "exact", source: "gpt-5.6-luna", target: "luna-up" }],
+        }),
+      ],
+      { clientFormat: "openai", modelName: "openai/gpt-5.6-luna", groupTags: [] },
+      { systemTimezone: "UTC" }
+    );
+
+    const redirect = result.steps.find((step) => step.stepName === "modelRedirect");
+    expect(redirect?.surviving[0]?.redirectedModel).toBe("luna-up");
+    expect(redirect?.surviving[0]?.details).toBe("redirect_rule_matched");
+  });
+});

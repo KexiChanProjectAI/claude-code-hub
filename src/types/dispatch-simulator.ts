@@ -41,6 +41,8 @@ export interface DispatchSimulatorProviderSnapshot {
   weight: number;
   details?: string;
   redirectedModel?: string | null;
+  /** 是否剥离了供应商前缀 */
+  prefixStripped?: boolean;
   endpointStats?: DispatchSimulatorEndpointStats | null;
 }
 
