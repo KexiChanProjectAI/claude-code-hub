@@ -10,6 +10,7 @@ import {
 } from "@/lib/compression/payload-codec";
 import { logger } from "@/lib/logger";
 import { onRequestMemoryForcedEnd, retainRequestMemoryUntil } from "@/lib/memory/request-lifetime";
+import { matchesProviderPrefix } from "@/lib/provider-prefix";
 import {
   deleteLiveChain,
   type LiveProviderSnapshot,
@@ -425,7 +426,12 @@ export class ProxySession {
 
     // 针对官方 Gemini 路径（/v1beta/models/{model}:generateContent）
     // 请求体中通常没有 model 字段，需从 URL 路径提取用于调度器匹配
-    const modelFromPath = extractModelFromPath(requestUrl.pathname);
+    // 带供应商前缀的模型段含 "/"，仅在匹配已配置前缀时覆盖原有解析结果
+    const modelFromPath =
+      modelFromBody === null && modelFromImageRequest === null
+        ? ((await resolvePrefixedModelFromPath(requestUrl.pathname)) ??
+          extractModelFromPath(requestUrl.pathname))
+        : extractModelFromPath(requestUrl.pathname);
 
     // 双重检测（请求体优先，其次路径），若判断为 Gemini 请求则给出默认模型
     const isLikelyGeminiRequest =
@@ -1770,6 +1776,66 @@ export function extractModelFromPath(pathname: string): string | null {
   }
 
   return null;
+}
+
+const PREFIXED_PATH_MODEL_PATTERNS = [
+  /\/publishers\/google\/models\/([^:]+?)(?::[^/:]+)?$/,
+  /\/v1beta\/models\/([^:]+?)(?::[^/:]+)?$/,
+  /\/v1\/models\/([^:]+?)(?::[^/:]+)?$/,
+];
+
+/**
+ * 提取带供应商前缀的路径模型（模型段本身含 "/"，如 /v1beta/models/google/gemini-2.5-flash:generateContent）。
+ *
+ * 仅当整段模型以某个已配置的供应商前缀开头时才返回，否则返回 null，由 extractModelFromPath 的
+ * 原有规则处理。未配置任何前缀时恒为 null，从而保证路径解析行为与引入前缀前完全一致。
+ */
+export function extractPrefixedModelFromPath(
+  pathname: string,
+  providerPrefixes: readonly string[]
+): string | null {
+  if (providerPrefixes.length === 0) {
+    return null;
+  }
+
+  for (const pattern of PREFIXED_PATH_MODEL_PATTERNS) {
+    const candidate = pathname.match(pattern)?.[1];
+    if (!candidate) {
+      continue;
+    }
+    if (!candidate.includes("/")) {
+      return null;
+    }
+    return providerPrefixes.some((prefix) => matchesProviderPrefix(candidate, prefix))
+      ? candidate
+      : null;
+  }
+
+  return null;
+}
+
+/**
+ * 仅在路径模型段含 "/" 时才加载供应商列表（走缓存），收集已配置的前缀。
+ */
+async function resolvePrefixedModelFromPath(pathname: string): Promise<string | null> {
+  const hasSlashModelSegment = PREFIXED_PATH_MODEL_PATTERNS.some((pattern) =>
+    pathname.match(pattern)?.[1]?.includes("/")
+  );
+  if (!hasSlashModelSegment) {
+    return null;
+  }
+
+  try {
+    const prefixes = (await findAllProviders())
+      .map((provider) => provider.providerPrefix)
+      .filter((prefix): prefix is string => !!prefix);
+    return extractPrefixedModelFromPath(pathname, prefixes);
+  } catch (error) {
+    logger.warn("[ProxySession] Failed to load provider prefixes for path model extraction", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
 }
 
 /**

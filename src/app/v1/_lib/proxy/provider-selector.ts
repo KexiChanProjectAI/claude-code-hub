@@ -4,6 +4,7 @@ import { getCircuitState, isCircuitOpen } from "@/lib/circuit-breaker";
 import { getEnvConfig } from "@/lib/config/env.schema";
 import { PROVIDER_GROUP } from "@/lib/constants/provider.constants";
 import { logger } from "@/lib/logger";
+import { matchesProviderPrefix, stripProviderPrefix } from "@/lib/provider-prefix";
 import { RateLimitService } from "@/lib/rate-limit";
 import { buildPublicSessionIdentity, buildScopeTag } from "@/lib/request-identity";
 import { SessionManager } from "@/lib/session-manager";
@@ -126,8 +127,10 @@ async function resolveGroupCostMultiplierForProvider(session: ProxySession): Pro
  * 检查供应商是否支持指定模型（用于调度器匹配）
  *
  * 核心逻辑（统一所有供应商类型）：
+ * 0. 配置了 providerPrefix：请求模型必须以该前缀开头（大小写不敏感），否则不支持；
+ *    命中后剥离前缀，后续 allowedModels 匹配使用裸模型名
  * 1. 未设置 allowedModels（null 或空数组）：接受任意模型（格式兼容性由 checkFormatProviderTypeCompatibility 保证）
- * 2. 设置了 allowedModels：仅当原始请求模型命中 allowedModels 时才支持（大小写不敏感）
+ * 2. 设置了 allowedModels：仅当（剥离前缀后的）请求模型命中 allowedModels 时才支持（大小写不敏感）
  * 3. modelRedirects 仅在供应商已被选中后用于改写上游模型，不参与调度放行
  *
  * 注意：allowedModels 是声明性列表（用户可填写任意字符串），用于调度器匹配，不是真实模型校验。
@@ -138,6 +141,15 @@ async function resolveGroupCostMultiplierForProvider(session: ProxySession): Pro
  * @returns 是否支持该模型（用于调度器筛选）
  */
 function providerSupportsModel(provider: Provider, requestedModel: string): boolean {
+  // 0. 供应商前缀：未命中直接拒绝，命中则以裸模型名继续匹配
+  const prefix = provider.providerPrefix;
+  if (prefix) {
+    if (!matchesProviderPrefix(requestedModel, prefix)) {
+      return false;
+    }
+    requestedModel = stripProviderPrefix(requestedModel, prefix);
+  }
+
   // 1. 未设置 allowedModels（null 或空数组）：接受任意模型
   if (!provider.allowedModels || provider.allowedModels.length === 0) {
     return true;
@@ -543,7 +555,9 @@ export class ProxyProviderResolver {
         const rateLimited = filteredProviders.filter((p) => p.reason === "rate_limited");
         const circuitOpen = filteredProviders.filter((p) => p.reason === "circuit_open");
         const disabled = filteredProviders.filter((p) => p.reason === "disabled");
-        const modelNotAllowed = filteredProviders.filter((p) => p.reason === "model_not_allowed");
+        const modelNotAllowed = filteredProviders.filter(
+          (p) => p.reason === "model_not_allowed" || p.reason === "prefix_mismatch"
+        );
         const clientRestricted = filteredProviders.filter((p) => p.reason === "client_restriction");
 
         // 计算可用供应商数量（排除禁用和模型不支持的）
@@ -1385,6 +1399,7 @@ export class ProxyProviderResolver {
           | "format_type_mismatch"
           | "type_mismatch"
           | "model_not_allowed"
+          | "prefix_mismatch"
           | "schedule_inactive"
           | "disabled" = "disabled";
         let details = "";
@@ -1404,6 +1419,13 @@ export class ProxyProviderResolver {
         ) {
           reason = "format_type_mismatch";
           details = `原始格式 ${session.originalFormat} 与供应商类型 ${p.providerType} 不兼容`;
+        } else if (
+          requestedModel &&
+          p.providerPrefix &&
+          !matchesProviderPrefix(requestedModel, p.providerPrefix)
+        ) {
+          reason = "prefix_mismatch";
+          details = `模型 ${requestedModel} 不匹配供应商前缀 ${p.providerPrefix}`;
         } else if (requestedModel && !providerSupportsModel(p, requestedModel)) {
           reason = "model_not_allowed";
           details = `不支持模型 ${requestedModel}`;

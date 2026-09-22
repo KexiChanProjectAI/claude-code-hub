@@ -1,10 +1,6 @@
 import { logger } from "@/lib/logger";
-import {
-  findMatchingProviderModelRedirectRule,
-  getProviderModelRedirectTarget,
-  hasProviderModelRedirectRules,
-  resolveProviderModelRedirectTarget,
-} from "@/lib/provider-model-redirects";
+import { hasProviderModelRedirectRules } from "@/lib/provider-model-redirects";
+import { resolveUpstreamModel } from "@/lib/provider-upstream-model";
 import type { Provider } from "@/types/provider";
 import { isOpenAIImageMultipartRequest, setOpenAIImageMultipartModel } from "./openai-image-compat";
 import type { ProxySession } from "./session";
@@ -26,21 +22,13 @@ export class ModelRedirector {
    */
   static apply(session: ProxySession, provider: Provider): boolean {
     // 获取真正的原始模型（用户请求的模型，不是上一个供应商重定向后的模型）
-    const trueOriginalModel = session.getOriginalModel() || session.request.model;
-
-    // 检查是否配置了模型重定向
-    if (!hasProviderModelRedirectRules(provider.modelRedirects)) {
-      session.clearCurrentModelRedirect();
-      // 如果新供应商没有重定向配置，且之前发生过重定向，需要重置
-      if (session.isModelRedirected() && trueOriginalModel) {
-        ModelRedirector.resetToOriginal(session, trueOriginalModel, provider);
-      }
-      return false;
-    }
-
-    // 获取原始模型名称
-    const originalModel = trueOriginalModel;
+    const originalModel = session.getOriginalModel() || session.request.model;
     if (!originalModel) {
+      // 与引入供应商前缀前保持一致：仅在未配置重定向规则时清理当前 attempt 的重定向快照
+      if (!provider.providerPrefix && !hasProviderModelRedirectRules(provider.modelRedirects)) {
+        session.clearCurrentModelRedirect();
+        return false;
+      }
       logger.debug("[ModelRedirector] No model in request, skipping redirect", {
         providerId: provider.id,
         providerName: provider.name,
@@ -48,14 +36,14 @@ export class ModelRedirector {
       return false;
     }
 
-    // 检查是否有该模型的重定向配置
-    const matchedRule = findMatchingProviderModelRedirectRule(
-      originalModel,
-      provider.modelRedirects
-    );
-    if (!matchedRule) {
+    // 先剥离供应商前缀，再按（裸模型名）重定向规则改写
+    const resolution = resolveUpstreamModel(provider, originalModel);
+    const matchedRule = resolution.matchedRule;
+    const redirectedModel = resolution.model;
+
+    if (!matchedRule && !resolution.prefixStripped) {
       session.clearCurrentModelRedirect();
-      // 如果新供应商对此模型没有重定向规则，且之前发生过重定向，需要重置
+      // 新供应商对此模型无需改写，且之前发生过重定向（供应商切换），需要重置
       if (session.isModelRedirected()) {
         ModelRedirector.resetToOriginal(session, originalModel, provider);
       } else {
@@ -68,14 +56,14 @@ export class ModelRedirector {
       return false;
     }
 
-    const redirectedModel = resolveProviderModelRedirectTarget(originalModel, matchedRule);
-
     // 执行重定向
     logger.info("[ModelRedirector] Model redirected", {
       originalModel,
       redirectedModel,
-      matchType: matchedRule.matchType,
-      matchedSource: matchedRule.source,
+      matchType: matchedRule?.matchType ?? null,
+      matchedSource: matchedRule?.source ?? null,
+      prefixStripped: resolution.prefixStripped,
+      providerPrefix: resolution.prefixStripped ? provider.providerPrefix : null,
       providerId: provider.id,
       providerName: provider.name,
       providerType: provider.providerType,
@@ -91,10 +79,12 @@ export class ModelRedirector {
       const originalPath = session.requestUrl.pathname;
       // 替换 URL 中的模型名称
       // 匹配模式：/models/{model}:action 或 /models/{model}
-      const newPath = originalPath.replace(
-        /\/models\/([^/:]+)(:[^/]+)?$/,
-        `/models/${redirectedModel}$2`
-      );
+      // 剥离了供应商前缀时，URL 中的模型段本身带 "/"（如 google/gemini-2.5-flash），需按整段替换；
+      // 否则沿用原有规则，只替换不含 "/" 的模型段
+      const modelSegmentPattern = resolution.prefixStripped
+        ? /\/models\/([^:]+?)(:[^/]+)?$/
+        : /\/models\/([^/:]+)(:[^/]+)?$/;
+      const newPath = originalPath.replace(modelSegmentPattern, `/models/${redirectedModel}$2`);
 
       if (newPath !== originalPath) {
         // 创建新的 URL 对象并修改路径
@@ -131,18 +121,27 @@ export class ModelRedirector {
     }
 
     // 更新日志（记录重定向）
-    session.request.note = `[Model Redirected: ${originalModel} → ${redirectedModel}] ${session.request.note || ""}`;
+    const noteLabel =
+      resolution.prefixStripped && !matchedRule ? "Provider Prefix Stripped" : "Model Redirected";
+    session.request.note = `[${noteLabel}: ${originalModel} → ${redirectedModel}] ${session.request.note || ""}`;
 
     const redirectInfo = {
       originalModel,
       redirectedModel,
       billingModel: originalModel,
-      matchedRule: {
-        matchType: matchedRule.matchType,
-        source: matchedRule.source,
-        target: matchedRule.target,
-      },
-    } as const;
+      ...(matchedRule
+        ? {
+            matchedRule: {
+              matchType: matchedRule.matchType,
+              source: matchedRule.source,
+              target: matchedRule.target,
+            },
+          }
+        : {}),
+      ...(resolution.prefixStripped && provider.providerPrefix
+        ? { providerPrefix: provider.providerPrefix }
+        : {}),
+    };
 
     // 记录当前 attempt 的 redirect 快照。
     // 如果最后一条链路项本来就属于当前 provider（例如 initial_selection），顺手更新它；
@@ -166,22 +165,22 @@ export class ModelRedirector {
    * @returns 重定向后的模型名称（如果没有重定向则返回原始名称）
    */
   static getRedirectedModel(originalModel: string, provider: Provider): string {
-    if (!provider.modelRedirects || !originalModel) {
+    if (!originalModel) {
       return originalModel;
     }
 
-    return getProviderModelRedirectTarget(originalModel, provider.modelRedirects);
+    return resolveUpstreamModel(provider, originalModel).model;
   }
 
   /**
-   * 检查供应商是否配置了指定模型的重定向
+   * 检查供应商是否会改写指定模型（前缀剥离或重定向规则）
    *
    * @param model - 模型名称
    * @param provider - 供应商
    * @returns 是否配置了重定向
    */
   static hasRedirect(model: string, provider: Provider): boolean {
-    return !!findMatchingProviderModelRedirectRule(model, provider.modelRedirects);
+    return !!model && resolveUpstreamModel(provider, model).model !== model;
   }
 
   /**

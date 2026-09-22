@@ -109,6 +109,7 @@ export interface ProviderChainItem {
       source: string;
       target: string;
     };
+    providerPrefix?: string; // 剥离的供应商前缀（仅在剥离时记录）
   };
 
   // 错误信息（记录失败时的上游报错）
@@ -193,6 +194,7 @@ export interface ProviderChainItem {
         | "format_type_mismatch" // 请求格式与供应商类型不兼容
         | "type_mismatch"
         | "model_not_allowed"
+        | "prefix_mismatch" // 请求模型未携带供应商前缀
         | "schedule_inactive" // 供应商不在调度时间窗口内
         | "disabled"
         | "client_restriction"; // Provider filtered due to client restriction
