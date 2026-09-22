@@ -127,6 +127,9 @@ export const ProviderSummarySchema = z
       .describe(
         "Whether client-facing response model IDs are overwritten with the requested model."
       ),
+    providerPrefix: NullableStringSchema.describe(
+      "Provider prefix (normalized to end with a single '/'). When set, only model IDs starting with this prefix are routed to the provider, and the prefix is stripped before forwarding upstream."
+    ),
     modelRedirects: z.array(z.unknown()).nullable().describe("Model redirect rules."),
     activeTimeStart: NullableStringSchema.describe("Scheduled active start time in HH:mm."),
     activeTimeEnd: NullableStringSchema.describe("Scheduled active end time in HH:mm."),
@@ -477,6 +480,14 @@ const ProviderCreateObjectSchema = z
       .optional()
       .describe(
         "Whether client-facing response model IDs are overwritten with the requested model."
+      ),
+    provider_prefix: z
+      .string()
+      .max(256)
+      .nullable()
+      .optional()
+      .describe(
+        "Provider prefix. Trailing '/' characters are trimmed and a single '/' is appended; empty clears it. When set, only model IDs starting with this prefix (case-insensitive) are routed to the provider, and the prefix is stripped before forwarding upstream."
       ),
     model_redirects: z.array(z.unknown()).nullable().optional().describe("Model redirect rules."),
     active_time_start: TimeOfDaySchema.nullable()

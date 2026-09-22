@@ -102,6 +102,7 @@ function provider(overrides: Partial<ProviderDisplay> = {}): ProviderDisplay {
     preserveClientIp: false,
     disableSessionReuse: false,
     overwriteResponseModel: false,
+    providerPrefix: null,
     modelRedirects: null,
     activeTimeStart: null,
     activeTimeEnd: null,
@@ -540,6 +541,31 @@ describe("v1 providers read endpoints", () => {
     });
     expect(hidden.response.status).toBe(404);
     expect(hidden.json).toMatchObject({ errorCode: "provider.not_found" });
+  });
+
+  test("returns the provider prefix in list and detail responses", async () => {
+    getProvidersMock.mockResolvedValue([
+      provider({ providerPrefix: "openai/" }),
+      provider({ id: 3, name: "No prefix", providerType: "openai-compatible" }),
+    ]);
+
+    const detail = await callV1Route({
+      method: "GET",
+      pathname: "/api/v1/providers/1",
+      headers: { Authorization: "Bearer admin-token" },
+    });
+    expect(detail.response.status).toBe(200);
+    expect(detail.json).toMatchObject({ id: 1, providerPrefix: "openai/" });
+
+    const list = await callV1Route({
+      method: "GET",
+      pathname: "/api/v1/providers",
+      headers: { Authorization: "Bearer admin-token" },
+    });
+    expect(list.response.status).toBe(200);
+    const items = (list.json as { items: Array<{ id: number; providerPrefix: string | null }> })
+      .items;
+    expect(items.find((item) => item.id === 3)?.providerPrefix).toBeNull();
   });
 
   test("reveals the real provider key only for visible providers", async () => {

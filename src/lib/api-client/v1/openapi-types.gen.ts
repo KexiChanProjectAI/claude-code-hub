@@ -4414,6 +4414,8 @@ export interface operations {
                             disableSessionReuse: boolean;
                             /** @description Whether client-facing response model IDs are overwritten with the requested model. */
                             overwriteResponseModel: boolean;
+                            /** @description Provider prefix (normalized to end with a single '/'). When set, only model IDs starting with this prefix are routed to the provider, and the prefix is stripped before forwarding upstream. */
+                            providerPrefix: string | null;
                             /** @description Model redirect rules. */
                             modelRedirects: unknown[] | null;
                             /** @description Scheduled active start time in HH:mm. */
@@ -4747,6 +4749,8 @@ export interface operations {
                     disable_session_reuse?: boolean;
                     /** @description Whether client-facing response model IDs are overwritten with the requested model. */
                     overwrite_response_model?: boolean;
+                    /** @description Provider prefix. Trailing '/' characters are trimmed and a single '/' is appended; empty clears it. When set, only model IDs starting with this prefix (case-insensitive) are routed to the provider, and the prefix is stripped before forwarding upstream. */
+                    provider_prefix?: string | null;
                     /** @description Model redirect rules. */
                     model_redirects?: unknown[] | null;
                     /** @description Scheduled active start time. */
@@ -4917,6 +4921,8 @@ export interface operations {
                         disableSessionReuse: boolean;
                         /** @description Whether client-facing response model IDs are overwritten with the requested model. */
                         overwriteResponseModel: boolean;
+                        /** @description Provider prefix (normalized to end with a single '/'). When set, only model IDs starting with this prefix are routed to the provider, and the prefix is stripped before forwarding upstream. */
+                        providerPrefix: string | null;
                         /** @description Model redirect rules. */
                         modelRedirects: unknown[] | null;
                         /** @description Scheduled active start time in HH:mm. */
@@ -5258,6 +5264,8 @@ export interface operations {
                         disableSessionReuse: boolean;
                         /** @description Whether client-facing response model IDs are overwritten with the requested model. */
                         overwriteResponseModel: boolean;
+                        /** @description Provider prefix (normalized to end with a single '/'). When set, only model IDs starting with this prefix are routed to the provider, and the prefix is stripped before forwarding upstream. */
+                        providerPrefix: string | null;
                         /** @description Model redirect rules. */
                         modelRedirects: unknown[] | null;
                         /** @description Scheduled active start time in HH:mm. */
@@ -5766,6 +5774,8 @@ export interface operations {
                     disable_session_reuse?: boolean;
                     /** @description Whether client-facing response model IDs are overwritten with the requested model. */
                     overwrite_response_model?: boolean;
+                    /** @description Provider prefix. Trailing '/' characters are trimmed and a single '/' is appended; empty clears it. When set, only model IDs starting with this prefix (case-insensitive) are routed to the provider, and the prefix is stripped before forwarding upstream. */
+                    provider_prefix?: string | null;
                     /** @description Model redirect rules. */
                     model_redirects?: unknown[] | null;
                     /** @description Scheduled active start time. */
@@ -5942,6 +5952,8 @@ export interface operations {
                         disableSessionReuse: boolean;
                         /** @description Whether client-facing response model IDs are overwritten with the requested model. */
                         overwriteResponseModel: boolean;
+                        /** @description Provider prefix (normalized to end with a single '/'). When set, only model IDs starting with this prefix are routed to the provider, and the prefix is stripped before forwarding upstream. */
+                        providerPrefix: string | null;
                         /** @description Model redirect rules. */
                         modelRedirects: unknown[] | null;
                         /** @description Scheduled active start time in HH:mm. */
