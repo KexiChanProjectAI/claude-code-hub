@@ -5,6 +5,7 @@ import { GET as modelsGet, POST as modelsPost } from "@/app/models/[[...route]]/
 import { GET as responsesGet, POST as responsesPost } from "@/app/responses/[[...route]]/route";
 import { GET as v1Get, POST as v1Post, v1App } from "@/app/v1/[...route]/route";
 import { mapUnprefixedV1Path, rewriteUnprefixedV1Request } from "@/app/v1/_lib/unprefixed-v1-alias";
+import { stripListenPrefix } from "@/lib/listen-prefix";
 
 describe("mapUnprefixedV1Path", () => {
   test.each([
@@ -117,6 +118,29 @@ describe("Hono /v1 app after alias rewrite", () => {
         headers: { "content-type": "application/json" },
         body: "{}",
       })
+    );
+    expect(response.status).not.toBe(404);
+  });
+});
+
+describe("listen prefix composes with the unprefixed alias rewrite", () => {
+  const prefixes = ["/gw"];
+
+  test.each([
+    ["/gw/models", "/v1/models"],
+    ["/gw/messages", "/v1/messages"],
+    ["/gw/chat/completions", "/v1/chat/completions"],
+    ["/gw/v1/models", "/v1/models"],
+  ])("%s canonicalizes to %s", (prefixed, expected) => {
+    const stripped = stripListenPrefix(prefixed, prefixes);
+    expect(stripped).not.toBeNull();
+    expect(mapUnprefixedV1Path(stripped as string)).toBe(expected);
+  });
+
+  test("a prefixed unprefixed-alias request reaches the v1 handler", async () => {
+    const stripped = stripListenPrefix("/gw/models", prefixes);
+    const response = await v1App.fetch(
+      rewriteUnprefixedV1Request(new Request(`http://localhost${stripped}`))
     );
     expect(response.status).not.toBe(404);
   });
