@@ -5,6 +5,7 @@ import { getLocaleFromValue, normalizePathnameForLocaleNavigation } from "@/i18n
 import { routing } from "@/i18n/routing";
 import { AUTH_COOKIE_NAME } from "@/lib/auth";
 import { isDevelopment } from "@/lib/config/env.schema";
+import { resolveListenPrefixedPath } from "@/lib/listen-prefix";
 import { logger } from "@/lib/logger";
 
 // Public paths that don't require authentication
@@ -39,6 +40,18 @@ function proxyHandler(request: NextRequest) {
 
   if (isDevelopment()) {
     logger.info("Request received", { method: method.toUpperCase(), pathname });
+  }
+
+  // PROXY_LISTEN_PREFIX 配置的额外监听前缀：剥离后重写到规范代理路径。
+  // 必须早于 intlMiddleware（否则 next-intl 会把 /gateway/v1/messages 重定向成
+  // /zh-CN/gateway/v1/messages）和 Cookie 鉴权。matcher 只能是静态字符串字面量，
+  // 无法排除动态前缀，因此这些路径会进入 middleware 并在此重写。
+  // 生产环境由 server.js 提前剥离前缀，请求不会走到这里。
+  const listenPrefixedPath = resolveListenPrefixedPath(pathname);
+  if (listenPrefixedPath) {
+    const rewriteUrl = request.nextUrl.clone();
+    rewriteUrl.pathname = listenPrefixedPath;
+    return NextResponse.rewrite(rewriteUrl);
   }
 
   // API 代理路由不需要 locale 处理和 Web 鉴权（使用自己的 Bearer token）

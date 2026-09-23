@@ -30,6 +30,19 @@ describe("proxy matcher", () => {
     });
   });
 
+  describe("PROXY_LISTEN_PREFIX paths MUST be matched (the matcher is static, so the handler does the rewrite)", () => {
+    it.each([
+      "/gateway/v1/messages",
+      "/gateway/v1beta/models",
+      "/gateway/responses",
+      "/gateway/chat/completions",
+      "/gateway/models",
+      "/ai/gateway/v1/messages",
+    ])("matches %s", (pathname) => {
+      expect(matcher.test(pathname)).toBe(true);
+    });
+  });
+
   describe("look-alike paths that must NOT be excluded (regression: a bare `v1` prefix would over-match, e.g. `/v10`)", () => {
     it.each([
       "/v10/foo",

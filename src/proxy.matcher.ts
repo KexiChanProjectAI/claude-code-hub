@@ -16,6 +16,13 @@
 // - _next/image  (image optimization files)
 // - favicon.ico  (favicon file)
 //
+// NOTE: paths under a configured PROXY_LISTEN_PREFIX (e.g. `/gateway/v1/...`)
+// are intentionally NOT excluded — the matcher must be a static literal, so it
+// cannot know the prefix. Those requests enter the proxy handler, which strips
+// the prefix and rewrites to the canonical path. In production `server.js`
+// strips the prefix first, so they never reach the middleware (and therefore
+// avoid the body clone described above).
+//
 // IMPORTANT: keep this pattern in sync with the inlined literal in
 // `src/proxy.ts` — Next.js requires `config.matcher` entries to be string
 // literals so its build-time static analyzer can collect them. The unit
