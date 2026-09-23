@@ -1,6 +1,7 @@
 // Ensure File polyfill is loaded before Zod (Zod 4.x checks for File API on initialization)
 import "@/lib/polyfills/file";
 import { z } from "zod";
+import { parseListenPrefixes } from "@/lib/listen-prefix";
 
 /**
  * 布尔值转换函数
@@ -138,6 +139,21 @@ export const EnvSchema = z.object({
   // 正确做法: 使用 transform 显式处理 "false" 和 "0" 字符串
   AUTO_MIGRATE: z.string().default("true").transform(booleanTransform),
   PORT: z.coerce.number().default(23000),
+  // 代理 API 的额外监听前缀（逗号分隔，可选）。
+  // 例如 PROXY_LISTEN_PREFIX=/gateway 时，/gateway/v1/messages 与 /gateway/messages
+  // 与原有的 /v1/messages、/messages 同时生效；实际剥离在 src/proxy.ts 与 server.js
+  // 完成，下游管线只会看到规范路径。
+  PROXY_LISTEN_PREFIX: z
+    .string()
+    .optional()
+    .transform((raw, ctx) => {
+      const { prefixes, error } = parseListenPrefixes(raw);
+      if (error) {
+        ctx.addIssue({ code: "custom", message: `PROXY_LISTEN_PREFIX ${error}` });
+        return z.NEVER;
+      }
+      return prefixes;
+    }),
   REDIS_URL: z.string().optional(),
   REDIS_TLS_REJECT_UNAUTHORIZED: z.string().default("true").transform(booleanTransform),
   REDIS_COMMAND_TIMEOUT_MS: optionalNumber(
