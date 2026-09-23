@@ -4,7 +4,7 @@ import { describe, expect, test } from "vitest";
 const requireFromHere = createRequire(import.meta.url);
 
 type ServerJsModule = {
-  isResponsesWsUpgrade: (req: { url?: string }) => boolean;
+  isResponsesWsUpgrade: (req: { url?: string }, listenPrefixes?: readonly string[]) => boolean;
 };
 
 const { isResponsesWsUpgrade } = requireFromHere("../../server.js") as ServerJsModule;
@@ -26,5 +26,34 @@ describe("isResponsesWsUpgrade", () => {
 
   test("rejects missing url", () => {
     expect(isResponsesWsUpgrade({})).toBe(false);
+  });
+});
+
+describe("isResponsesWsUpgrade with PROXY_LISTEN_PREFIX", () => {
+  const prefixes = ["/gw"];
+
+  test.each([
+    "/gw/v1/responses",
+    "/gw/v1/responses/",
+    "/gw/responses",
+    "/gw/responses/?model=gpt",
+    "/v1/responses",
+    "/responses",
+  ])("accepts %s", (url) => {
+    expect(isResponsesWsUpgrade({ url }, prefixes)).toBe(true);
+  });
+
+  test.each([
+    "/gw/v1/messages",
+    "/gw/models",
+    "/gw",
+    "/gwx/v1/responses",
+    "/gw/v1/responses/extra",
+  ])("rejects %s", (url) => {
+    expect(isResponsesWsUpgrade({ url }, prefixes)).toBe(false);
+  });
+
+  test("rejects prefixed paths when no prefix is configured", () => {
+    expect(isResponsesWsUpgrade({ url: "/gw/v1/responses" })).toBe(false);
   });
 });

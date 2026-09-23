@@ -19,12 +19,22 @@
 //   is still accepted and tunneled through HTTP SSE.
 // - Setting disabled: client WS handshake still succeeds (so clients don't
 //   break), but every frame is tunneled over HTTP with no upstream-WS attempt.
+//
+// Listen prefix: when PROXY_LISTEN_PREFIX is configured, this server strips the
+// prefix from req.url before handing to Next (so the Next middleware never sees
+// it and prefixed bodies avoid the middleware body clone) and accepts prefixed
+// WebSocket upgrades such as /gateway/v1/responses. See server-lib/listen-prefix.js.
 
 "use strict";
 
 const http = require("node:http");
 const { randomUUID } = require("node:crypto");
 const { parse } = require("node:url");
+const {
+  parseListenPrefixes,
+  rewriteListenPrefixedUrl,
+  stripListenPrefix,
+} = require("./server-lib/listen-prefix");
 
 function isNextDevMode(nodeEnv) {
   return nodeEnv !== "production";
@@ -1073,12 +1083,19 @@ async function forwardToInternalHttp(
   });
 }
 
-function isResponsesWsUpgrade(req) {
+function isResponsesWsUpgrade(req, listenPrefixes = []) {
   if (!req.url) return false;
   const parsed = parse(req.url);
   let pathname = parsed.pathname;
   if (pathname && pathname.length > 1 && pathname.endsWith("/")) {
     pathname = pathname.slice(0, -1);
+  }
+  // PROXY_LISTEN_PREFIX: accept /<prefix>/v1/responses and /<prefix>/responses.
+  // The internal tunnel always POSTs to the canonical WS_PATH, so only this
+  // acceptance check needs to know about the prefix.
+  const stripped = stripListenPrefix(pathname, listenPrefixes);
+  if (stripped !== null) {
+    pathname = stripped.length > 1 && stripped.endsWith("/") ? stripped.slice(0, -1) : stripped;
   }
   return pathname === WS_PATH || pathname === WS_PATH_UNPREFIXED;
 }
@@ -1177,6 +1194,15 @@ async function main() {
   const app = nextFactory({ dev, hostname, port });
   const handler = app.getRequestHandler();
   await app.prepare();
+  // `.env` 在 `node server.js` 路径下由 app.prepare() 加载（cluster.js 则更早用
+  // @next/env 加载），因此监听前缀必须在 prepare 之后读取。
+  const { prefixes: listenPrefixes, error: listenPrefixError } = parseListenPrefixes(
+    process.env.PROXY_LISTEN_PREFIX
+  );
+  if (listenPrefixError) {
+    log("error", "listen_prefix_invalid", { error: `PROXY_LISTEN_PREFIX ${listenPrefixError}` });
+    process.exit(1);
+  }
   // 基础加载完成后再建立单进程/worker 预算；与 Next bundle 通过 Symbol 共享实例。
   const { getMemoryGovernor } = require("./server-lib/memory-governor");
   const memoryGovernor = getMemoryGovernor();
@@ -1196,6 +1222,12 @@ async function main() {
 
   const requestListener = async (req, res) => {
     try {
+      // 剥离监听前缀后再交给 Next：下游只看到规范代理路径，且这些请求不会进入
+      // Next middleware（避免正文克隆与 proxyClientMaxBodySize 截断）。
+      const rewrittenUrl = rewriteListenPrefixedUrl(req.url, listenPrefixes);
+      if (rewrittenUrl !== null) {
+        req.url = rewrittenUrl;
+      }
       const parsedUrl = parse(req.url, true);
       await handler(req, res, parsedUrl);
     } catch (err) {
@@ -1220,7 +1252,7 @@ async function main() {
     wss = new WebSocketServer({ noServer: true, maxPayload: WS_MAX_PAYLOAD_BYTES });
 
     server.on("upgrade", (req, socket, head) => {
-      if (!isResponsesWsUpgrade(req)) {
+      if (!isResponsesWsUpgrade(req, listenPrefixes)) {
         socket.destroy();
         return;
       }
@@ -1258,6 +1290,7 @@ async function main() {
     internalTunnelHost: internalHttpTarget.hostname,
     internalTunnelPort: internalHttpTarget.port,
     wsEnabled: !!WebSocketServer,
+    listenPrefixes,
     workerIndex: process.env.CCH_MULTICORE_WORKER_INDEX ?? null,
     workerCount: process.env.CCH_MULTICORE_WORKER_COUNT ?? "1",
   });
