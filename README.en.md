@@ -352,6 +352,7 @@ See **[docs/k8s-deployment.md](docs/k8s-deployment.md)** for full options, place
 | `ENABLE_CIRCUIT_BREAKER_ON_NETWORK_ERRORS` | `false`                  | When `true`, network errors also trip the circuit breaker for quicker isolation.                     |
 | `APP_PORT`                                 | `23000`                  | Production port (override via container or process manager).                                         |
 | `APP_URL`                                  | empty                    | Populate to expose correct `servers` entries in OpenAPI docs.                                        |
+| `PROXY_LISTEN_PREFIX`                      | empty                    | Extra listen prefixes for the proxy API (comma-separated, e.g. `/gateway`); `/gateway/v1/...` and `/gateway/...` work alongside the existing paths. |
 | `API_TEST_TIMEOUT_MS`                      | `15000`                  | Timeout (ms) for provider API connectivity tests. Accepts 5000-120000 for regional tuning.           |
 
 > Boolean values support `true/false` or `1/0`. Quoting in `.env` is also fine (dotenv will strip quotes). See `.env.example` for the full list.

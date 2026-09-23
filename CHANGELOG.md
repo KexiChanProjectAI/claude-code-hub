@@ -16,6 +16,7 @@
 - Langfuse 将客户端原始请求头写入 generation `client_metadata`（凭据中间打码）
 - 支持 `LANGFUSE_TRACING_ENVIRONMENT` / `LANGFUSE_RELEASE` 传入 LangfuseSpanProcessor
 - 兼容无 `/v1` 前缀的代理入口：`/chat/completions`、`/responses`、`/models`、`/messages` 映射到对应 `/v1/...` 路径
+- 支持 `PROXY_LISTEN_PREFIX` 配置代理 API 的额外监听前缀（逗号分隔，如 `/gateway`），`/gateway/v1/...`、`/gateway/...` 与原有路径同时生效，含 `/v1beta` 与 `/v1/responses` WebSocket
 
 ### 优化
 

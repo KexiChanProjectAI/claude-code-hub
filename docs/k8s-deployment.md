@@ -239,6 +239,10 @@ WebSocket 连接仍具有单 worker 亲和性,压测时应同时检查每个进�
 `stream disconnected before completion: WebSocket protocol error: Connection reset
 without closing handshake`(直连 CCH 正常,经反代失败时多半是这一项)。
 
+> 配置了 `PROXY_LISTEN_PREFIX` 时,反代还需为 `${prefix}/v1/responses` 增加同样的
+> WebSocket location(例如 `location ~ ^(/gateway)?/v1/responses`),否则前缀路径下
+> 的 Codex 客户端会在升级阶段失败。
+
 **Nginx**
 
 建议在 `http {}` 中先定义连接头映射,避免普通 HTTP 请求也被写死为
