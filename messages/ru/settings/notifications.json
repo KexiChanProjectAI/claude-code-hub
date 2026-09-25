@@ -100,7 +100,7 @@
     "legacyModeTitle": "Режим совместимости",
     "title": "Главный переключатель уведомлений",
     "titlePrefix": "Префикс заголовка оповещения",
-    "titlePrefixHelp": "Чтобы отличить инстансы. Добавляется как [PROXY] к заголовку. Пустое значение — без префикса. Webhook может идти через прокси цели или PROXY/HTTPS_PROXY.",
+    "titlePrefixHelp": "Чтобы отличить инстансы. Добавляется как [PROXY] к заголовку. Пустое значение — без префикса. Прокси цели webhook важнее; иначе OUTBOUND_PROXY_URL; PROXY/HTTPS_PROXY используется только если он не задан.",
     "titlePrefixPlaceholder": "PROXY"
   },
   "targetDialog": {

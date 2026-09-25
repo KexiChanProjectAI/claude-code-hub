@@ -1,7 +1,8 @@
-import type { LangfuseSpanProcessor } from "@langfuse/otel";
+import type { LangfuseSpanProcessor, ShouldExportSpan } from "@langfuse/otel";
 
 import type { NodeSDK } from "@opentelemetry/sdk-node";
 import { logger } from "@/lib/logger";
+import { resolveOutboundProxyUrl } from "@/lib/outbound-proxy";
 
 let sdk: NodeSDK | null = null;
 let spanProcessor: LangfuseSpanProcessor | null = null;
@@ -53,16 +54,45 @@ export async function initLangfuse(): Promise<void> {
     const sampleRate = Number.parseFloat(process.env.LANGFUSE_SAMPLE_RATE || "1.0");
     const environment = process.env.LANGFUSE_TRACING_ENVIRONMENT || undefined;
     const release = process.env.LANGFUSE_RELEASE || undefined;
-
-    spanProcessor = new LfSpanProcessor({
+    const baseUrl = process.env.LANGFUSE_BASE_URL || "https://cloud.langfuse.com";
+    const outboundProxy = resolveOutboundProxyUrl({ explicit: null, targetUrl: baseUrl });
+    const processorOptions = {
       publicKey: process.env.LANGFUSE_PUBLIC_KEY,
       secretKey: process.env.LANGFUSE_SECRET_KEY,
-      baseUrl: process.env.LANGFUSE_BASE_URL || "https://cloud.langfuse.com",
+      baseUrl,
       environment,
       release,
       // Only export spans from langfuse-sdk scope (avoid noise from other OTel instrumentations)
-      shouldExportSpan: ({ otelSpan }) => otelSpan.instrumentationScope.name === "langfuse-sdk",
-    });
+      shouldExportSpan: (({ otelSpan }) =>
+        otelSpan.instrumentationScope.name === "langfuse-sdk") satisfies ShouldExportSpan,
+    };
+
+    if (outboundProxy.proxyUrl) {
+      // Lazy: langfuse/index.ts is imported by the forwarder only for isLangfuseEnabled.
+      // Static imports would pull the OTLP exporter and Node proxy agents into that graph.
+      const { OTLPTraceExporter } = await import("@opentelemetry/exporter-trace-otlp-http");
+      const { LANGFUSE_SDK_NAME, LANGFUSE_SDK_VERSION } = await import("@langfuse/core");
+      const { createNodeProxyAgent } = await import("@/lib/outbound-proxy-agent");
+      const publicKey = process.env.LANGFUSE_PUBLIC_KEY ?? "";
+      const secretKey = process.env.LANGFUSE_SECRET_KEY ?? "";
+      const proxyUrl = outboundProxy.proxyUrl;
+      spanProcessor = new LfSpanProcessor({
+        ...processorOptions,
+        exporter: new OTLPTraceExporter({
+          url: `${baseUrl}/api/public/otel/v1/traces`,
+          headers: {
+            Authorization: `Basic ${Buffer.from(`${publicKey}:${secretKey}`).toString("base64")}`,
+            "x-langfuse-sdk-name": LANGFUSE_SDK_NAME,
+            "x-langfuse-sdk-version": LANGFUSE_SDK_VERSION,
+            "x-langfuse-public-key": publicKey,
+          },
+          timeoutMillis: Number(process.env.LANGFUSE_TIMEOUT ?? 5) * 1000,
+          httpAgentOptions: () => createNodeProxyAgent(proxyUrl),
+        }),
+      });
+    } else {
+      spanProcessor = new LfSpanProcessor(processorOptions);
+    }
 
     const samplerConfig =
       sampleRate < 1.0

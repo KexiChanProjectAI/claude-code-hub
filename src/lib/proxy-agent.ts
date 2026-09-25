@@ -10,6 +10,7 @@ import { getGlobalAgentPool as getPool } from "@/lib/proxy-agent/agent-pool";
 import type { Provider } from "@/types/provider";
 import { getEnvConfig } from "./config/env.schema";
 import { logger } from "./logger";
+import { resolveOutboundProxyUrl } from "./outbound-proxy";
 
 /**
  * undici 全局超时配置
@@ -31,6 +32,7 @@ const {
  * 设置 undici 全局 Agent，覆盖默认的 300 秒超时
  * 此配置对所有 fetch() 调用生效（无论是否使用代理）
  */
+// OUTBOUND_PROXY_URL is applied per request by `resolveOutboundProxyUrl`, not by this dispatcher.
 setGlobalDispatcher(
   new Agent({
     connectTimeout,
@@ -73,10 +75,51 @@ export interface ProviderProxyConfig {
  * `UND_ERR_INVALID_ARG: invalid onRequestStart method` in ~12ms and never opens the proxy socket.
  */
 export function fetchWithDispatcher(
-  url: string,
+  url: Parameters<typeof fetch>[0],
   init?: RequestInit & { dispatcher?: unknown }
 ): Promise<Response> {
-  return undiciFetch(url, init as never) as unknown as Promise<Response>;
+  return undiciFetch(url as never, init as never) as unknown as Promise<Response>;
+}
+
+const egressDispatchers = new Map<string, Dispatcher>();
+
+export function getCachedEgressDispatcher(proxyUrl: string): Dispatcher {
+  const cached = egressDispatchers.get(proxyUrl);
+  if (cached) return cached;
+
+  const parsedProxy = new URL(proxyUrl);
+  let dispatcher: Dispatcher;
+  if (parsedProxy.protocol === "socks5:" || parsedProxy.protocol === "socks4:") {
+    dispatcher = socksDispatcher(
+      {
+        type: parsedProxy.protocol === "socks5:" ? 5 : 4,
+        host: parsedProxy.hostname,
+        port: parseInt(parsedProxy.port, 10) || 1080,
+        userId: parsedProxy.username || undefined,
+        password: parsedProxy.password || undefined,
+      },
+      {
+        connect: {
+          timeout: connectTimeout,
+        },
+      }
+    );
+  } else if (parsedProxy.protocol === "http:" || parsedProxy.protocol === "https:") {
+    dispatcher = new ProxyAgent({
+      uri: proxyUrl,
+      allowH2: false,
+      connectTimeout,
+      headersTimeout,
+      bodyTimeout,
+    });
+  } else {
+    throw new Error(
+      `Unsupported proxy protocol: ${parsedProxy.protocol}. Supported protocols: http://, https://, socks5://, socks4://`
+    );
+  }
+
+  egressDispatchers.set(proxyUrl, dispatcher);
+  return dispatcher;
 }
 
 /**
@@ -100,17 +143,21 @@ export function fetchWithDispatcher(
 export function createProxyAgentForProvider(
   provider: Provider | ProviderProxyConfig,
   targetUrl: string,
-  enableHttp2 = false
+  enableHttp2 = false,
+  options?: { legacyEnv?: boolean }
 ): ProxyConfig | null {
-  // 未配置代理
-  if (!provider.proxyUrl) {
+  const decision = resolveOutboundProxyUrl({
+    explicit: provider.proxyUrl,
+    targetUrl,
+    legacyEnv: options?.legacyEnv ?? false,
+  });
+  if (!decision.proxyUrl) {
     return null;
   }
 
-  const proxyUrl = provider.proxyUrl.trim();
-  if (!proxyUrl) {
-    return null;
-  }
+  const proxyUrl = decision.proxyUrl;
+  const fallbackToDirect =
+    decision.source === "explicit" ? (provider.proxyFallbackToDirect ?? false) : false;
 
   try {
     // 解析代理 URL（验证格式）
@@ -189,7 +236,7 @@ export function createProxyAgentForProvider(
 
     return {
       agent,
-      fallbackToDirect: provider.proxyFallbackToDirect ?? false,
+      fallbackToDirect,
       proxyUrl: maskProxyUrl(proxyUrl),
       http2Enabled: actualHttp2Enabled,
     };
@@ -295,18 +342,21 @@ export interface ProxyConfigWithCacheKey extends ProxyConfig {
 export async function getProxyAgentForProvider(
   provider: Provider | ProviderProxyConfig,
   targetUrl: string,
-  enableHttp2 = false
+  enableHttp2 = false,
+  options?: { legacyEnv?: boolean }
 ): Promise<ProxyConfigWithCacheKey | null> {
-  // No proxy configured
-  if (!provider.proxyUrl) {
+  const decision = resolveOutboundProxyUrl({
+    explicit: provider.proxyUrl,
+    targetUrl,
+    legacyEnv: options?.legacyEnv ?? false,
+  });
+  if (!decision.proxyUrl) {
     return null;
   }
 
-  const proxyUrl = provider.proxyUrl.trim();
-  if (!proxyUrl) {
-    return null;
-  }
-
+  const proxyUrl = decision.proxyUrl;
+  const fallbackToDirect =
+    decision.source === "explicit" ? (provider.proxyFallbackToDirect ?? false) : false;
   const pool = getPool();
 
   const { agent, cacheKey, dispatcherId } = await pool.getAgent({
@@ -322,7 +372,7 @@ export async function getProxyAgentForProvider(
 
   return {
     agent,
-    fallbackToDirect: provider.proxyFallbackToDirect ?? false,
+    fallbackToDirect,
     proxyUrl: maskProxyUrl(proxyUrl),
     http2Enabled: actualHttp2Enabled,
     cacheKey,

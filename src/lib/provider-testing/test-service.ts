@@ -221,18 +221,16 @@ async function runSingleAttempt(
 
   try {
     let dispatcher: unknown | undefined;
-    if (config.proxyUrl) {
-      const tempProvider: ProviderProxyConfig = {
-        id: -1,
-        name: "test-provider",
-        proxyUrl: config.proxyUrl,
-        proxyFallbackToDirect: config.proxyFallbackToDirect ?? false,
-      };
-      const proxyConfig = createProxyAgentForProvider(tempProvider, plan.url);
-      if (proxyConfig) {
-        dispatcher = proxyConfig.agent;
-        usedProxy = true;
-      }
+    const tempProvider: ProviderProxyConfig = {
+      id: -1,
+      name: "test-provider",
+      proxyUrl: config.proxyUrl?.trim() || null,
+      proxyFallbackToDirect: config.proxyFallbackToDirect ?? false,
+    };
+    const proxyConfig = createProxyAgentForProvider(tempProvider, plan.url);
+    if (proxyConfig) {
+      dispatcher = proxyConfig.agent;
+      usedProxy = true;
     }
 
     const controller = new AbortController();

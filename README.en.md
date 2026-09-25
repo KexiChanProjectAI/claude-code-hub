@@ -353,6 +353,7 @@ See **[docs/k8s-deployment.md](docs/k8s-deployment.md)** for full options, place
 | `APP_PORT`                                 | `23000`                  | Production port (override via container or process manager).                                         |
 | `APP_URL`                                  | empty                    | Populate to expose correct `servers` entries in OpenAPI docs.                                        |
 | `PROXY_LISTEN_PREFIX`                      | empty                    | Extra listen prefixes for the proxy API (comma-separated, e.g. `/gateway`); `/gateway/v1/...` and `/gateway/...` work alongside the existing paths. |
+| `OUTBOUND_PROXY_URL`                       | empty                    | Global proxy for server outbound HTTP(S) and the upstream Responses WebSocket. A provider or webhook target proxyUrl wins. Empty means direct. Loopback and NO_PROXY are not proxied. |
 | `API_TEST_TIMEOUT_MS`                      | `15000`                  | Timeout (ms) for provider API connectivity tests. Accepts 5000-120000 for regional tuning.           |
 
 > Boolean values support `true/false` or `1/0`. Quoting in `.env` is also fine (dotenv will strip quotes). See `.env.example` for the full list.

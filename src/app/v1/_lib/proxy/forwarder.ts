@@ -36,6 +36,7 @@ import {
   DiscoveryRequestMetrics,
   recordDiscoveryControlEvent,
 } from "@/lib/observability/discovery-metrics";
+import { resolveOutboundProxyUrl } from "@/lib/outbound-proxy";
 import {
   getEndpointFilterStats,
   getPreferredProviderEndpoints,
@@ -3432,7 +3433,7 @@ export class ProxyForwarder {
           originalBody?.stream === true;
 
         // 2. 准备认证和 Headers
-        const accessToken = await GeminiAuth.getAccessToken(provider.key);
+        const accessToken = await GeminiAuth.getAccessToken(provider.key, provider.proxyUrl);
         isApiKey = GeminiAuth.isApiKey(provider.key);
 
         // 3. 直接透传：使用 buildProxyUrl() 拼接原始路径和查询参数
@@ -3475,7 +3476,7 @@ export class ProxyForwarder {
           geminiPathname.includes("streamGenerateContent") ||
           geminiSearchParams.get("alt") === "sse";
 
-        const accessToken = await GeminiAuth.getAccessToken(provider.key);
+        const accessToken = await GeminiAuth.getAccessToken(provider.key, provider.proxyUrl);
         isApiKey = GeminiAuth.isApiKey(provider.key);
 
         const effectiveBaseUrl =
@@ -4119,11 +4120,15 @@ export class ProxyForwarder {
     try {
       // ⭐ 把 agent 获取 & 配置日志放进 try 块，确保获取后到 fetch 之前任何异常
       // （例如 URL 解析失败）都会走 catch 的统一释放逻辑，避免泄漏 activeRequests。
+      const outboundProxy = resolveOutboundProxyUrl({
+        explicit: provider.proxyUrl,
+        targetUrl: proxyUrl,
+      });
       enableHttp2 =
         http2EnabledBySetting &&
         !isHttp2TransportQuarantined({
           targetUrl: proxyUrl,
-          proxyUrl: provider.proxyUrl,
+          proxyUrl: outboundProxy.proxyUrl,
         });
       proxyConfig = await getProxyAgentForProvider(provider, proxyUrl, enableHttp2);
       http2Attempted = enableHttp2 && (proxyConfig?.http2Enabled ?? true);

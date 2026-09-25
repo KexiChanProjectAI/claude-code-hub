@@ -246,7 +246,7 @@ describe("testProviderById", () => {
     const result = await testProviderById(7);
 
     expect(result.ok).toBe(true);
-    expect(geminiGetAccessTokenMock).toHaveBeenCalledWith(jsonKey);
+    expect(geminiGetAccessTokenMock).toHaveBeenCalledWith(jsonKey, null);
     const config = executeProviderTestMock.mock.calls[0]?.[0];
     expect(config?.apiKey).toBe("ya29.token");
     expect(config?.geminiBearerAuth).toBe(true);

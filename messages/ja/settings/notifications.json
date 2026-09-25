@@ -100,7 +100,7 @@
     "legacyModeTitle": "互換モード",
     "title": "通知マスタースイッチ",
     "titlePrefix": "アラートタイトル接頭辞",
-    "titlePrefixHelp": "インスタンス識別用。タイトル先頭に [PROXY] のように付きます。空なら付与しません。Webhook はターゲットのプロキシまたは PROXY/HTTPS_PROXY で送信できます。",
+    "titlePrefixHelp": "インスタンス識別用。タイトル先頭に [PROXY] のように付きます。空なら付与しません。Webhook はターゲットのプロキシが優先です。未設定なら OUTBOUND_PROXY_URL、それも無いときだけ PROXY/HTTPS_PROXY を使います。",
     "titlePrefixPlaceholder": "PROXY"
   },
   "targetDialog": {

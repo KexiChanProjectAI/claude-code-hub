@@ -15,8 +15,11 @@
  */
 
 import { createHash } from "node:crypto";
+import type { Agent as HttpAgent } from "node:http";
 import type WebSocketType from "ws";
 import { logger } from "@/lib/logger";
+import { resolveOutboundProxyUrl } from "@/lib/outbound-proxy";
+import { createNodeProxyAgent } from "@/lib/outbound-proxy-agent";
 import type { Provider } from "@/types/provider";
 import { RESERVED_INTERNAL_HEADERS } from "./internal-secret";
 
@@ -226,6 +229,7 @@ function buildConnectionFingerprint(options: {
   endpointId?: number | null;
   upstreamUrl: string;
   headers: Record<string, string>;
+  proxyUrl: string | null;
 }): string {
   const normalizedHeaders = Object.entries(options.headers)
     .map(([key, value]) => [key.toLowerCase(), value] as const)
@@ -238,6 +242,7 @@ function buildConnectionFingerprint(options: {
         endpointId: options.endpointId ?? null,
         upstreamUrl: options.upstreamUrl,
         headers: normalizedHeaders,
+        proxy: options.proxyUrl ?? "direct",
       })
     )
     .digest("hex");
@@ -435,11 +440,16 @@ export async function tryResponsesWebsocketUpstream(options: {
   const headers = buildUpstreamWsHeaders(options.upstreamHeaders);
   const sessionId = options.sessionId ?? null;
   const abortSignal = options.abortSignal;
+  const outboundProxy = resolveOutboundProxyUrl({
+    explicit: options.provider.proxyUrl,
+    targetUrl: wssUrl,
+  });
   const fingerprint = buildConnectionFingerprint({
     provider: options.provider,
     endpointId: options.endpointId,
     upstreamUrl: wssUrl,
     headers,
+    proxyUrl: outboundProxy.proxyUrl,
   });
 
   // 握手期间只保留发送所需字符串；send() 接管后立即断开本地引用。后续流事件
@@ -483,11 +493,23 @@ export async function tryResponsesWebsocketUpstream(options: {
 
   if (!reused) {
     try {
-      ws = new (WsCtor as unknown as new (url: string, opts?: unknown) => WebSocketType)(wssUrl, {
+      const wsOptions: {
+        headers: Record<string, string>;
+        handshakeTimeout: number;
+        maxPayload: number;
+        agent?: HttpAgent;
+      } = {
         headers,
         handshakeTimeout: HANDSHAKE_TIMEOUT_MS,
         maxPayload: MAX_BUFFERED_QUEUE_BYTES,
-      });
+      };
+      if (outboundProxy.proxyUrl) {
+        wsOptions.agent = createNodeProxyAgent(outboundProxy.proxyUrl);
+      }
+      ws = new (WsCtor as unknown as new (url: string, opts?: unknown) => WebSocketType)(
+        wssUrl,
+        wsOptions
+      );
     } catch (err) {
       return {
         failed: true,

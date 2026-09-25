@@ -100,7 +100,7 @@
     "legacyModeTitle": "相容模式",
     "title": "通知總開關",
     "titlePrefix": "告警標題前綴",
-    "titlePrefixHelp": "用於區分實例，發送時加在標題前，例如 [PROXY]。留空則不加前綴。Webhook 可透過目標代理或環境變數 PROXY/HTTPS_PROXY 出網。",
+    "titlePrefixHelp": "用於區分實例，發送時加在標題前，例如 [PROXY]。留空則不加前綴。Webhook 目標填了代理時用目標代理；否則用 OUTBOUND_PROXY_URL；都沒有時才用 PROXY/HTTPS_PROXY。",
     "titlePrefixPlaceholder": "PROXY"
   },
   "targetDialog": {

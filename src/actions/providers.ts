@@ -4855,7 +4855,7 @@ export async function testProviderGemini(
 
   try {
     // 使用 GeminiAuth 获取 token (如果是 json 凭证)
-    processedApiKey = await GeminiAuth.getAccessToken(data.apiKey);
+    processedApiKey = await GeminiAuth.getAccessToken(data.apiKey, data.proxyUrl);
     isJsonCreds = GeminiAuth.isJson(data.apiKey);
   } catch (e) {
     // 忽略错误，让后续请求失败
@@ -5262,7 +5262,7 @@ export async function testProviderById(
   let geminiBearerAuth = false;
   if (isGeminiType) {
     try {
-      apiKey = await GeminiAuth.getAccessToken(provider.key);
+      apiKey = await GeminiAuth.getAccessToken(provider.key, provider.proxyUrl);
       geminiBearerAuth = GeminiAuth.isJson(provider.key);
     } catch (error) {
       logger.warn("testProviderById: gemini auth preprocess failed", { error, providerId });
@@ -5593,7 +5593,7 @@ async function fetchGeminiModels(
   let isJsonCreds = false;
 
   try {
-    processedApiKey = await GeminiAuth.getAccessToken(data.apiKey);
+    processedApiKey = await GeminiAuth.getAccessToken(data.apiKey, data.proxyUrl);
     isJsonCreds = GeminiAuth.isJson(data.apiKey);
   } catch (e) {
     logger.warn("fetchGeminiModels: auth process failed", { error: e });

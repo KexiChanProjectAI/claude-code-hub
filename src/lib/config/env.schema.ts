@@ -27,6 +27,20 @@ const optionalNumber = (schema: z.ZodNumber) =>
     return val;
   }, schema);
 
+function isSupportedOutboundProxyUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    const supportedProtocol =
+      url.protocol === "http:" ||
+      url.protocol === "https:" ||
+      url.protocol === "socks5:" ||
+      url.protocol === "socks4:";
+    return supportedProtocol && url.hostname.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * ClickHouse 库名/表名允许的字符集
  * 库名与表名直接拼进 DDL / INSERT 语句，无法参数化，因此必须白名单校验。
@@ -154,6 +168,17 @@ export const EnvSchema = z.object({
       }
       return prefixes;
     }),
+  // 服务器出站 HTTP(S) 与上游 Responses WebSocket 的全局代理。
+  // 供应商或 Webhook 目标自己的 proxyUrl 优先；留空则直连。
+  // 回环与 NO_PROXY 不走该代理。不代理 Postgres / Redis。
+  OUTBOUND_PROXY_URL: optionalPreprocessed((val) => {
+    if (val === undefined || val === null) return undefined;
+    if (typeof val !== "string") return val;
+    const trimmed = val.trim();
+    return trimmed.length === 0 ? undefined : trimmed;
+  }, z.string().refine(isSupportedOutboundProxyUrl, {
+    message: "OUTBOUND_PROXY_URL 必须是 http://、https://、socks5:// 或 socks4:// 代理地址",
+  })),
   REDIS_URL: z.string().optional(),
   REDIS_TLS_REJECT_UNAUTHORIZED: z.string().default("true").transform(booleanTransform),
   REDIS_COMMAND_TIMEOUT_MS: optionalNumber(

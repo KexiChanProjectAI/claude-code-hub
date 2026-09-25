@@ -1,5 +1,7 @@
-import { fetch } from "undici";
+import { type Dispatcher, fetch } from "undici";
 import { logger } from "@/lib/logger";
+import { resolveOutboundProxyUrl } from "@/lib/outbound-proxy";
+import { getCachedEgressDispatcher } from "@/lib/proxy-agent";
 
 export interface GeminiAuthCredentials {
   access_token?: string;
@@ -26,7 +28,7 @@ export class GeminiAuth {
     return key;
   }
 
-  static async getAccessToken(key: string): Promise<string> {
+  static async getAccessToken(key: string, explicitProxyUrl?: string | null): Promise<string> {
     const parsed = GeminiAuth.parse(key);
     if (typeof parsed === "string") {
       return parsed; // Assume it's an API Key or Access Token
@@ -45,7 +47,17 @@ export class GeminiAuth {
     // Try to refresh if refresh_token exists
     if (parsed.refresh_token && parsed.client_id && parsed.client_secret) {
       try {
-        const response = await fetch("https://oauth2.googleapis.com/token", {
+        const tokenUrl = "https://oauth2.googleapis.com/token";
+        const decision = resolveOutboundProxyUrl({
+          explicit: explicitProxyUrl,
+          targetUrl: tokenUrl,
+        });
+        const init: {
+          method: "POST";
+          headers: { "Content-Type": string };
+          body: string;
+          dispatcher?: Dispatcher;
+        } = {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -54,7 +66,11 @@ export class GeminiAuth {
             refresh_token: parsed.refresh_token,
             grant_type: "refresh_token",
           }),
-        });
+        };
+        if (decision.proxyUrl) {
+          init.dispatcher = getCachedEgressDispatcher(decision.proxyUrl);
+        }
+        const response = await fetch(tokenUrl, init);
 
         if (!response.ok) {
           throw new Error(`Failed to refresh token: ${response.statusText}`);

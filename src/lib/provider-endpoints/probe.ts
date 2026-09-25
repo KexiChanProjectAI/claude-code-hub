@@ -1,6 +1,9 @@
 import "server-only";
 
+import http from "node:http";
+import https from "node:https";
 import net from "node:net";
+import { SocksClient } from "socks";
 import { getEnvConfig } from "@/lib/config/env.schema";
 import {
   getEndpointCircuitStateSync,
@@ -8,6 +11,7 @@ import {
   resetEndpointCircuit,
 } from "@/lib/endpoint-circuit-breaker";
 import { logger } from "@/lib/logger";
+import { resolveOutboundProxyUrl } from "@/lib/outbound-proxy";
 import { findProviderEndpointById, recordProviderEndpointProbeResult } from "@/repository";
 import type { ProviderEndpoint, ProviderEndpointProbeSource } from "@/types/provider";
 
@@ -83,6 +87,162 @@ function toErrorInfo(error: unknown): { type: string; message: string } {
   return { type: "unknown_error", message: String(error) };
 }
 
+function tcpProbeFailure(
+  errorType: "timeout" | "network_error" | "proxy_connect_failed",
+  errorMessage: string,
+  latencyMs: number | null
+): EndpointProbeResult {
+  return {
+    ok: false,
+    method: "TCP",
+    statusCode: null,
+    latencyMs,
+    errorType,
+    errorMessage,
+  };
+}
+
+function probeTcpViaHttpConnect(
+  rawUrl: string,
+  host: string,
+  port: number,
+  proxy: URL,
+  timeoutMs: number
+): Promise<EndpointProbeResult> {
+  const start = Date.now();
+  const secureProxy = proxy.protocol === "https:";
+  const mod = secureProxy ? https : http;
+  const proxyPort = proxy.port ? Number(proxy.port) : secureProxy ? 443 : 80;
+  const connectHost = host.includes(":") ? `[${host}]` : host;
+  const headers: Record<string, string> = {};
+  if (proxy.username) {
+    const user = decodeURIComponent(proxy.username);
+    const pass = decodeURIComponent(proxy.password);
+    headers["Proxy-Authorization"] = `Basic ${Buffer.from(`${user}:${pass}`).toString("base64")}`;
+  }
+
+  const { promise, resolve } = Promise.withResolvers<EndpointProbeResult>();
+  let settled = false;
+  const finish = (result: EndpointProbeResult) => {
+    if (settled) return;
+    settled = true;
+    resolve(result);
+  };
+
+  const req = mod.request({
+    hostname: proxy.hostname,
+    port: proxyPort,
+    method: "CONNECT",
+    path: `${connectHost}:${port}`,
+    headers,
+    timeout: timeoutMs,
+  });
+
+  req.once("connect", (response, socket) => {
+    const status = response.statusCode ?? 0;
+    socket.destroy();
+    if (status === 200) {
+      finish({
+        ok: true,
+        method: "TCP",
+        statusCode: null,
+        latencyMs: Date.now() - start,
+        errorType: null,
+        errorMessage: null,
+      });
+      return;
+    }
+    finish(tcpProbeFailure("proxy_connect_failed", `CONNECT ${status}`, Date.now() - start));
+  });
+
+  req.once("timeout", () => {
+    req.destroy();
+    finish(tcpProbeFailure("timeout", "timeout", null));
+  });
+
+  req.once("error", (error) => {
+    logger.debug("[EndpointProbe] TCP proxy CONNECT failed", {
+      url: safeUrlForLog(rawUrl),
+      errorMessage: error.message,
+    });
+    finish(tcpProbeFailure("network_error", error.message, Date.now() - start));
+  });
+
+  req.end();
+  return promise;
+}
+
+async function probeTcpViaSocks(
+  rawUrl: string,
+  host: string,
+  port: number,
+  proxy: URL,
+  timeoutMs: number
+): Promise<EndpointProbeResult> {
+  const start = Date.now();
+  try {
+    const { socket } = await SocksClient.createConnection({
+      command: "connect",
+      timeout: timeoutMs,
+      proxy: {
+        host: proxy.hostname,
+        port: Number(proxy.port) || 1080,
+        type: proxy.protocol === "socks5:" ? 5 : 4,
+        userId: proxy.username ? decodeURIComponent(proxy.username) : undefined,
+        password: proxy.password ? decodeURIComponent(proxy.password) : undefined,
+      },
+      destination: { host, port },
+    });
+    socket.destroy();
+    return {
+      ok: true,
+      method: "TCP",
+      statusCode: null,
+      latencyMs: Date.now() - start,
+      errorType: null,
+      errorMessage: null,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.debug("[EndpointProbe] TCP SOCKS probe failed", {
+      url: safeUrlForLog(rawUrl),
+      errorMessage: message,
+    });
+    if (/timed?\s*out|timeout/i.test(message)) {
+      return tcpProbeFailure("timeout", "timeout", null);
+    }
+    return tcpProbeFailure("network_error", message, Date.now() - start);
+  }
+}
+
+async function probeTcpThroughOutboundProxy(
+  rawUrl: string,
+  host: string,
+  port: number,
+  proxyUrl: string,
+  timeoutMs: number
+): Promise<EndpointProbeResult> {
+  let proxy: URL;
+  try {
+    proxy = new URL(proxyUrl);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return tcpProbeFailure("network_error", message, null);
+  }
+
+  if (proxy.protocol === "http:" || proxy.protocol === "https:") {
+    return probeTcpViaHttpConnect(rawUrl, host, port, proxy, timeoutMs);
+  }
+  if (proxy.protocol === "socks4:" || proxy.protocol === "socks5:") {
+    return probeTcpViaSocks(rawUrl, host, port, proxy, timeoutMs);
+  }
+  return tcpProbeFailure(
+    "network_error",
+    `Unsupported proxy protocol: ${proxy.protocol}. Supported protocols: http://, https://, socks5://, socks4://`,
+    null
+  );
+}
+
 async function probeEndpointTcp(rawUrl: string, timeoutMs: number): Promise<EndpointProbeResult> {
   let parsed: URL;
   try {
@@ -105,8 +265,12 @@ async function probeEndpointTcp(rawUrl: string, timeoutMs: number): Promise<Endp
       : 80;
   const host = parsed.hostname;
 
-  const start = Date.now();
+  const outboundProxy = resolveOutboundProxyUrl({ explicit: null, targetUrl: rawUrl });
+  if (outboundProxy.proxyUrl) {
+    return probeTcpThroughOutboundProxy(rawUrl, host, port, outboundProxy.proxyUrl, timeoutMs);
+  }
 
+  const start = Date.now();
   return new Promise<EndpointProbeResult>((resolve) => {
     const socket = net.createConnection({ host, port, timeout: timeoutMs }, () => {
       const latencyMs = Date.now() - start;

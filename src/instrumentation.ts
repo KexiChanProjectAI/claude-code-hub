@@ -482,6 +482,10 @@ export function shouldRunBackgroundTasks(env: NodeJS.ProcessEnv = process.env): 
 export async function register() {
   // 仅在服务器端执行
   if (process.env.NEXT_RUNTIME === "nodejs") {
+    // Node-only undici dispatcher. A static import would load it into the edge runtime.
+    await import("@/lib/outbound-fetch").then((mod) => {
+      mod.installOutboundProxyFetch();
+    });
     // 生命周期与崩溃诊断（issue #1147）
     // - startup marker：让运维能从日志中区分 "正常启动" 与 "Docker 异常重启后立即恢复"
     // - crash handlers：兜底 uncaughtException / unhandledRejection，并触发 Node 诊断报告

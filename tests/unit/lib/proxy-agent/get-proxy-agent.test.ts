@@ -52,6 +52,7 @@ import { getProxyAgentForProvider, type ProxyConfigWithCacheKey } from "@/lib/pr
 describe("getProxyAgentForProvider", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv("OUTBOUND_PROXY_URL", "");
     // Reset default mock return value
     mockPool.getAgent.mockResolvedValue({
       agent: mockAgent,
@@ -62,6 +63,7 @@ describe("getProxyAgentForProvider", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
   });
 
   describe("direct connection (no proxy)", () => {
@@ -341,6 +343,68 @@ describe("getProxyAgentForProvider", () => {
           false
         )
       ).rejects.toThrow();
+    });
+  });
+
+  describe("OUTBOUND_PROXY_URL", () => {
+    it("uses the global proxy and does not fall back to direct", async () => {
+      vi.stubEnv("OUTBOUND_PROXY_URL", "http://global-proxy:8080");
+      const provider: Partial<Provider> = {
+        id: 1,
+        name: "Test Provider",
+        proxyUrl: null,
+        proxyFallbackToDirect: true,
+      };
+
+      mockPool.getAgent.mockResolvedValueOnce({
+        agent: mockAgent,
+        isNew: true,
+        cacheKey: "global",
+        dispatcherId: "d1",
+      });
+
+      const result = await getProxyAgentForProvider(
+        provider as Provider,
+        "https://api.anthropic.com/v1/messages",
+        false
+      );
+
+      expect(mockPool.getAgent).toHaveBeenCalledWith({
+        endpointUrl: "https://api.anthropic.com/v1/messages",
+        proxyUrl: "http://global-proxy:8080",
+        enableHttp2: false,
+      });
+      expect(result?.fallbackToDirect).toBe(false);
+    });
+
+    it("prefers the provider proxy and keeps proxyFallbackToDirect", async () => {
+      vi.stubEnv("OUTBOUND_PROXY_URL", "http://global-proxy:8080");
+      const provider: Partial<Provider> = {
+        id: 1,
+        name: "Test Provider",
+        proxyUrl: "http://provider-proxy:3128",
+        proxyFallbackToDirect: true,
+      };
+
+      mockPool.getAgent.mockResolvedValueOnce({
+        agent: mockAgent,
+        isNew: true,
+        cacheKey: "provider",
+        dispatcherId: "d2",
+      });
+
+      const result = await getProxyAgentForProvider(
+        provider as Provider,
+        "https://api.anthropic.com/v1/messages",
+        false
+      );
+
+      expect(mockPool.getAgent).toHaveBeenCalledWith({
+        endpointUrl: "https://api.anthropic.com/v1/messages",
+        proxyUrl: "http://provider-proxy:3128",
+        enableHttp2: false,
+      });
+      expect(result?.fallbackToDirect).toBe(true);
     });
   });
 });

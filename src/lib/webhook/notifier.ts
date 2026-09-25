@@ -6,7 +6,6 @@ import {
   fetchWithDispatcher,
   type ProxyConfig,
 } from "@/lib/proxy-agent";
-import { resolveWebhookProxyUrl } from "./env-proxy";
 import { createRenderer, type Renderer } from "./renderers";
 import { applyNotificationTitlePrefix } from "./title-prefix";
 import type {
@@ -122,21 +121,17 @@ export class WebhookNotifier {
   }
 
   private createProxyConfig(): ProxyConfig | null {
-    const proxyUrl = resolveWebhookProxyUrl(this.config.proxyUrl);
-    if (!proxyUrl) {
-      return null;
-    }
-
     const targetUrl = this.getProxyTargetUrl();
     return createProxyAgentForProvider(
       {
         id: this.config.id ?? 0,
         name: this.config.name ?? "webhook",
-        proxyUrl,
+        proxyUrl: this.config.proxyUrl ?? null,
         proxyFallbackToDirect: this.config.proxyFallbackToDirect ?? false,
       },
       targetUrl,
-      false
+      false,
+      { legacyEnv: true }
     );
   }
 

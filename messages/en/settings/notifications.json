@@ -100,7 +100,7 @@
     "legacyModeTitle": "Legacy Mode",
     "title": "Notification Master Switch",
     "titlePrefix": "Alert title prefix",
-    "titlePrefixHelp": "Distinguishes instances. Prepended as [PROXY] to alert titles. Leave empty for no prefix. Webhooks can egress via a target proxy or PROXY/HTTPS_PROXY.",
+    "titlePrefixHelp": "Distinguishes instances. Prepended as [PROXY] to alert titles. Leave empty for no prefix. A webhook target proxy wins; otherwise OUTBOUND_PROXY_URL is used; PROXY/HTTPS_PROXY applies only when that is unset.",
     "titlePrefixPlaceholder": "PROXY"
   },
   "targetDialog": {

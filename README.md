@@ -366,6 +366,7 @@ cch doctor            # 诊断集群与部署状态
 | `APP_PORT`                                 | `23000`                  | 生产端口，可被容器或进程管理器覆盖。                                         |
 | `APP_URL`                                  | 空                       | 设置后 OpenAPI 文档 `servers` 将展示正确域名/端口。                          |
 | `PROXY_LISTEN_PREFIX`                      | 空                       | 代理 API 的额外监听前缀（逗号分隔，如 `/gateway`）；`/gateway/v1/...` 与 `/gateway/...` 和原有路径同时生效。 |
+| `OUTBOUND_PROXY_URL`                       | 空                       | 服务器出站 HTTP(S) 与上游 Responses WebSocket 的全局代理。供应商或 Webhook 目标自己的 proxyUrl 优先。留空则直连。回环与 NO_PROXY 不走该代理。 |
 | `API_TEST_TIMEOUT_MS`                      | `15000`                  | 供应商 API 测试超时时间（毫秒，范围 5000-120000），跨境网络可适当提高。      |
 
 > 布尔变量支持 `true/false` 或 `1/0`；在 `.env` 文件里写成带引号形式也没问题（dotenv 会解析并去掉引号）。更多字段参考 `.env.example`。

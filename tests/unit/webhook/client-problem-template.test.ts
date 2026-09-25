@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolveWebhookProxyUrl } from "@/lib/webhook/env-proxy";
 import { buildClientProblemMessage } from "@/lib/webhook/templates/client-problem";
 import { applyNotificationTitlePrefix } from "@/lib/webhook/title-prefix";
@@ -82,19 +82,42 @@ describe("applyNotificationTitlePrefix", () => {
 
 describe("resolveWebhookProxyUrl", () => {
   const previousProxy = process.env.PROXY;
+  const previousOutbound = process.env.OUTBOUND_PROXY_URL;
+
+  beforeEach(() => {
+    delete process.env.OUTBOUND_PROXY_URL;
+  });
 
   afterEach(() => {
     if (previousProxy === undefined) delete process.env.PROXY;
     else process.env.PROXY = previousProxy;
+    if (previousOutbound === undefined) delete process.env.OUTBOUND_PROXY_URL;
+    else process.env.OUTBOUND_PROXY_URL = previousOutbound;
   });
 
   it("prefers configured proxyUrl over PROXY env", () => {
     process.env.PROXY = "http://env-proxy:8080";
-    expect(resolveWebhookProxyUrl("http://target-proxy:3128")).toBe("http://target-proxy:3128");
+    expect(resolveWebhookProxyUrl("http://target-proxy:3128", "https://example.com")).toBe(
+      "http://target-proxy:3128"
+    );
   });
 
   it("falls back to PROXY env when target has no proxy", () => {
     process.env.PROXY = "http://env-proxy:8080";
-    expect(resolveWebhookProxyUrl(null)).toBe("http://env-proxy:8080");
+    expect(resolveWebhookProxyUrl(null, "https://example.com")).toBe("http://env-proxy:8080");
+  });
+
+  it("prefers OUTBOUND_PROXY_URL over PROXY when the target proxy is unset", () => {
+    process.env.OUTBOUND_PROXY_URL = "http://global:8080";
+    process.env.PROXY = "http://legacy:9";
+    expect(resolveWebhookProxyUrl(null, "https://example.com")).toBe("http://global:8080");
+  });
+
+  it("prefers the configured target proxy over both env vars", () => {
+    process.env.OUTBOUND_PROXY_URL = "http://global:8080";
+    process.env.PROXY = "http://legacy:9";
+    expect(resolveWebhookProxyUrl("http://target-proxy:3128", "https://example.com")).toBe(
+      "http://target-proxy:3128"
+    );
   });
 });

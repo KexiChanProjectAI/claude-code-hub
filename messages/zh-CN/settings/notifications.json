@@ -11,7 +11,7 @@
     "legacyModeDescription": "当前使用旧版单 URL 推送配置。创建推送目标后将自动切换到多目标模式。",
     "titlePrefix": "告警标题前缀",
     "titlePrefixPlaceholder": "PROXY",
-    "titlePrefixHelp": "用于区分实例，发送时加在标题前，例如 [PROXY]。留空则不加前缀。Webhook 可通过目标代理或环境变量 PROXY/HTTPS_PROXY 出网。"
+    "titlePrefixHelp": "用于区分实例，发送时加在标题前，例如 [PROXY]。留空则不加前缀。Webhook 目标填写了代理时用目标代理；否则用 OUTBOUND_PROXY_URL；都没有时才用 PROXY/HTTPS_PROXY。"
   },
   "targets": {
     "title": "推送目标",
