@@ -657,6 +657,10 @@ export const messageRequest = pgTable('message_request', {
   theoreticalCacheTokens: bigint('theoretical_cache_tokens', { mode: 'number' }),
   cacheTtlBucket: varchar('cache_ttl_bucket', { length: 10 }),
 
+  // ClickHouse 同步标记：仅在 ClickHouse 确认写入本行已静置的内容之后才设置。
+  // 同步扫描与日志清理围栏都以此为准，不依赖 id 单调性（async INSERT 模式会乱序使用预留 id）。
+  clickhouseSyncedAt: timestamp('clickhouse_synced_at', { withTimezone: true }),
+
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -773,7 +777,21 @@ export const messageRequest = pgTable('message_request', {
   messageRequestClientIpCreatedAtIdx: index('idx_message_request_client_ip_created_at')
     .on(table.clientIp, table.createdAt.desc())
     .where(sql`${table.deletedAt} IS NULL AND ${table.clientIp} IS NOT NULL`),
+  // ClickHouse 同步扫描：只收录尚未同步、在同步范围内的行，稳态下只剩在途窗口
+  messageRequestClickhouseUnsyncedIdx: index('idx_message_request_clickhouse_unsynced')
+    .on(table.createdAt, table.id)
+    .where(sql`${table.deletedAt} IS NULL AND ${table.clickhouseSyncedAt} IS NULL AND (${table.blockedBy} IS NULL OR ${table.blockedBy} <> 'warmup')`),
 }));
+
+// ClickHouse 同步范围下界（单行表）。
+// created_at 早于 floor_at 的行不在同步范围内（启用同步之前的历史，不回填）。
+// 首个 leader 写入后不再自动修改；放在 PostgreSQL 而非 Redis，
+// 避免 Redis 丢失时重算出更晚的下界，把尚未同步的行错误地放给日志清理。
+export const clickhouseSyncState = pgTable('clickhouse_sync_state', {
+  key: varchar('key', { length: 32 }).primaryKey().default('default'),
+  floorAt: timestamp('floor_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
 
 // Model Prices table
 export const modelPrices = pgTable('model_prices', {
