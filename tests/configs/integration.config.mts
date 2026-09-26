@@ -18,6 +18,7 @@ export default createTestRunnerConfig({
     "tests/integration/message-write-buffer-recovery-postgres.test.ts",
     "tests/integration/availability-projection-postgres.test.ts",
     "tests/integration/message-insert-buffer-postgres.test.ts",
+    "tests/integration/clickhouse-sync-marker-postgres.test.ts",
     "tests/integration/proxy-hedge-lifecycle.test.ts",
   ],
   api: {
