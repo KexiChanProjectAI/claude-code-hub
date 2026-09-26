@@ -36,10 +36,8 @@ const config: ClickHouseConfig = {
   requestTimeoutMs: 5000,
   syncIntervalMs: 5000,
   syncBatchSize: 100,
-  syncLagMs: 300000,
   syncSettleMs: 150000,
   maxPendingAgeMs: 3600000,
-  maxPending: 20000,
 };
 
 beforeEach(() => {

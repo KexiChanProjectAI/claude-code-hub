@@ -22,10 +22,8 @@ const baseEnv = {
   CLICKHOUSE_REQUEST_TIMEOUT_MS: 10000,
   CLICKHOUSE_SYNC_INTERVAL_MS: 5000,
   CLICKHOUSE_SYNC_BATCH_SIZE: 5000,
-  CLICKHOUSE_SYNC_LAG_MS: 300000,
   CLICKHOUSE_SYNC_SETTLE_MS: 150000,
   CLICKHOUSE_SYNC_MAX_PENDING_AGE_MS: 3600000,
-  CLICKHOUSE_SYNC_MAX_PENDING: 20000,
 };
 
 beforeEach(() => {
@@ -61,10 +59,8 @@ describe("getClickHouseConfig", () => {
       requestTimeoutMs: 10000,
       syncIntervalMs: 5000,
       syncBatchSize: 5000,
-      syncLagMs: 300000,
       syncSettleMs: 150000,
       maxPendingAgeMs: 3600000,
-      maxPending: 20000,
     });
   });
 
@@ -88,5 +84,23 @@ describe("qualifiedTableName", () => {
     const config = getClickHouseConfig();
     expect(config).not.toBeNull();
     expect(qualifiedTableName(config!)).toBe("logs.cch_request_log");
+  });
+});
+
+describe("removed cursor-era variables", () => {
+  it("are ignored so existing .env files keep starting", async () => {
+    const { EnvSchema } =
+      await vi.importActual<typeof import("@/lib/config/env.schema")>("@/lib/config/env.schema");
+
+    // 旧版要求 LAG >= SETTLE；这里故意给出违反旧约束的值，新 schema 不能再因此拒绝启动
+    const parsed = EnvSchema.parse({
+      CLICKHOUSE_SYNC_LAG_MS: "1000",
+      CLICKHOUSE_SYNC_SETTLE_MS: "150000",
+      CLICKHOUSE_SYNC_MAX_PENDING: "5",
+    });
+
+    expect(parsed).not.toHaveProperty("CLICKHOUSE_SYNC_LAG_MS");
+    expect(parsed).not.toHaveProperty("CLICKHOUSE_SYNC_MAX_PENDING");
+    expect(parsed.CLICKHOUSE_SYNC_SETTLE_MS).toBe(150000);
   });
 });

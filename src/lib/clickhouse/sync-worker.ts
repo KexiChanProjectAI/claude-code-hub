@@ -7,13 +7,9 @@ import {
 } from "@/lib/clickhouse/config";
 import { type SyncSourceRow, toClickHouseRow } from "@/lib/clickhouse/row-mapper";
 import { ensureSchema } from "@/lib/clickhouse/schema";
-import { fetchBatchAfter, fetchByIds } from "@/lib/clickhouse/source";
-import {
-  readState,
-  resolveInitialState,
-  type SyncState,
-  writeState,
-} from "@/lib/clickhouse/sync-state";
+import { fetchUnsyncedBatch, markSynced } from "@/lib/clickhouse/source";
+import { resolveFloor } from "@/lib/clickhouse/sync-state";
+import { getEnvConfig } from "@/lib/config/env.schema";
 import { logger } from "@/lib/logger";
 import {
   acquireLeaderLock,
@@ -28,6 +24,10 @@ const LOCK_TTL_MS = 5 * 60 * 1000;
 const MAX_ROUNDS_PER_TICK = 20;
 /** 失败告警限频窗口：ClickHouse 长时间不可用时不要刷日志 */
 const ERROR_LOG_INTERVAL_MS = 60 * 1000;
+/** "已发送未标记"记忆上限相对单 tick 最大行数的倍数 */
+const SHIPPED_UNMARKED_CAP_FACTOR = 4;
+/** 静置窗口相对 hedge 败者排空超时的建议余量 */
+const SETTLE_MARGIN_MS = 30 * 1000;
 
 interface WorkerState {
   started?: boolean;
@@ -41,8 +41,15 @@ interface WorkerState {
   lastError?: string;
   lastSuccessAt?: number;
   totalShipped?: number;
-  cursor?: number;
-  pendingCount?: number;
+  floorMs?: number;
+  /**
+   * 本进程已写入 ClickHouse、但同步标记没能落库的行：id -> 发送时的 updated_at。
+   *
+   * PG 能读不能写（只读切换、磁盘满、语句超时）时，没有这份记忆每轮都会把同一批行重发一遍。
+   * 以 updated_at 为键：内容变化过的行仍会重新发送。条目描述的是 ClickHouse 已有的内容，
+   * 与 leader 锁无关（锁每个 tick 都会释放），因此跨 tick 保留，只在停止或超过上限时清空。
+   */
+  shippedUnmarked?: Map<number, number>;
 }
 
 const globalState = globalThis as typeof globalThis & {
@@ -56,102 +63,99 @@ function state(): WorkerState {
   return globalState.__CCH_CLICKHOUSE_SYNC_WORKER__;
 }
 
-/**
- * 是否可以发往 ClickHouse。
- *
- * 终态判定用 status_code IS NOT NULL（与仓库内终态围栏一致）；静置延迟是为了等
- * hedge 败者计费这类终态后仍会变化的写入落库，避免同步到中间值。
- */
-function isShippable(row: SyncSourceRow, settleCutoffMs: number): boolean {
-  if (row.statusCode === null || row.statusCode === undefined) {
-    return false;
+function shippedUnmarked(): Map<number, number> {
+  const workerState = state();
+  if (!workerState.shippedUnmarked) {
+    workerState.shippedUnmarked = new Map();
   }
-  return (row.updatedAt?.getTime() ?? 0) <= settleCutoffMs;
+  return workerState.shippedUnmarked;
+}
+
+function versionOf(row: SyncSourceRow): number {
+  return row.updatedAt?.getTime() ?? 0;
 }
 
 interface RoundResult {
-  state: SyncState;
   batchFull: boolean;
   shipped: number;
+  marked: number;
 }
 
 /**
- * 一轮同步：先复查 pending，再按游标扫新行，最后一次性写入 ClickHouse。
+ * 一轮同步：读出一批可发送且未标记的行，写入 ClickHouse，再把它们标记为已同步。
  *
- * 写入成功之后才持久化进度，因此投递语义是"至少一次"：
- * 重复行由 ReplacingMergeTree(updated_at) 在 merge 时折叠。
+ * 进度记录在行上，因此不存在"游标越过、之后才出现的更小 id"这种漏数路径：
+ * 一行只要还没被标记，下一轮就会再次被选中。
+ *
+ * 写入成功之后才标记，投递语义是"至少一次"：重复行由 ReplacingMergeTree(updated_at)
+ * 在 merge 时折叠。
  */
 async function runRound(
   config: ClickHouseConfig,
-  current: SyncState,
+  floor: Date,
   nowMs: number
 ): Promise<RoundResult> {
-  const lagCutoff = nowMs - config.syncLagMs;
-  const settleCutoff = nowMs - config.syncSettleMs;
-  const orphanCutoff = nowMs - config.maxPendingAgeMs;
+  const settleCutoff = new Date(nowMs - config.syncSettleMs);
+  const orphanCutoff = new Date(nowMs - config.maxPendingAgeMs);
 
-  const rowsToShip: SyncSourceRow[] = [];
-  const nextPending: number[] = [];
-
-  if (current.pending.length > 0) {
-    const rows = await fetchByIds(current.pending);
-    const byId = new Map(rows.map((row) => [row.id, row]));
-
-    for (const id of current.pending) {
-      const row = byId.get(id);
-      if (!row) {
-        // 行已被删除：无需再等
-        continue;
-      }
-      if (isShippable(row, settleCutoff)) {
-        rowsToShip.push(row);
-        continue;
-      }
-      if ((row.createdAt?.getTime() ?? 0) < orphanCutoff) {
-        // 孤儿行（进程崩溃后 status_code 永远为 NULL）在 PG 侧无人清扫，
-        // 等够 maxPendingAgeMs 后按原样发出，status_code 会落成 0。
-        rowsToShip.push(row);
-        continue;
-      }
-      nextPending.push(id);
-    }
+  const rows = await fetchUnsyncedBatch({
+    floor,
+    settleCutoff,
+    orphanCutoff,
+    limit: config.syncBatchSize,
+  });
+  const batchFull = rows.length === config.syncBatchSize;
+  if (rows.length === 0) {
+    return { batchFull, shipped: 0, marked: 0 };
   }
 
-  let cursor = current.cursor;
-  let batchFull = false;
-
-  if (nextPending.length >= config.maxPending) {
-    logger.warn("[ClickHouseSync] Pending backlog at limit; holding cursor", {
-      pending: nextPending.length,
-      maxPending: config.maxPending,
-    });
-  } else {
-    const batch = await fetchBatchAfter(cursor, config.syncBatchSize);
-    batchFull = batch.length === config.syncBatchSize;
-
-    for (const row of batch) {
-      // 回看延迟：serial id 不是提交顺序，太新的行可能还有更小 id 未提交
-      if ((row.createdAt?.getTime() ?? 0) > lagCutoff) {
-        batchFull = false;
-        break;
-      }
-      cursor = row.id;
-      if (isShippable(row, settleCutoff)) {
-        rowsToShip.push(row);
-      } else {
-        nextPending.push(row.id);
-      }
-    }
-  }
-
+  const remembered = shippedUnmarked();
+  const rowsToShip = rows.filter((row) => remembered.get(row.id) !== versionOf(row));
   if (rowsToShip.length > 0) {
     await insertJsonEachRow(config, qualifiedTableName(config), rowsToShip.map(toClickHouseRow));
   }
 
-  const nextState: SyncState = { cursor, pending: nextPending };
-  await writeState(nextState);
+  const ids = rows.map((row) => row.id);
+  let markedIds: number[];
+  try {
+    markedIds = await markSynced(ids, { syncedAt: new Date(nowMs), settleCutoff });
+  } catch (error) {
+    for (const row of rows) {
+      remembered.set(row.id, versionOf(row));
+    }
+    throw error;
+  }
 
-  return { state: nextState, batchFull, shipped: rowsToShip.length };
+  const marked = new Set(markedIds);
+  for (const row of rows) {
+    if (marked.has(row.id)) {
+      remembered.delete(row.id);
+    } else {
+      remembered.set(row.id, versionOf(row));
+    }
+  }
+
+  if (marked.size < ids.length) {
+    logger.debug("[ClickHouseSync] Some shipped rows were not marked; they will be re-evaluated", {
+      fetched: ids.length,
+      marked: marked.size,
+    });
+  }
+
+  const cap = SHIPPED_UNMARKED_CAP_FACTOR * config.syncBatchSize * MAX_ROUNDS_PER_TICK;
+  if (remembered.size > cap) {
+    logger.warn("[ClickHouseSync] Too many shipped-but-unmarked rows; forgetting them", {
+      count: remembered.size,
+    });
+    remembered.clear();
+  }
+
+  // 整批都没能标记（例如全部被并发补写锁住）时不在本 tick 内重试同一批，等下一个周期
+  return {
+    batchFull: batchFull && marked.size > 0,
+    shipped: rowsToShip.length,
+    marked: marked.size,
+  };
 }
 
 function logFailure(error: unknown): void {
@@ -211,31 +215,28 @@ async function runSyncOnce(): Promise<void> {
       workerState.schemaReady = true;
     }
 
-    let syncState = await readState();
-    if (!syncState) {
-      syncState = await resolveInitialState(config);
-      // 立刻落盘：日志清理的围栏依赖这份进度，不能等到第一批数据发出之后
-      await writeState(syncState);
+    if (workerState.floorMs === undefined) {
+      workerState.floorMs = (await resolveFloor(config)).getTime();
     }
+    const floor = new Date(workerState.floorMs);
 
     let shippedInTick = 0;
+    let markedInTick = 0;
 
     for (let round = 0; round < MAX_ROUNDS_PER_TICK; round += 1) {
       if (leadershipLost || workerState.stopRequested) {
         break;
       }
 
-      const result = await runRound(config, syncState, Date.now());
-      syncState = result.state;
+      const result = await runRound(config, floor, Date.now());
       shippedInTick += result.shipped;
+      markedInTick += result.marked;
 
       if (!result.batchFull) {
         break;
       }
     }
 
-    workerState.cursor = syncState.cursor;
-    workerState.pendingCount = syncState.pending.length;
     workerState.lastSuccessAt = Date.now();
     workerState.lastError = undefined;
     workerState.totalShipped = (workerState.totalShipped ?? 0) + shippedInTick;
@@ -243,8 +244,8 @@ async function runSyncOnce(): Promise<void> {
     if (shippedInTick > 0) {
       logger.info("[ClickHouseSync] Shipped rows", {
         shipped: shippedInTick,
-        cursor: syncState.cursor,
-        pending: syncState.pending.length,
+        marked: markedInTick,
+        shippedUnmarked: shippedUnmarked().size,
       });
     }
   } catch (error) {
@@ -295,11 +296,19 @@ export function startClickHouseSyncWorker(): void {
   workerState.started = true;
   workerState.stopRequested = false;
 
+  // 静置窗口是 hedge 败者计费晚到与"已标记同步"之间唯一的屏障：标记之后的补写不会再发出
+  const hedgeDrainMs = getEnvConfig().HEDGE_LOSER_DRAIN_TIMEOUT_MS;
+  if (config.syncSettleMs < hedgeDrainMs + SETTLE_MARGIN_MS) {
+    logger.warn("[ClickHouseSync] Settle window is shorter than the hedge loser drain window", {
+      settleMs: config.syncSettleMs,
+      recommendedMinMs: hedgeDrainMs + SETTLE_MARGIN_MS,
+    });
+  }
+
   logger.info("[ClickHouseSync] Starting request log sync", {
     table: qualifiedTableName(config),
     intervalMs: config.syncIntervalMs,
     batchSize: config.syncBatchSize,
-    lagMs: config.syncLagMs,
     settleMs: config.syncSettleMs,
   });
 
@@ -325,6 +334,7 @@ export async function stopClickHouseSyncWorker(): Promise<void> {
   }
   workerState.intervalId = undefined;
   workerState.started = false;
+  shippedUnmarked().clear();
 
   await workerState.currentPromise;
 
@@ -339,8 +349,8 @@ export function getClickHouseSyncStatus(): {
   started: boolean;
   running: boolean;
   isLeader: boolean;
-  cursor?: number;
-  pendingCount?: number;
+  floorMs?: number;
+  shippedUnmarkedCount: number;
   totalShipped?: number;
   lastSuccessAt?: number;
   lastError?: string;
@@ -350,12 +360,12 @@ export function getClickHouseSyncStatus(): {
     started: workerState.started === true,
     running: workerState.running === true,
     isLeader: workerState.lock !== undefined,
-    cursor: workerState.cursor,
-    pendingCount: workerState.pendingCount,
+    floorMs: workerState.floorMs,
+    shippedUnmarkedCount: workerState.shippedUnmarked?.size ?? 0,
     totalShipped: workerState.totalShipped,
     lastSuccessAt: workerState.lastSuccessAt,
     lastError: workerState.lastError,
   };
 }
 
-export const __test__ = { isShippable, runRound, runSyncOnce, state };
+export const __test__ = { runRound, runSyncOnce, state };

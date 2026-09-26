@@ -348,8 +348,8 @@ export const EnvSchema = z.object({
   METRICS_TOKEN: z.string().optional(),
 
   // ClickHouse 请求日志同步（可选，设置 CLICKHOUSE_URL 即启用）
-  // 后台 worker 按 id 游标 tail message_request，把已终态的行批量写入外部 ClickHouse，
-  // 用于中期留存与分析。只写不读：Dashboard 仍然查 PostgreSQL。
+  // 后台 worker 按行上的同步标记（message_request.clickhouse_synced_at）扫描未同步的行，
+  // 把已终态且静置的行批量写入外部 ClickHouse，用于中期留存与分析。只写不读：Dashboard 仍然查 PostgreSQL。
   CLICKHOUSE_URL: z.string().optional(),
   CLICKHOUSE_USER: z.string().default("default"),
   CLICKHOUSE_PASSWORD: z.string().default(""),
@@ -360,14 +360,10 @@ export const EnvSchema = z.object({
   CLICKHOUSE_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(10000),
   CLICKHOUSE_SYNC_INTERVAL_MS: z.coerce.number().int().min(1000).max(600000).default(5000),
   CLICKHOUSE_SYNC_BATCH_SIZE: z.coerce.number().int().min(100).max(50000).default(5000),
-  // 游标回看延迟：只处理 created_at 早于 now-LAG 的行，规避 serial id 非提交序造成的空洞
-  CLICKHOUSE_SYNC_LAG_MS: z.coerce.number().int().min(1000).max(3600000).default(300000),
   // 终态静置延迟：终态后仍可能有 hedge 败者计费落库（HEDGE_LOSER_DRAIN_TIMEOUT_MS + 余量）
   CLICKHOUSE_SYNC_SETTLE_MS: z.coerce.number().int().min(0).max(3600000).default(150000),
   // 未终态行的最长等待：超过后以 status_code=0 发出（孤儿行无人清扫，必须有兜底）
   CLICKHOUSE_SYNC_MAX_PENDING_AGE_MS: z.coerce.number().int().min(60000).max(86400000).default(3600000),
-  // pending 上限：达到后停止推进游标（背压，不丢数据）
-  CLICKHOUSE_SYNC_MAX_PENDING: z.coerce.number().int().min(100).max(200000).default(20000),
 
   // IP 归属地查询服务
   // 默认使用官方托管服务；可通过 IP_GEO_API_URL 自托管
@@ -381,14 +377,6 @@ export const EnvSchema = z.object({
       code: "custom",
       path: ["DETACHED_STREAM_METERING_RESERVE_BYTES"],
       message: "DETACHED_STREAM_METERING_RESERVE_BYTES cannot exceed DETACHED_STREAM_BUDGET_BYTES",
-    });
-  }
-  // 回看延迟必须覆盖静置延迟，否则游标会追上尚未静置的行，pending 无谓堆积
-  if (env.CLICKHOUSE_SYNC_LAG_MS < env.CLICKHOUSE_SYNC_SETTLE_MS) {
-    context.addIssue({
-      code: "custom",
-      path: ["CLICKHOUSE_SYNC_LAG_MS"],
-      message: "CLICKHOUSE_SYNC_LAG_MS cannot be less than CLICKHOUSE_SYNC_SETTLE_MS",
     });
   }
 });

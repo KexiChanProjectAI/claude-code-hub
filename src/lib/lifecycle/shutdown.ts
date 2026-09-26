@@ -248,8 +248,8 @@ export async function runApplicationCleanup(
       "stopRoutingTraceOutboxReplay"
     );
 
-    // 7d. ClickHouse 同步 worker：必须在 DB pool 关闭前停下，因为在飞的 tick 持有
-    //     message_request 读游标。未发送的行留在 PG 里，下次启动从同一游标继续。
+    // 7d. ClickHouse 同步 worker：必须在 DB pool 关闭前停下，因为在飞的 tick 还在
+    //     读取并标记 message_request。未标记的行留在 PG 里，下次启动会被重新选中。
     await awaitQuiescenceBestEffort(
       (async () => {
         const { stopClickHouseSyncWorker } = await import("@/lib/clickhouse/sync-worker");

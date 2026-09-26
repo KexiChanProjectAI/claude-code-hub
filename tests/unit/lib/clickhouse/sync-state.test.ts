@@ -1,13 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { SQL } from "drizzle-orm";
+import { CasingCache } from "drizzle-orm/casing";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClickHouseConfig } from "@/lib/clickhouse/config";
 
 const queryJsonMock = vi.fn();
-const getMaxIdMock = vi.fn();
-const findCursorBeforeMock = vi.fn();
+const readFloorMock = vi.fn();
+const writeFloorMock = vi.fn();
 const isEnabledMock = vi.fn();
 const getConfigMock = vi.fn();
-const redisGetMock = vi.fn();
-const redisSetMock = vi.fn();
+const redisDelMock = vi.fn();
 const getRedisClientMock = vi.fn();
 
 vi.mock("@/lib/clickhouse/client", () => ({
@@ -15,8 +16,8 @@ vi.mock("@/lib/clickhouse/client", () => ({
 }));
 
 vi.mock("@/lib/clickhouse/source", () => ({
-  getMaxId: (...args: unknown[]) => getMaxIdMock(...args),
-  findCursorBefore: (...args: unknown[]) => findCursorBeforeMock(...args),
+  readClickHouseFloor: (...args: unknown[]) => readFloorMock(...args),
+  writeClickHouseFloorIfAbsent: (...args: unknown[]) => writeFloorMock(...args),
 }));
 
 vi.mock("@/lib/clickhouse/config", async (importOriginal) => {
@@ -37,12 +38,22 @@ vi.mock("@/lib/logger", () => ({
 }));
 
 import {
-  getClickHouseSyncFence,
-  readState,
-  resolveInitialState,
+  getClickHouseCleanupCondition,
+  resolveFloor,
   SyncStateUnavailableError,
-  writeState,
 } from "@/lib/clickhouse/sync-state";
+
+function renderSql(sqlObject: unknown): { sql: string; params: unknown[] } {
+  return (sqlObject as SQL).toQuery({
+    escapeName: (name: string) => `"${name}"`,
+    escapeParam: (num: number) => `$${num}`,
+    escapeString: (value: string) => `'${value}'`,
+    casing: new CasingCache(),
+    paramStartIndex: { value: 1 },
+  });
+}
+
+const NOW = Date.parse("2026-09-26T12:00:00.000Z");
 
 const config: ClickHouseConfig = {
   url: "http://clickhouse:8123",
@@ -53,128 +64,111 @@ const config: ClickHouseConfig = {
   requestTimeoutMs: 5000,
   syncIntervalMs: 5000,
   syncBatchSize: 100,
-  syncLagMs: 300000,
   syncSettleMs: 150000,
   maxPendingAgeMs: 3600000,
-  maxPending: 20000,
 };
 
 beforeEach(() => {
-  redisGetMock.mockResolvedValue(null);
-  redisSetMock.mockResolvedValue("OK");
-  getRedisClientMock.mockReturnValue({
-    status: "ready",
-    get: redisGetMock,
-    set: redisSetMock,
-  });
+  vi.spyOn(Date, "now").mockReturnValue(NOW);
+  redisDelMock.mockResolvedValue(1);
+  getRedisClientMock.mockReturnValue({ status: "ready", del: redisDelMock });
   isEnabledMock.mockReturnValue(true);
   getConfigMock.mockReturnValue(config);
   queryJsonMock.mockResolvedValue([]);
-  getMaxIdMock.mockResolvedValue(0);
-  findCursorBeforeMock.mockResolvedValue(0);
+  readFloorMock.mockResolvedValue(null);
+  writeFloorMock.mockImplementation(async (floor: Date) => floor);
 });
 
-describe("readState", () => {
-  it("returns null when no state has been stored", async () => {
-    await expect(readState()).resolves.toBeNull();
-  });
-
-  it("parses a stored state", async () => {
-    redisGetMock.mockResolvedValue(JSON.stringify({ cursor: 42, pending: [43, 44] }));
-    await expect(readState()).resolves.toEqual({ cursor: 42, pending: [43, 44] });
-  });
-
-  it("discards malformed JSON", async () => {
-    redisGetMock.mockResolvedValue("{not json");
-    await expect(readState()).resolves.toBeNull();
-  });
-
-  it("discards structurally invalid state", async () => {
-    redisGetMock.mockResolvedValue(JSON.stringify({ cursor: "x", pending: [] }));
-    await expect(readState()).resolves.toBeNull();
-
-    redisGetMock.mockResolvedValue(JSON.stringify({ cursor: 1, pending: ["a"] }));
-    await expect(readState()).resolves.toBeNull();
-  });
-
-  it("fails loudly when Redis is not ready", async () => {
-    getRedisClientMock.mockReturnValue({ status: "connecting" });
-    await expect(readState()).rejects.toBeInstanceOf(SyncStateUnavailableError);
-  });
-
-  it("fails loudly when Redis is unavailable entirely", async () => {
-    getRedisClientMock.mockReturnValue(null);
-    await expect(readState()).rejects.toBeInstanceOf(SyncStateUnavailableError);
-  });
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
-describe("writeState", () => {
-  it("stores the state as JSON", async () => {
-    await writeState({ cursor: 10, pending: [11] });
-    expect(redisSetMock).toHaveBeenCalledWith(
-      "clickhouse_sync:state",
-      JSON.stringify({ cursor: 10, pending: [11] })
-    );
-  });
-});
+describe("resolveFloor", () => {
+  it("reuses the persisted floor without consulting ClickHouse", async () => {
+    const persisted = new Date("2026-09-01T00:00:00.000Z");
+    readFloorMock.mockResolvedValue(persisted);
 
-describe("resolveInitialState", () => {
-  it("reuses the stored progress when present", async () => {
-    redisGetMock.mockResolvedValue(JSON.stringify({ cursor: 99, pending: [] }));
-
-    await expect(resolveInitialState(config)).resolves.toEqual({ cursor: 99, pending: [] });
+    await expect(resolveFloor(config)).resolves.toEqual(persisted);
     expect(queryJsonMock).not.toHaveBeenCalled();
+    expect(writeFloorMock).not.toHaveBeenCalled();
   });
 
-  it("starts at the current tail when both sides are empty (no backfill)", async () => {
-    queryJsonMock.mockResolvedValue([{ cnt: "0", max_ms: "0" }]);
-    getMaxIdMock.mockResolvedValue(5000);
-
-    await expect(resolveInitialState(config)).resolves.toEqual({ cursor: 5000, pending: [] });
-    expect(findCursorBeforeMock).not.toHaveBeenCalled();
-  });
-
-  it("rescans a lookback window when state was lost but ClickHouse has data", async () => {
-    const watermark = Date.parse("2026-09-19T10:00:00.000Z");
+  it("starts from the earliest ClickHouse row so rows missed by the old cursor are re-shipped", async () => {
+    const earliest = Date.parse("2026-08-01T00:00:00.000Z");
     // UInt64 在 JSONEachRow 输出里是带引号的字符串
-    queryJsonMock.mockResolvedValue([{ cnt: "100", max_ms: String(watermark) }]);
-    findCursorBeforeMock.mockResolvedValue(1234);
+    queryJsonMock.mockResolvedValue([{ cnt: "651558", min_ms: String(earliest) }]);
 
-    await expect(resolveInitialState(config)).resolves.toEqual({ cursor: 1234, pending: [] });
-    expect(findCursorBeforeMock).toHaveBeenCalledWith(new Date(watermark - config.maxPendingAgeMs));
+    await expect(resolveFloor(config)).resolves.toEqual(new Date(earliest));
+    expect(writeFloorMock).toHaveBeenCalledWith(new Date(earliest));
+    expect(String(queryJsonMock.mock.calls[0][1])).toContain("min(created_at)");
   });
 
-  it("treats a missing watermark row as an empty table", async () => {
-    queryJsonMock.mockResolvedValue([]);
-    getMaxIdMock.mockResolvedValue(7);
+  it("covers in-flight requests when ClickHouse is empty (no history backfill)", async () => {
+    queryJsonMock.mockResolvedValue([{ cnt: "0", min_ms: "0" }]);
 
-    await expect(resolveInitialState(config)).resolves.toEqual({ cursor: 7, pending: [] });
+    await expect(resolveFloor(config)).resolves.toEqual(new Date(NOW - config.maxPendingAgeMs));
+  });
+
+  it("treats a missing aggregate row as an empty table", async () => {
+    queryJsonMock.mockResolvedValue([]);
+
+    await expect(resolveFloor(config)).resolves.toEqual(new Date(NOW - config.maxPendingAgeMs));
+  });
+
+  it("defers to whatever another leader persisted first", async () => {
+    const winner = new Date("2026-07-01T00:00:00.000Z");
+    writeFloorMock.mockResolvedValue(winner);
+
+    await expect(resolveFloor(config)).resolves.toEqual(winner);
+  });
+
+  it("drops the legacy Redis cursor state after initializing", async () => {
+    await resolveFloor(config);
+    expect(redisDelMock).toHaveBeenCalledWith("clickhouse_sync:state");
+  });
+
+  it("does not depend on Redis being available", async () => {
+    getRedisClientMock.mockReturnValue(null);
+    await expect(resolveFloor(config)).resolves.toBeInstanceOf(Date);
+
+    getRedisClientMock.mockReturnValue({
+      status: "ready",
+      del: vi.fn().mockRejectedValue(new Error("redis gone")),
+    });
+    await expect(resolveFloor(config)).resolves.toBeInstanceOf(Date);
   });
 });
 
-describe("getClickHouseSyncFence", () => {
+describe("getClickHouseCleanupCondition", () => {
   it("returns null when sync is disabled so cleanup keeps its old behaviour", async () => {
     isEnabledMock.mockReturnValue(false);
-    await expect(getClickHouseSyncFence()).resolves.toBeNull();
+    await expect(getClickHouseCleanupCondition()).resolves.toBeNull();
   });
 
-  it("returns the cursor when nothing is pending", async () => {
-    redisGetMock.mockResolvedValue(JSON.stringify({ cursor: 500, pending: [] }));
-    await expect(getClickHouseSyncFence()).resolves.toBe(500);
+  it("only admits synced or out-of-scope rows, never by id", async () => {
+    const floor = new Date("2026-09-01T00:00:00.000Z");
+    readFloorMock.mockResolvedValue(floor);
+
+    const condition = await getClickHouseCleanupCondition();
+    const rendered = renderSql(condition);
+
+    expect(rendered.sql).toContain('"clickhouse_synced_at" is not null');
+    expect(rendered.sql).toContain('"deleted_at" is not null');
+    expect(rendered.sql).toContain('"blocked_by" =');
+    expect(rendered.sql).toContain('"created_at" <');
+    expect(rendered.sql).not.toContain('"id"');
+    expect(rendered.params).toEqual(expect.arrayContaining(["warmup", floor.toISOString()]));
+    // 四个条件是 OR 关系：任何一个成立即可删除
+    expect(rendered.sql.match(/ or /g)).toHaveLength(3);
   });
 
-  it("holds the fence below the oldest pending row", async () => {
-    redisGetMock.mockResolvedValue(JSON.stringify({ cursor: 500, pending: [310, 290, 400] }));
-    await expect(getClickHouseSyncFence()).resolves.toBe(289);
+  it("refuses to produce a fence before the floor is initialized", async () => {
+    readFloorMock.mockResolvedValue(null);
+    await expect(getClickHouseCleanupCondition()).rejects.toBeInstanceOf(SyncStateUnavailableError);
   });
 
-  it("refuses to produce a fence when progress is unknown", async () => {
-    redisGetMock.mockResolvedValue(null);
-    await expect(getClickHouseSyncFence()).rejects.toBeInstanceOf(SyncStateUnavailableError);
-  });
-
-  it("propagates Redis outages instead of allowing unfenced deletes", async () => {
-    getRedisClientMock.mockReturnValue(null);
-    await expect(getClickHouseSyncFence()).rejects.toBeInstanceOf(SyncStateUnavailableError);
+  it("propagates database failures instead of allowing unfenced deletes", async () => {
+    readFloorMock.mockRejectedValue(new Error("pg gone"));
+    await expect(getClickHouseCleanupCondition()).rejects.toThrow("pg gone");
   });
 });

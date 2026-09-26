@@ -1,4 +1,4 @@
-import type { SQL } from "drizzle-orm";
+import { isNotNull, type SQL } from "drizzle-orm";
 import { CasingCache } from "drizzle-orm/casing";
 import { beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
 
@@ -27,8 +27,14 @@ vi.mock("@/lib/logger", () => ({
 }));
 
 vi.mock("@/lib/clickhouse/sync-state", () => ({
-  getClickHouseSyncFence: (...args: unknown[]) => getFenceMock(...args),
+  getClickHouseCleanupCondition: (...args: unknown[]) => getFenceMock(...args),
 }));
+
+/** 与真实围栏同形的条件：按行上的同步标记放行，而不是 id 上限 */
+async function syncedCondition(): Promise<SQL> {
+  const { messageRequest } = await import("@/drizzle/schema");
+  return isNotNull(messageRequest.clickhouseSyncedAt);
+}
 
 /**
  * 日志清理与 ClickHouse 同步的联动：
@@ -56,9 +62,9 @@ describe("log cleanup ClickHouse fence", () => {
     expect(getFenceMock).toHaveBeenCalledTimes(1);
   });
 
-  it("adds an id ceiling to every delete statement when a fence exists", async () => {
+  it("adds the sync-marker fence to every delete statement when sync is enabled", async () => {
     const { db } = await import("@/drizzle/db");
-    getFenceMock.mockResolvedValue(4242);
+    getFenceMock.mockResolvedValue(await syncedCondition());
     (db.execute as MockInstance).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
     const result = await runCleanup();
@@ -68,8 +74,8 @@ describe("log cleanup ClickHouse fence", () => {
     expect((db.execute as MockInstance).mock.calls).toHaveLength(2);
     for (const call of (db.execute as MockInstance).mock.calls) {
       const rendered = renderSql(call[0]);
-      expect(rendered.sql).toContain('"id" <=');
-      expect(rendered.params).toContain(4242);
+      expect(rendered.sql).toContain('"clickhouse_synced_at" is not null');
+      expect(rendered.sql).not.toContain('"id" <=');
     }
   });
 
@@ -87,7 +93,7 @@ describe("log cleanup ClickHouse fence", () => {
 
   it("never turns an empty condition set into a fence-only delete", async () => {
     const { db } = await import("@/drizzle/db");
-    getFenceMock.mockResolvedValue(4242);
+    getFenceMock.mockResolvedValue(await syncedCondition());
 
     const { cleanupLogs } = await import("@/lib/log-cleanup/service");
     const result = await cleanupLogs({}, {}, { type: "scheduled" });
@@ -100,7 +106,7 @@ describe("log cleanup ClickHouse fence", () => {
 
   it("applies the fence to dry-run estimates as well", async () => {
     const { db } = await import("@/drizzle/db");
-    getFenceMock.mockResolvedValue(99);
+    getFenceMock.mockResolvedValue(await syncedCondition());
 
     const where = vi.fn().mockResolvedValue([{ count: 7 }]);
     const from = vi.fn().mockReturnValue({ where });
@@ -114,6 +120,6 @@ describe("log cleanup ClickHouse fence", () => {
     );
 
     expect(result.totalDeleted).toBe(7);
-    expect(renderSql(where.mock.calls[0][0]).params).toContain(99);
+    expect(renderSql(where.mock.calls[0][0]).sql).toContain('"clickhouse_synced_at" is not null');
   });
 });

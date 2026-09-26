@@ -1,4 +1,6 @@
 import "server-only";
+import { eq, isNotNull, lt, or, type SQL } from "drizzle-orm";
+import { messageRequest } from "@/drizzle/schema";
 import { queryJson } from "@/lib/clickhouse/client";
 import {
   type ClickHouseConfig,
@@ -6,25 +8,23 @@ import {
   isClickHouseSyncEnabled,
   qualifiedTableName,
 } from "@/lib/clickhouse/config";
-import { findCursorBefore, getMaxId } from "@/lib/clickhouse/source";
+import { readClickHouseFloor, writeClickHouseFloorIfAbsent } from "@/lib/clickhouse/source";
 import { logger } from "@/lib/logger";
 import { getRedisClient } from "@/lib/redis";
 
-const REDIS_KEYS = {
-  /** 同步进度: clickhouse_sync:state */
-  state: () => "clickhouse_sync:state",
-};
-
 /**
- * 同步进度。
+ * 同步进度模型
  *
- * - cursor: 已扫描到的最大 message_request.id（该 id 及之前的行不会再被扫描）
- * - pending: 游标已越过、但当时还不可发送的行（长流式请求尚未终态/未静置）
+ * 进度记录在每一行自己身上（message_request.clickhouse_synced_at），而不是一个 id 游标：
+ * async INSERT 模式下预留的 id 可能在数小时后才被使用，"游标以下都已同步"这一假设不成立。
+ *
+ * 唯一的全局状态是同步范围下界 floor（clickhouse_sync_state.floor_at）：
+ * created_at 早于它的行属于启用同步之前的历史，不回填、也不阻止日志清理。
+ * 下界存放在 PostgreSQL，首次初始化后不再自动修改。
  */
-export interface SyncState {
-  cursor: number;
-  pending: number[];
-}
+
+/** 旧版 id 游标进度的 Redis 键，仅用于升级后清理 */
+const LEGACY_REDIS_STATE_KEY = "clickhouse_sync:state";
 
 export class SyncStateUnavailableError extends Error {
   constructor(message: string) {
@@ -33,57 +33,13 @@ export class SyncStateUnavailableError extends Error {
   }
 }
 
-function requireRedis() {
-  const redis = getRedisClient({ allowWhenRateLimitDisabled: true });
-  if (redis?.status !== "ready") {
-    throw new SyncStateUnavailableError("Redis unavailable for ClickHouse sync state");
-  }
-  return redis;
-}
-
-function isValidState(value: unknown): value is SyncState {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const candidate = value as { cursor?: unknown; pending?: unknown };
-  return (
-    typeof candidate.cursor === "number" &&
-    Number.isFinite(candidate.cursor) &&
-    Array.isArray(candidate.pending) &&
-    candidate.pending.every((id) => typeof id === "number" && Number.isFinite(id))
-  );
-}
-
-export async function readState(): Promise<SyncState | null> {
-  const raw = await requireRedis().get(REDIS_KEYS.state());
-  if (!raw) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (isValidState(parsed)) {
-      return { cursor: parsed.cursor, pending: parsed.pending };
-    }
-  } catch {
-    // 落到下面的告警：状态不可解析时按"无状态"处理并走恢复流程
-  }
-
-  logger.warn("[ClickHouseSync] Discarding unreadable sync state");
-  return null;
-}
-
-export async function writeState(state: SyncState): Promise<void> {
-  await requireRedis().set(REDIS_KEYS.state(), JSON.stringify(state));
-}
-
 /**
- * ClickHouse 中已有数据的最新 created_at（毫秒）；表为空时返回 null。
+ * ClickHouse 中已有数据的最早 created_at（毫秒）；表为空时返回 null。
  */
-async function readClickHouseWatermark(config: ClickHouseConfig): Promise<number | null> {
-  const rows = await queryJson<{ cnt: string | number; max_ms: string | number }>(
+async function readClickHouseEarliest(config: ClickHouseConfig): Promise<number | null> {
+  const rows = await queryJson<{ cnt: string | number; min_ms: string | number }>(
     config,
-    `SELECT count() AS cnt, toUnixTimestamp64Milli(max(created_at)) AS max_ms FROM ${qualifiedTableName(config)}`
+    `SELECT count() AS cnt, toUnixTimestamp64Milli(min(created_at)) AS min_ms FROM ${qualifiedTableName(config)}`
   );
 
   const row = rows[0];
@@ -91,51 +47,64 @@ async function readClickHouseWatermark(config: ClickHouseConfig): Promise<number
     return null;
   }
 
-  const maxMs = Number(row.max_ms);
-  return Number.isFinite(maxMs) && maxMs > 0 ? maxMs : null;
+  const minMs = Number(row.min_ms);
+  return Number.isFinite(minMs) && minMs > 0 ? minMs : null;
+}
+
+/** 升级后删除旧版游标进度；失败无害（它已不再被读取） */
+async function dropLegacyRedisState(): Promise<void> {
+  try {
+    const redis = getRedisClient({ allowWhenRateLimitDisabled: true });
+    if (redis?.status === "ready") {
+      await redis.del(LEGACY_REDIS_STATE_KEY);
+    }
+  } catch {
+    // 忽略：旧键残留不影响正确性
+  }
 }
 
 /**
- * 决定起始进度。
+ * 决定同步范围下界。
  *
- * 1. Redis 里有状态 -> 直接沿用
- * 2. 状态丢失但 ClickHouse 已有数据 -> 从"最新数据时间 - 最长等待窗口"回看重扫，
- *    重复写入由 ReplacingMergeTree 合并
- * 3. 两边都是空的 -> 从当前最大 id 开始，不回填历史
+ * 1. PostgreSQL 已有下界 -> 直接沿用
+ * 2. ClickHouse 已有数据 -> 取其最早 created_at：已在 ClickHouse 覆盖范围内、却缺少同步标记的行
+ *    （包括旧版游标漏掉的行）会被重新发送，重复由 ReplacingMergeTree 合并
+ * 3. ClickHouse 为空 -> now - maxPendingAgeMs：不回填历史，但覆盖正在进行中的请求
+ *    （created_at 已打上、尚未提交或尚未终态的行）
+ *
+ * 写入采用"不存在才写"，多个 leader 并发初始化时以库里的值为准。
  */
-export async function resolveInitialState(config: ClickHouseConfig): Promise<SyncState> {
-  const existing = await readState();
+export async function resolveFloor(config: ClickHouseConfig): Promise<Date> {
+  const existing = await readClickHouseFloor();
   if (existing) {
     return existing;
   }
 
-  const watermarkMs = await readClickHouseWatermark(config);
+  const earliestMs = await readClickHouseEarliest(config);
+  const candidate =
+    earliestMs === null ? new Date(Date.now() - config.maxPendingAgeMs) : new Date(earliestMs);
 
-  if (watermarkMs === null) {
-    const maxId = await getMaxId();
-    logger.info("[ClickHouseSync] No prior state or data; starting from current tail", {
-      cursor: maxId,
-    });
-    return { cursor: maxId, pending: [] };
-  }
+  const floor = await writeClickHouseFloorIfAbsent(candidate);
+  await dropLegacyRedisState();
 
-  const since = new Date(watermarkMs - config.maxPendingAgeMs);
-  const cursor = await findCursorBefore(since);
-  logger.warn("[ClickHouseSync] Sync state lost; recovering from ClickHouse watermark", {
-    watermark: new Date(watermarkMs).toISOString(),
-    rescanFrom: since.toISOString(),
-    cursor,
+  logger.info("[ClickHouseSync] Initialized sync scope floor", {
+    floor: floor.toISOString(),
+    source: earliestMs === null ? "empty_clickhouse" : "clickhouse_earliest",
   });
-  return { cursor, pending: [] };
+  return floor;
 }
 
 /**
- * 计算同步围栏：id 不大于该值的行都已经进入 ClickHouse，可以安全地从 PG 删除。
+ * 日志清理的同步围栏：返回一个附加到删除条件上的 SQL 谓词，只放行已经同步
+ * 或不在同步范围内的行。
  *
  * - 未启用同步 -> null（调用方保持原有行为）
- * - 启用但进度不可读 -> 抛错（调用方必须中止删除，宁可多留数据）
+ * - 启用但下界尚未初始化 -> 抛错（调用方必须中止删除，宁可多留数据）
+ * - 否则：已同步 OR 已软删除 OR warmup OR created_at 早于下界
+ *
+ * 尚未确认进入 ClickHouse 的范围内行，无论 id 大小都不会被删除。
  */
-export async function getClickHouseSyncFence(): Promise<number | null> {
+export async function getClickHouseCleanupCondition(): Promise<SQL | null> {
   if (!isClickHouseSyncEnabled()) {
     return null;
   }
@@ -145,16 +114,17 @@ export async function getClickHouseSyncFence(): Promise<number | null> {
     return null;
   }
 
-  const state = await readState();
-  if (!state) {
+  const floor = await readClickHouseFloor();
+  if (!floor) {
     throw new SyncStateUnavailableError(
-      "ClickHouse sync is enabled but sync progress is unknown; refusing to compute cleanup fence"
+      "ClickHouse sync is enabled but its scope floor is not initialized; refusing to compute cleanup fence"
     );
   }
 
-  if (state.pending.length === 0) {
-    return state.cursor;
-  }
-
-  return Math.min(state.cursor, Math.min(...state.pending) - 1);
+  return or(
+    isNotNull(messageRequest.clickhouseSyncedAt),
+    isNotNull(messageRequest.deletedAt),
+    eq(messageRequest.blockedBy, "warmup"),
+    lt(messageRequest.createdAt, floor)
+  ) as SQL;
 }

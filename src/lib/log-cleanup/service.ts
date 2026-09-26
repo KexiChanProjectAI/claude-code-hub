@@ -88,16 +88,17 @@ export async function cleanupLogs(
       };
     }
 
-    // ClickHouse 同步围栏：只允许删除已经进入 ClickHouse 的行。
+    // ClickHouse 同步围栏：只允许删除已经进入 ClickHouse（或不在同步范围内）的行。
+    // 按行上的同步标记判断，不按 id：async INSERT 模式下 id 不代表写入顺序。
     // 刻意放在"条件为空"检查之后 —— 围栏本身不构成删除条件，否则条件为空时
-    // 会退化成"删除围栏以前的所有日志"。
+    // 会退化成"删除所有已同步的日志"。
     // 进度不可读时中止本次清理：宁可多留数据，也不能删掉还没同步出去的行。
     try {
-      const { getClickHouseSyncFence } = await import("@/lib/clickhouse/sync-state");
-      const fence = await getClickHouseSyncFence();
+      const { getClickHouseCleanupCondition } = await import("@/lib/clickhouse/sync-state");
+      const fence = await getClickHouseCleanupCondition();
       if (fence !== null) {
-        whereConditions.push(lte(messageRequest.id, fence));
-        logger.info({ action: "log_cleanup_clickhouse_fence", maxId: fence });
+        whereConditions.push(fence);
+        logger.info({ action: "log_cleanup_clickhouse_fence" });
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);

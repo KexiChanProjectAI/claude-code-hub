@@ -11,10 +11,8 @@ export interface ClickHouseConfig {
   requestTimeoutMs: number;
   syncIntervalMs: number;
   syncBatchSize: number;
-  syncLagMs: number;
   syncSettleMs: number;
   maxPendingAgeMs: number;
-  maxPending: number;
 }
 
 /**
@@ -45,10 +43,8 @@ export function getClickHouseConfig(): ClickHouseConfig | null {
     requestTimeoutMs: env.CLICKHOUSE_REQUEST_TIMEOUT_MS,
     syncIntervalMs: env.CLICKHOUSE_SYNC_INTERVAL_MS,
     syncBatchSize: env.CLICKHOUSE_SYNC_BATCH_SIZE,
-    syncLagMs: env.CLICKHOUSE_SYNC_LAG_MS,
     syncSettleMs: env.CLICKHOUSE_SYNC_SETTLE_MS,
     maxPendingAgeMs: env.CLICKHOUSE_SYNC_MAX_PENDING_AGE_MS,
-    maxPending: env.CLICKHOUSE_SYNC_MAX_PENDING,
   };
 }
 
