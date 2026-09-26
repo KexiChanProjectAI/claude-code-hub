@@ -68,6 +68,7 @@ const CODEX_REASONING_EFFORT_OVERRIDE_TARGETS = new Set([
   "medium",
   "high",
   "xhigh",
+  "max",
 ]);
 const ANTHROPIC_REASONING_EFFORT_OVERRIDE_TARGETS = new Set([
   "low",

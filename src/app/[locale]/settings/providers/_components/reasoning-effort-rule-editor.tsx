@@ -31,7 +31,7 @@ const MATCH_MODES: ProviderModelRedirectMatchType[] = [
   "regex",
 ];
 
-const CODEX_EFFORT_TARGETS = ["none", "minimal", "low", "medium", "high", "xhigh"] as const;
+const CODEX_EFFORT_TARGETS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 const CLAUDE_EFFORT_TARGETS = ["low", "medium", "high", "xhigh", "max"] as const;
 
 interface ReasoningEffortRuleEditorProps {

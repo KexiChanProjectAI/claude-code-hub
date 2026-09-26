@@ -937,6 +937,24 @@ describe("Codex 供应商级参数覆写", () => {
     expect(input.reasoning).toEqual({ effort: "low", summary: "auto", extra: "keep" });
   });
 
+  it("条件规则的 max 应写入 Responses reasoning.effort", () => {
+    const input: Record<string, unknown> = {
+      model: "gpt-5.5",
+      input: [],
+      reasoning: { effort: "low", summary: "auto" },
+    };
+    const output = applyCodexProviderOverrides({ providerType: "codex" }, input, {
+      originalModel: "gpt-5.5",
+      executionModel: "gpt-5.5",
+      originalReasoningEffort: "low",
+      reasoningEffortOverrideRules: [
+        { when: { originalReasoningEffort: "low" }, overrideEffort: "max" },
+      ],
+    });
+
+    expect(output.reasoning).toEqual({ effort: "max", summary: "auto" });
+  });
+
   it("条件规则应按声明顺序使用首条匹配规则", () => {
     const provider = { providerType: "codex" };
     const input: Record<string, unknown> = {

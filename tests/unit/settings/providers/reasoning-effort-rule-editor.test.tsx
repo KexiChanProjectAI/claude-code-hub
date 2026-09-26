@@ -169,6 +169,23 @@ describe("ReasoningEffortRuleEditor", () => {
     unmount();
   });
 
+  it("offers max as a Codex target and treats it as a complete rule", () => {
+    const onChange = vi.fn();
+    const { container, unmount } = renderNode(
+      <ReasoningEffortRuleEditor
+        rules={[createRule({ overrideEffort: "max" })]}
+        onChange={onChange}
+        providerType="codex"
+      />
+    );
+    const target = container.querySelector("[data-testid='target-effort-0']");
+    expect(
+      target?.parentElement?.querySelector('[role="option"][data-value="max"]')
+    ).not.toBeNull();
+    expect(container.querySelector("[role='listitem']")?.className).toContain("border-primary/30");
+    unmount();
+  });
+
   it("calls onChange with new array when add rule is clicked", () => {
     const onChange = vi.fn();
     const { container, unmount } = renderNode(
@@ -640,7 +657,7 @@ describe("ReasoningEffortRuleEditor", () => {
     const optionValues = Array.from(options).map((opt) => opt.getAttribute("data-value"));
     expect(optionValues).toContain("none");
     expect(optionValues).toContain("minimal");
-    expect(optionValues).not.toContain("max");
+    expect(optionValues).toContain("max");
     unmount();
   });
 

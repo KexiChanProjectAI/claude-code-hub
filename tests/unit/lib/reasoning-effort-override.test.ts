@@ -194,6 +194,12 @@ describe("legacy reasoning effort conversion", () => {
     expect(convertLegacyCodexReasoningEffortToRules("inherit")).toEqual([]);
   });
 
+  it("converts a Codex max effort into a rule", () => {
+    expect(convertLegacyCodexReasoningEffortToRules("max")).toEqual([
+      { when: {}, overrideEffort: "max" },
+    ]);
+  });
+
   it("selects the appropriate legacy converter from a provider-shaped config", () => {
     expect(
       convertLegacyReasoningEffortOverrideToRules({ codexReasoningEffortPreference: "high" })

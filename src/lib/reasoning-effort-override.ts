@@ -186,6 +186,7 @@ function isCodexReasoningEffort(value: unknown): value is CodexReasoningEffortPr
     case "medium":
     case "high":
     case "xhigh":
+    case "max":
       return true;
     default:
       return false;

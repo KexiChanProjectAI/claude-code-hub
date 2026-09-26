@@ -163,6 +163,27 @@ describe("v1 provider reasoning effort rule contract", () => {
     );
   });
 
+  test("accepts max as a conditional Codex effort target", async () => {
+    const maxRules = [{ when: { originalReasoningEffort: "high" }, overrideEffort: "max" }];
+    const { response } = await callV1Route({
+      method: "POST",
+      pathname: "/api/v1/providers",
+      authToken: "admin-token",
+      body: {
+        name: "Codex provider",
+        url: "https://api.openai.com",
+        key: "sk-test-key",
+        provider_type: "codex",
+        reasoning_effort_override_rules: maxRules,
+      },
+    });
+
+    expect(response.status).toBe(201);
+    expect(addProviderMock).toHaveBeenCalledWith(
+      expect.objectContaining({ reasoning_effort_override_rules: maxRules })
+    );
+  });
+
   test.each([
     {
       name: "invalid regex",
