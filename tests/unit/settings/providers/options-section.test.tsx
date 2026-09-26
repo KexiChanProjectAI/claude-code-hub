@@ -305,7 +305,7 @@ describe("OptionsSection", () => {
       });
 
       expect(getBodyText()).toContain("sections.routing.codexOverrides.title");
-      expect(container.querySelector('[data-value="max"]')).toBeTruthy();
+      expect(getBodyText()).toContain("sections.routing.codexOverrides.reasoningEffort.label");
 
       unmount();
     });
@@ -629,15 +629,49 @@ describe("OptionsSection", () => {
 // ---- ReasoningEffortRuleEditor integration ----
 
 describe("OptionsSection - ReasoningEffortRuleEditor integration", () => {
-  it("shows reasoning effort rule editor for codex providers", () => {
+  it("keeps Codex rules hidden until enabled", () => {
     const { container, unmount } = renderSection({
       state: createMockState({ routing: { providerType: "codex" } }),
     });
 
-    const editor = container.querySelector("[data-testid='reasoning-effort-rule-editor']");
-    expect(editor).toBeTruthy();
-    expect(editor?.getAttribute("data-provider-type")).toBe("codex");
+    expect(container.querySelector("[data-testid='reasoning-effort-rule-editor']")).toBeNull();
+    const toggle = Array.from(container.querySelectorAll('[role="switch"]')).find((element) =>
+      element.parentElement?.textContent?.includes(
+        "sections.routing.codexOverrides.reasoningEffort.label"
+      )
+    );
+    expect(toggle?.getAttribute("aria-checked")).toBe("false");
+    act(() => (toggle as HTMLButtonElement).click());
+    expect(mockDispatch).toHaveBeenCalledWith({
+      type: "SET_REASONING_EFFORT_RULES",
+      payload: [{ when: {}, overrideEffort: "" }],
+    });
+    unmount();
+  });
 
+  it("shows configured Codex rules and disables them with an empty rule list", () => {
+    const { container, unmount } = renderSection({
+      state: createMockState({
+        routing: {
+          providerType: "codex",
+          reasoningEffortOverrideRules: [{ when: {}, overrideEffort: "max" }],
+        },
+      }),
+    });
+
+    const editor = container.querySelector("[data-testid='reasoning-effort-rule-editor']");
+    expect(editor?.getAttribute("data-provider-type")).toBe("codex");
+    const toggle = Array.from(container.querySelectorAll('[role="switch"]')).find((element) =>
+      element.parentElement?.textContent?.includes(
+        "sections.routing.codexOverrides.reasoningEffort.label"
+      )
+    );
+    expect(toggle?.getAttribute("aria-checked")).toBe("true");
+    act(() => (toggle as HTMLButtonElement).click());
+    expect(mockDispatch).toHaveBeenCalledWith({
+      type: "SET_REASONING_EFFORT_RULES",
+      payload: [],
+    });
     unmount();
   });
 

@@ -142,6 +142,25 @@ describe("createInitialState - batch mode", () => {
   });
 });
 
+describe("createInitialState - Codex effort rules", () => {
+  it("shows existing static max as an editable conditional rule", () => {
+    const provider = {
+      providerType: "codex",
+      codexReasoningEffortPreference: "max",
+      reasoningEffortOverrideRules: null,
+    } as Parameters<typeof createInitialState>[1];
+    const state = createInitialState("edit", provider);
+
+    expect(state.routing.reasoningEffortOverrideRules).toEqual([
+      { when: {}, overrideEffort: "max" },
+    ]);
+    expect(
+      providerFormReducer(state, { type: "SET_REASONING_EFFORT_RULES", payload: [] }).routing
+        .reasoningEffortOverrideRules
+    ).toEqual([]);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // providerFormReducer - SET_BATCH_IS_ENABLED
 // ---------------------------------------------------------------------------

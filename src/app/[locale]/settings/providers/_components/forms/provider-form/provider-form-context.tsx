@@ -13,6 +13,7 @@ import {
 import { normalizeAllowedModelRules } from "@/lib/allowed-model-rules";
 import { stringifyCustomHeadersForTextarea } from "@/lib/custom-headers";
 import { normalizeProviderModelRedirectRules } from "@/lib/provider-model-redirects";
+import { convertLegacyCodexReasoningEffortToRules } from "@/lib/reasoning-effort-override";
 import { parseProviderGroups } from "@/lib/utils/provider-group";
 import type { ProviderDisplay, ProviderType } from "@/types/provider";
 import { analyzeBatchProviderSettings } from "../../batch-edit/analyze-batch-settings";
@@ -469,7 +470,11 @@ export function createInitialState(
         sourceProvider?.anthropicThinkingBudgetPreference ?? "inherit",
       anthropicAdaptiveThinking: sourceProvider?.anthropicAdaptiveThinking ?? null,
       geminiGoogleSearchPreference: sourceProvider?.geminiGoogleSearchPreference ?? "inherit",
-      reasoningEffortOverrideRules: sourceProvider?.reasoningEffortOverrideRules ?? null,
+      reasoningEffortOverrideRules:
+        sourceProvider?.reasoningEffortOverrideRules ??
+        (sourceProvider?.providerType === "codex"
+          ? convertLegacyCodexReasoningEffortToRules(sourceProvider.codexReasoningEffortPreference)
+          : null),
       activeTimeStart: sourceProvider?.activeTimeStart ?? null,
       activeTimeEnd: sourceProvider?.activeTimeEnd ?? null,
       customHeadersText: stringifyCustomHeadersForTextarea(
