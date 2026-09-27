@@ -23,6 +23,8 @@ const instrumentationState = globalThis as unknown as {
   __CCH_CACHE_EFFECTIVENESS_INTERVAL_ID__?: ReturnType<typeof setInterval>;
   __CCH_REPLAY_CLEANUP_STARTED__?: boolean;
   __CCH_REPLAY_CLEANUP_INTERVAL_ID__?: ReturnType<typeof setInterval>;
+  __CCH_EDGE_WATCHDOG_STARTED__?: boolean;
+  __CCH_EDGE_WATCHDOG_INTERVAL_ID__?: ReturnType<typeof setInterval>;
   __CCH_API_KEY_VF_SYNC_STARTED__?: boolean;
   __CCH_API_KEY_VF_SYNC_CLEANUP__?: (() => void) | null;
   __CCH_LIFECYCLE_MARKERS_LOGGED__?: boolean;
@@ -361,6 +363,59 @@ export async function startReplayCleanupScheduler(): Promise<void> {
     logger.warn(
       { ...describeSchedulerError(error) },
       "[Instrumentation] Replay cleanup scheduler init failed"
+    );
+  }
+}
+
+/**
+ * Edge 执行器 watchdog：结算远端停止上报（心跳 / next / complete 均超时）的请求。
+ * 仅在配置了 CCH_EDGE_SHARED_SECRET 时启动。
+ */
+export async function startEdgeWatchdogScheduler(): Promise<void> {
+  if (instrumentationState.__CCH_EDGE_WATCHDOG_STARTED__) {
+    return;
+  }
+
+  try {
+    const { getEnvConfig } = await import("@/lib/config/env.schema");
+    const env = getEnvConfig();
+    if (!env.CCH_EDGE_SHARED_SECRET) {
+      return;
+    }
+    const { runEdgeWatchdogTick } = await import("@/app/v1/_lib/edge/watchdog");
+    const intervalMs = env.CCH_EDGE_WATCHDOG_INTERVAL_MS;
+    let running = false;
+
+    const runTick = () => {
+      if (running) return;
+      running = true;
+      void runEdgeWatchdogTick()
+        .then((settled) => {
+          if (settled > 0) {
+            logger.info({ settled }, "[Instrumentation] Edge watchdog settled overdue requests");
+          }
+        })
+        .catch((error) => {
+          logger.warn(
+            { ...describeSchedulerError(error) },
+            "[Instrumentation] Edge watchdog tick failed"
+          );
+        })
+        .finally(() => {
+          running = false;
+        });
+    };
+
+    instrumentationState.__CCH_EDGE_WATCHDOG_INTERVAL_ID__ = setInterval(runTick, intervalMs);
+    instrumentationState.__CCH_EDGE_WATCHDOG_STARTED__ = true;
+    logger.info(
+      { intervalSeconds: intervalMs / 1000 },
+      "[Instrumentation] Edge watchdog scheduler started"
+    );
+  } catch (error) {
+    logger.warn(
+      { ...describeSchedulerError(error) },
+      "[Instrumentation] Edge watchdog scheduler init failed"
     );
   }
 }
@@ -839,6 +894,7 @@ export async function register() {
 
       await startCacheEffectivenessScheduler();
       await startReplayCleanupScheduler();
+      await startEdgeWatchdogScheduler();
 
       // F1/F3a：预热代理运行时设置快照（stream gate / affinity 的同步读取路径）
       await warmupProxyRuntimeSettings();
@@ -1032,6 +1088,7 @@ export async function register() {
 
         await startCacheEffectivenessScheduler();
         await startReplayCleanupScheduler();
+        await startEdgeWatchdogScheduler();
 
         // F1/F3a：预热代理运行时设置快照（stream gate / affinity 的同步读取路径）
         await warmupProxyRuntimeSettings();

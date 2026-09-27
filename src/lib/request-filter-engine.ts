@@ -590,6 +590,48 @@ export class RequestFilterEngine {
     }
   }
 
+  /**
+   * edge 执行器预检：指定阶段内与当前会话匹配的过滤器是否会改写请求体。
+   *
+   * edge 控制面只持有合成请求体（顶层字段），正文改写无法在控制面完成，
+   * 命中时调用方必须把请求整体交回本地代理处理；仅改写请求头的过滤器可照常执行。
+   */
+  async hasBodyFiltersForEdge(
+    session: ProxySession,
+    phase: "global" | "provider" | "final"
+  ): Promise<boolean> {
+    await this.ensureInitialized();
+
+    let candidates: CachedRequestFilter[];
+    if (phase === "global") {
+      candidates = this.globalGuardFilters;
+    } else if (phase === "final") {
+      candidates = this.collectFinalFilters(session);
+    } else {
+      if (!session.provider) return false;
+      const providerId = session.provider.id;
+      const providerTagsSet = this.hasGroupBasedFilters
+        ? new Set(resolveProviderGroupsWithDefault(session.provider.groupTag))
+        : null;
+      candidates = this.providerGuardFilters.filter((filter) => {
+        if (filter.bindingType === "providers") {
+          return filter.providerIdsSet?.has(providerId) ?? false;
+        }
+        if (filter.bindingType === "groups" && providerTagsSet && filter.groupTagsSet) {
+          return Array.from(providerTagsSet).some((tag) => filter.groupTagsSet!.has(tag));
+        }
+        return false;
+      });
+    }
+
+    return candidates.some((filter) => {
+      if (filter.ruleMode === "advanced" && filter.operations) {
+        return filter.operations.some((operation) => operation.scope === "body");
+      }
+      return filter.scope === "body";
+    });
+  }
+
   /** Collect and sort final-phase filters matching the current provider */
   private collectFinalFilters(session: ProxySession): CachedRequestFilter[] {
     const result: CachedRequestFilter[] = [...this.globalFinalFilters];

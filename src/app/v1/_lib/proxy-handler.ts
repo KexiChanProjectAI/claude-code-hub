@@ -22,6 +22,40 @@ import { normalizeResponseInput } from "./proxy/response-input-rectifier";
 import { ProxyResponses } from "./proxy/responses";
 import { ProxySession } from "./proxy/session";
 
+/**
+ * 守卫链通过后记录可观测会话身份（活跃会话 ZSET + 会话信息），返回用于并发计数的身份。
+ * 本地代理与 edge 控制面（decide）共用。
+ */
+export async function trackObservedSessionForRequest(
+  resolvedSession: ProxySession
+): Promise<string | null> {
+  if (!resolvedSession.shouldTrackSessionObservability()) return null;
+  const identity = resolvedSession.getSessionIdentityMetadata();
+  if (!identity.identity) return null;
+
+  void SessionTracker.trackObservedSession(identity.identity).catch((error) => {
+    logger.warn("[ProxyHandler] Failed to track observed session", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+  const authState = resolvedSession.authState;
+  if (authState?.user && authState.key) {
+    void SessionManager.storeSessionInfo(identity.identity, {
+      userName: authState.user.name,
+      userId: authState.user.id,
+      keyId: authState.key.id,
+      keyName: authState.key.name,
+      model: resolvedSession.request.model,
+      apiType: resolvedSession.originalFormat === "openai" ? "codex" : "chat",
+    }).catch((error) => {
+      logger.warn("[ProxyHandler] Failed to store observed session info", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  }
+  return identity.identity;
+}
+
 export async function handleProxyRequest(c: Context): Promise<Response> {
   return withRequestMemoryLifetime(() => handleOwnedProxyRequest(c), c.req?.raw?.signal);
 }
@@ -33,33 +67,6 @@ async function handleOwnedProxyRequest(c: Context): Promise<Response> {
   let acquiredConcurrencySessionId: string | null = null;
   let acquiredObservedSessionIdentity: string | null = null;
 
-  const trackObservedSession = async (resolvedSession: ProxySession): Promise<string | null> => {
-    if (!resolvedSession.shouldTrackSessionObservability()) return null;
-    const identity = resolvedSession.getSessionIdentityMetadata();
-    if (!identity.identity) return null;
-
-    void SessionTracker.trackObservedSession(identity.identity).catch((error) => {
-      logger.warn("[ProxyHandler] Failed to track observed session", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-    });
-    const authState = resolvedSession.authState;
-    if (authState?.user && authState.key) {
-      void SessionManager.storeSessionInfo(identity.identity, {
-        userName: authState.user.name,
-        userId: authState.user.id,
-        keyId: authState.key.id,
-        keyName: authState.key.name,
-        model: resolvedSession.request.model,
-        apiType: resolvedSession.originalFormat === "openai" ? "codex" : "chat",
-      }).catch((error) => {
-        logger.warn("[ProxyHandler] Failed to store observed session info", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      });
-    }
-    return identity.identity;
-  };
   try {
     session = await ProxySession.fromContext(c);
     try {
@@ -131,12 +138,12 @@ async function handleOwnedProxyRequest(c: Context): Promise<Response> {
       const isReplayServe = early.headers.has("x-cch-replay");
       const isHandledWarmup = early.status === 200 && session.isWarmupRequest();
       if (!isReplayServe && !isHandledWarmup) {
-        await trackObservedSession(session);
+        await trackObservedSessionForRequest(session);
       }
       return await attachSessionIdToErrorResponse(session.sessionId, early);
     }
 
-    const observedSessionIdentity = await trackObservedSession(session);
+    const observedSessionIdentity = await trackObservedSessionForRequest(session);
 
     // 9. 增加并发计数（在所有检查通过后，请求开始前）- 跳过 count_tokens
     if (session.sessionId && session.getEndpointPolicy().trackConcurrentRequests) {

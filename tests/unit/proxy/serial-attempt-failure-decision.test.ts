@@ -424,6 +424,7 @@ describe("ProxyForwarder.handleSerialAttemptFailure", () => {
       advanceEndpoint: false,
       maxAttemptsPerProvider: 2,
       rectifierType: "thinking_signature_rectifier",
+      rectifierTrigger: "invalid_signature_in_thinking_block",
     });
     expect(applyReactiveRectifier.mock.calls[0][0]).toMatchObject({
       attemptNumber: 1,

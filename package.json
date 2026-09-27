@@ -32,6 +32,7 @@
     "test:coverage:include-session-id-in-errors": "vitest run --config tests/configs/include-session-id-in-errors.config.mts --coverage --configLoader bundle",
     "test:coverage:usage-logs-sessionid-search": "vitest run --config tests/configs/usage-logs-sessionid-search.config.mts --coverage --configLoader bundle",
     "test:coverage:session-binding": "vitest run --config tests/configs/session-binding.config.mts --coverage --configLoader bundle",
+    "test:coverage:edge-control-plane": "vitest run --config tests/configs/edge-control-plane.config.mts --coverage --configLoader bundle",
     "test:ci": "vitest run --configLoader bundle --reporter=default --reporter=junit --outputFile.junit=reports/vitest-junit.xml",
     "test:v1": "vitest run --config tests/configs/v1.config.mts --coverage --reporter=verbose --configLoader bundle && bun scripts/check-v1-critical-coverage.ts",
     "openapi:generate": "bun scripts/generate-v1-types.ts",

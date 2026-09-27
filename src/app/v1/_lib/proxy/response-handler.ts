@@ -6776,6 +6776,515 @@ async function updateRequestCostFromUsage(
  * affects the winner's response. Returns the billed cost string, or null if nothing
  * was billed (no usage / non-billable / zero cost).
  */
+const INACTIVE_DISCOVERY_LEASE_LIFECYCLE: DiscoveryLeaseLifecycle = {
+  active: false,
+  ensureOwned: async () => true,
+  release: async () => undefined,
+};
+
+/**
+ * edge 执行器上报流式完成后的终态结算。
+ *
+ * 与 handleStream 内 finalizeStream 的结算顺序一致（假 200 / 协议错误判定 -> usage -> 计费 ->
+ * 限流计数 -> 会话用量 -> 实际模型 -> 终态落库 -> 提交后副作用 -> 指标），省略仅在本地
+ * 进程内存在的环节：调试正文快照、Replay spool、Codex prompt cache 绑定（edge 只执行 claude）。
+ * 调用前必须通过 setDeferredStreamingFinalization 放入本次 attempt 的延迟结算元信息。
+ *
+ * @param allContent 紧凑 SSE（message_start / message_delta / message_stop / error / signature_delta）
+ */
+export async function settleEdgeStreamCompletion(
+  session: ProxySession,
+  input: {
+    allContent: string;
+    upstreamStatusCode: number;
+    streamEndedNormally: boolean;
+    clientAborted: boolean;
+    abortReason?: string;
+    protocolObservation: StreamProtocolObservation | null;
+    firstByteSeen: boolean;
+    responseHeaders: Headers;
+    sseEventCount: number;
+  }
+): Promise<{ effectiveStatusCode: number; isSuccessfulCompletion: boolean }> {
+  const messageContext = session.messageContext;
+  const provider = session.provider;
+  if (!messageContext || !provider) {
+    throw new Error("edge stream settlement requires message context and provider");
+  }
+  const taskId = `edge-stream-${messageContext.id}`;
+  const { allContent } = input;
+
+  const finalized = finalizeDeferredStreamingFinalizationIfNeeded(
+    session,
+    allContent,
+    input.upstreamStatusCode,
+    input.streamEndedNormally,
+    input.clientAborted,
+    INACTIVE_DISCOVERY_LEASE_LIFECYCLE,
+    input.protocolObservation,
+    input.abortReason,
+    input.firstByteSeen
+  );
+  const effectiveStatusCode = finalized.effectiveStatusCode;
+  const streamErrorMessage = finalized.errorMessage;
+  const providerIdForPersistence = finalized.providerIdForPersistence;
+
+  const duration = Date.now() - session.startTime;
+  ProxyStatusTracker.getInstance().endRequest(messageContext.user.id, messageContext.id);
+
+  const usageResult =
+    finalized.clientAbortGateUsage?.providerType === provider.providerType
+      ? { usageMetrics: finalized.clientAbortGateUsage.usageMetrics }
+      : parseUsageFromResponseText(allContent, provider.providerType);
+  let usageForCost = usageResult.usageMetrics;
+
+  const actualServiceTier = parseServiceTierFromResponseText(allContent);
+  const codexPriorityBillingDecision = await resolveCodexPriorityBillingDecision(
+    session,
+    actualServiceTier
+  );
+  if (!isNonBillingUsageEndpoint(session)) {
+    ensureCodexServiceTierResultSpecialSetting(session, codexPriorityBillingDecision);
+  }
+  const priorityServiceTierApplied = codexPriorityBillingDecision?.effectivePriority ?? false;
+
+  if (usageForCost) {
+    usageForCost = normalizeUsageWithSwap(usageForCost, session, provider.swapCacheTtlBilling);
+  }
+
+  const billableUsageForCost = await resolveBillableUsageMetricsForCost(
+    session,
+    provider,
+    usageForCost,
+    effectiveStatusCode,
+    allContent
+  );
+
+  const billing = sessionBillingInputs(session, provider, priorityServiceTierApplied);
+  const costUpdateResult = await updateRequestCostFromUsage(
+    messageContext.id,
+    session,
+    billableUsageForCost,
+    billing,
+    finalized.billHedgeLosers
+  );
+  if (costUpdateResult.longContextPricingApplied) {
+    ensureLongContextPricingAudit(session, costUpdateResult.longContextPricing);
+  }
+
+  await trackCostToRedis(session, billableUsageForCost, billing, {
+    resolvedPricing: costUpdateResult.resolvedPricing,
+    longContextPricing: costUpdateResult.longContextPricing,
+  });
+
+  const { costUsdStr, rawCostUsdStr, costBreakdown } = await computeSessionAndRawCost(
+    session,
+    provider,
+    billableUsageForCost,
+    priorityServiceTierApplied,
+    "stream"
+  );
+
+  if (session.sessionId) {
+    const payload: SessionUsageUpdate = {
+      status: finalized.isSuccessfulCompletion ? "completed" : "error",
+      statusCode: effectiveStatusCode,
+      ...(streamErrorMessage ? { errorMessage: streamErrorMessage } : {}),
+    };
+    if (usageForCost) {
+      payload.inputTokens = usageForCost.input_tokens;
+      payload.outputTokens = usageForCost.output_tokens;
+      payload.cacheCreationInputTokens = usageForCost.cache_creation_input_tokens;
+      payload.cacheReadInputTokens = usageForCost.cache_read_input_tokens;
+    }
+    if (costUsdStr !== undefined) {
+      payload.costUsd = costUsdStr;
+    }
+    if (session.shouldTrackSessionObservability()) {
+      void SessionManager.updateSessionUsage(session.sessionId, payload).catch((error: unknown) => {
+        logger.error("[ResponseHandler] Failed to update session usage:", error);
+      });
+    }
+  }
+
+  const currentRequestedModel = session.getCurrentModel();
+  const thinkingActuallyEnabled = isThinkingEnabled(session.request.message);
+  const anthropicModelDetection = resolveAnthropicStreamActualResponseModel({
+    providerType: provider.providerType,
+    requestedModel: currentRequestedModel,
+    thinkingEnabled: thinkingActuallyEnabled,
+    responseStreamText: allContent,
+  });
+  if (anthropicModelDetection.source) {
+    session.addSpecialSetting({
+      type: "thinking_signature_model_detection",
+      scope: "response",
+      hit: anthropicModelDetection.source === "fallback_no_signature_with_thinking",
+      source: anthropicModelDetection.source,
+      extractedModel: anthropicModelDetection.actualResponseModel,
+      signatureFound: anthropicModelDetection.source === "signature",
+      thinkingEnabled: thinkingActuallyEnabled,
+      requestedModel: currentRequestedModel,
+    });
+  }
+  const finalActualResponseModel = anthropicModelDetection.source
+    ? anthropicModelDetection.actualResponseModel
+    : extractActualResponseModelForProvider(provider.providerType, true, allContent);
+
+  const postTerminalSideEffects: Array<() => Promise<void>> = finalized.commitSideEffects
+    ? [finalized.commitSideEffects]
+    : [];
+  if (finalized.isSuccessfulCompletion && session.affinity && providerIdForPersistence) {
+    const winnerProviderId = providerIdForPersistence;
+    postTerminalSideEffects.push(async () => {
+      await recordAffinityWinner(session, winnerProviderId);
+    });
+  } else if (
+    !finalized.isIncompleteCompletion &&
+    session.affinity &&
+    providerIdForPersistence &&
+    finalized.errorMessage
+  ) {
+    void tombstoneAffinityOnFailure(session, providerIdForPersistence);
+  }
+
+  const cacheScoreFields = isCacheEffectivenessEnabled()
+    ? computeCacheScoreFields({
+        affinity: session.affinity,
+        succeeded: finalized.isSuccessfulCompletion,
+        usageObservable: usageForCost?.input_tokens != null,
+        streamTruncated: !input.streamEndedNormally,
+        cacheTtl: usageForCost?.cache_ttl ?? null,
+      })
+    : undefined;
+
+  let sideEffectsScheduled = false;
+  const scheduleCommittedSideEffects = () => {
+    if (
+      sideEffectsScheduled ||
+      (postTerminalSideEffects.length === 0 && !finalized.finalizeAttemptResources)
+    ) {
+      return;
+    }
+    sideEffectsScheduled = true;
+    const finalizeAttemptResources = finalized.finalizeAttemptResources;
+    return schedulePostTerminalSideEffects({
+      taskId,
+      providerId: provider.id,
+      sessionId: session.sessionId,
+      commit: async (signal) => {
+        try {
+          await runPostTerminalSideEffects(postTerminalSideEffects, signal);
+        } finally {
+          await finalizeAttemptResources?.();
+        }
+      },
+    });
+  };
+
+  await updateMessageRequestDetailsDurably(
+    messageContext.id,
+    {
+      statusCode: effectiveStatusCode,
+      durationMs: duration,
+      inputTokens: usageForCost?.input_tokens,
+      outputTokens: usageForCost?.output_tokens,
+      ttftMs: session.ttftMs,
+      firstByteMs: session.firstByteMs,
+      cacheCreationInputTokens: usageForCost?.cache_creation_input_tokens,
+      cacheReadInputTokens: usageForCost?.cache_read_input_tokens,
+      cacheCreation5mInputTokens: usageForCost?.cache_creation_5m_input_tokens,
+      cacheCreation1hInputTokens: usageForCost?.cache_creation_1h_input_tokens,
+      cacheTtlApplied: usageForCost?.cache_ttl ?? null,
+      providerChain: session.getProviderChain(),
+      routingTrace: session.finalizeRoutingTrace(
+        effectiveStatusCode,
+        finalized.isIncompleteCompletion ? "failed" : undefined
+      ),
+      ...(streamErrorMessage ? { errorMessage: streamErrorMessage } : {}),
+      model: currentRequestedModel ?? undefined,
+      actualResponseModel: finalActualResponseModel,
+      providerId: providerIdForPersistence ?? session.provider?.id,
+      context1mApplied: session.getContext1mApplied(),
+      swapCacheTtlApplied: provider.swapCacheTtlBilling ?? false,
+      specialSettings: session.getSpecialSettings() ?? undefined,
+      ...(cacheScoreFields ?? {}),
+    },
+    { onCommitted: scheduleCommittedSideEffects }
+  );
+
+  emitProxyMetrics(session, {
+    statusCode: effectiveStatusCode,
+    durationMs: duration,
+    usageMetrics: usageForCost,
+    costUsd: rawCostUsdStr,
+  });
+  emitProxyLangfuseTrace(session, {
+    responseHeaders: input.responseHeaders,
+    responseText: allContent,
+    usageMetrics: usageForCost,
+    costUsd: rawCostUsdStr,
+    costBreakdown,
+    statusCode: effectiveStatusCode,
+    durationMs: duration,
+    isStreaming: true,
+    sseEventCount: input.sseEventCount,
+    errorMessage: streamErrorMessage ?? undefined,
+  });
+
+  return { effectiveStatusCode, isSuccessfulCompletion: finalized.isSuccessfulCompletion };
+}
+
+/**
+ * edge 执行器上报非流式完成后的终态结算（与 handleNonStream 主路径一致）。
+ * 非流式 2xx 的成功记账（熔断成功、会话绑定、决策链）由调用方先经
+ * ProxyForwarder.commitNonStreamSuccess 完成，与本地"转发器先记账、响应处理器后计费"一致。
+ */
+export async function settleEdgeNonStreamCompletion(
+  session: ProxySession,
+  input: { responseText: string; statusCode: number; responseHeaders: Headers }
+): Promise<void> {
+  const messageContext = session.messageContext;
+  const provider = session.provider;
+  if (!messageContext || !provider) {
+    throw new Error("edge non-stream settlement requires message context and provider");
+  }
+  const taskId = `edge-non-stream-${messageContext.id}`;
+  const { responseText, statusCode } = input;
+  const postTerminalSideEffects: Array<() => Promise<void>> = [];
+
+  let usageMetrics = parseUsageFromResponseText(responseText, provider.providerType).usageMetrics;
+  const actualServiceTier = parseServiceTierFromResponseText(responseText);
+  const codexPriorityBillingDecision = await resolveCodexPriorityBillingDecision(
+    session,
+    actualServiceTier
+  );
+  if (!isNonBillingUsageEndpoint(session)) {
+    ensureCodexServiceTierResultSpecialSetting(session, codexPriorityBillingDecision);
+  }
+  const priorityServiceTierApplied = codexPriorityBillingDecision?.effectivePriority ?? false;
+  if (usageMetrics) {
+    usageMetrics = normalizeUsageWithSwap(usageMetrics, session, provider.swapCacheTtlBilling);
+  }
+  const billableUsageMetrics = await resolveBillableUsageMetricsForCost(
+    session,
+    provider,
+    usageMetrics,
+    statusCode,
+    responseText
+  );
+
+  if (billableUsageMetrics) {
+    const billing = sessionBillingInputs(session, provider, priorityServiceTierApplied);
+    const costUpdateResult = await updateRequestCostFromUsage(
+      messageContext.id,
+      session,
+      billableUsageMetrics,
+      billing
+    );
+    if (costUpdateResult.longContextPricingApplied) {
+      ensureLongContextPricingAudit(session, costUpdateResult.longContextPricing);
+    }
+    await trackCostToRedis(session, billableUsageMetrics, billing, {
+      resolvedPricing: costUpdateResult.resolvedPricing,
+      longContextPricing: costUpdateResult.longContextPricing,
+    });
+  }
+
+  const { costUsdStr, rawCostUsdStr, costBreakdown } = await computeSessionAndRawCost(
+    session,
+    provider,
+    billableUsageMetrics,
+    priorityServiceTierApplied,
+    "non-stream"
+  );
+
+  if (
+    session.sessionId &&
+    (usageMetrics || costUsdStr !== undefined) &&
+    session.shouldTrackSessionObservability()
+  ) {
+    void SessionManager.updateSessionUsage(session.sessionId, {
+      inputTokens: usageMetrics?.input_tokens,
+      outputTokens: usageMetrics?.output_tokens,
+      cacheCreationInputTokens: usageMetrics?.cache_creation_input_tokens,
+      cacheReadInputTokens: usageMetrics?.cache_read_input_tokens,
+      costUsd: costUsdStr,
+      status: statusCode >= 200 && statusCode < 300 ? "completed" : "error",
+      statusCode,
+    }).catch((error: unknown) => {
+      logger.error("[ResponseHandler] Failed to update session usage:", error);
+    });
+  }
+
+  let terminalErrorMessage: string | undefined;
+  if (statusCode >= 400) {
+    const detected = detectUpstreamErrorFromSseOrJsonText(responseText);
+    const errorMessageForDb = detected.isError ? detected.code : `HTTP ${statusCode}`;
+    terminalErrorMessage = errorMessageForDb;
+    const isResourceNotFound = statusCode === 404;
+    if (!isResourceNotFound && session.getEndpointPolicy().allowCircuitBreakerAccounting) {
+      postTerminalSideEffects.push(async () => {
+        try {
+          const { recordFailure } = await import("@/lib/circuit-breaker");
+          await recordFailure(provider.id, new Error(errorMessageForDb));
+        } catch (cbError) {
+          logger.warn("ResponseHandler: Failed to record non-200 error in circuit breaker", {
+            providerId: provider.id,
+            error: cbError,
+          });
+        }
+      });
+    }
+    session.addProviderToChain(provider, {
+      reason: isResourceNotFound ? "resource_not_found" : "retry_failed",
+      attemptNumber: 1,
+      statusCode,
+      errorMessage: errorMessageForDb,
+    });
+  }
+
+  let sideEffectsScheduled = false;
+  const scheduleCommittedSideEffects = () => {
+    if (postTerminalSideEffects.length === 0 || sideEffectsScheduled) return;
+    sideEffectsScheduled = true;
+    return schedulePostTerminalSideEffects({
+      taskId,
+      providerId: provider.id,
+      sessionId: session.sessionId,
+      commit: (signal) => runPostTerminalSideEffects(postTerminalSideEffects, signal),
+    });
+  };
+
+  const duration = Date.now() - session.startTime;
+  try {
+    await persistNonStreamTerminalDetails({
+      taskId,
+      messageRequestId: messageContext.id,
+      durationMs: duration,
+      details: {
+        statusCode,
+        inputTokens: usageMetrics?.input_tokens,
+        outputTokens: usageMetrics?.output_tokens,
+        ttftMs: session.ttftMs ?? duration,
+        firstByteMs: session.firstByteMs ?? duration,
+        cacheCreationInputTokens: usageMetrics?.cache_creation_input_tokens,
+        cacheReadInputTokens: usageMetrics?.cache_read_input_tokens,
+        cacheCreation5mInputTokens: usageMetrics?.cache_creation_5m_input_tokens,
+        cacheCreation1hInputTokens: usageMetrics?.cache_creation_1h_input_tokens,
+        cacheTtlApplied: usageMetrics?.cache_ttl ?? null,
+        providerChain: session.getProviderChain(),
+        routingTrace: session.finalizeRoutingTrace(statusCode),
+        ...(terminalErrorMessage ? { errorMessage: terminalErrorMessage } : {}),
+        model: session.getCurrentModel() ?? undefined,
+        actualResponseModel: extractActualResponseModelForProvider(
+          provider.providerType,
+          false,
+          responseText
+        ),
+        providerId: session.provider?.id,
+        context1mApplied: session.getContext1mApplied(),
+        swapCacheTtlApplied: session.provider?.swapCacheTtlBilling ?? false,
+        specialSettings: session.getSpecialSettings() ?? undefined,
+      },
+      onCommitted: scheduleCommittedSideEffects,
+    });
+  } finally {
+    ProxyStatusTracker.getInstance().endRequest(messageContext.user.id, messageContext.id);
+  }
+
+  emitProxyMetrics(session, {
+    statusCode,
+    durationMs: Date.now() - session.startTime,
+    usageMetrics,
+    costUsd: rawCostUsdStr,
+  });
+  emitProxyLangfuseTrace(session, {
+    responseHeaders: input.responseHeaders,
+    responseText,
+    usageMetrics,
+    costUsd: rawCostUsdStr,
+    costBreakdown,
+    statusCode,
+    durationMs: Date.now() - session.startTime,
+    isStreaming: false,
+  });
+}
+
+/**
+ * 会话追踪用（含倍率）与 Langfuse 用（原始）费用及拆分；与流式 / 非流式本地路径的计算一致。
+ */
+async function computeSessionAndRawCost(
+  session: ProxySession,
+  provider: Provider,
+  billableUsage: UsageMetrics | null,
+  priorityServiceTierApplied: boolean,
+  label: "stream" | "non-stream"
+): Promise<{
+  costUsdStr: string | undefined;
+  rawCostUsdStr: string | undefined;
+  costBreakdown: CostBreakdown | undefined;
+}> {
+  let costUsdStr: string | undefined;
+  let rawCostUsdStr: string | undefined;
+  let costBreakdown: CostBreakdown | undefined;
+  if (!billableUsage || !session.request.model) {
+    return { costUsdStr, rawCostUsdStr, costBreakdown };
+  }
+  try {
+    const resolvedPricing = await session.getResolvedPricingByBillingSource(provider);
+    if (!resolvedPricing) return { costUsdStr, rawCostUsdStr, costBreakdown };
+    ensurePricingResolutionSpecialSetting(session, resolvedPricing);
+    const longContextPricing =
+      matchLongContextPricing(billableUsage, resolvedPricing.priceData)?.pricing ?? null;
+    const cost = calculateRequestCost(
+      billableUsage,
+      resolvedPricing.priceData,
+      buildCostCalculationOptions(
+        provider.costMultiplier,
+        session.getContext1mApplied(),
+        priorityServiceTierApplied,
+        longContextPricing,
+        session.getGroupCostMultiplier()
+      )
+    );
+    if (cost.gt(0)) {
+      costUsdStr = cost.toString();
+    }
+    if (provider.costMultiplier !== 1 || session.getGroupCostMultiplier() !== 1) {
+      const rawCost = calculateRequestCost(
+        billableUsage,
+        resolvedPricing.priceData,
+        buildCostCalculationOptions(
+          1.0,
+          session.getContext1mApplied(),
+          priorityServiceTierApplied,
+          longContextPricing
+        )
+      );
+      if (rawCost.gt(0)) {
+        rawCostUsdStr = rawCost.toString();
+      }
+    } else {
+      rawCostUsdStr = costUsdStr;
+    }
+    try {
+      costBreakdown = calculateRequestCostBreakdown(billableUsage, resolvedPricing.priceData, {
+        context1mApplied: session.getContext1mApplied(),
+        priorityServiceTierApplied,
+        longContextPricing,
+      });
+    } catch {
+      /* non-critical */
+    }
+  } catch (error) {
+    logger.error(`[ResponseHandler] Failed to calculate session cost (${label}), skipping`, {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+  return { costUsdStr, rawCostUsdStr, costBreakdown };
+}
+
 export async function finalizeHedgeLoserBilling(params: {
   messageRequestId: number;
   /** Original request timestamp for Redis rolling-window alignment. */

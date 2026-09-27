@@ -163,6 +163,61 @@ interface RequestBodyResult {
   decodedContentEncoding?: string;
 }
 
+/**
+ * edge 会话跨 worker 往返的快照（见 ProxySession.toEdgeSnapshot）。
+ * 字段值中的 Date 由 edge 状态存储负责编解码。
+ */
+export interface EdgeSessionSnapshot {
+  v: 1;
+  startTime: number;
+  method: string;
+  requestUrl: string;
+  headers: Array<[string, string]>;
+  originalHeaders: Array<[string, string]>;
+  request: { message: Record<string, unknown>; model: string | null; note?: string };
+  rawIntakeModel: string | null;
+  rawResponsesReasoningEffort: string | null;
+  rawMessagesReasoningEffort: string | null;
+  userName: string;
+  authState: AuthState | null;
+  provider: Provider | null;
+  messageContext: MessageContext | null;
+  ttftMs: number | null;
+  firstByteMs: number | null;
+  forwardStartTime: number | null;
+  sessionId: string | null;
+  upstreamSessionSeed: string | null;
+  allowSingleTurnProviderReuse: boolean;
+  streamingHedgeDisabled: boolean;
+  sessionBindingAllowed: boolean;
+  clientIp: string | null;
+  requestSequence: number;
+  originalFormat: ClientFormat;
+  providerType: ProviderType | null;
+  affinity: SessionAffinityState | null;
+  sessionIdentityMetadata: SessionIdentityMetadata | null;
+  edgeDigestHints: EdgeDigestHints | null;
+  originalModelName: string | null;
+  originalUrlPathname: string | null;
+  currentModelRedirect: {
+    providerId: number;
+    redirect: NonNullable<ProviderChainItem["modelRedirect"]>;
+  } | null;
+  providerChain: ProviderChainItem[];
+  routingTrace: RoutingTraceV1 | null;
+  routingTraceSummaryDraft: RoutingTraceSummaryV1 | null;
+  lastSelectionContext: ProviderChainItem["decisionContext"] | null;
+  cacheTtlResolved: CacheTtlResolved | null;
+  context1mApplied: boolean;
+  groupCostMultiplier: number;
+  specialSettings: SpecialSetting[];
+  highConcurrencyModeEnabled: boolean;
+  rawCrossProviderFallbackEnabled: boolean | null;
+  providersSnapshot: Provider[] | null;
+  providerSessionRefs: Array<[number, Array<{ retainOnSuccess: boolean }>]>;
+  sessionBindingSnapshot: SessionBindingSnapshot | null;
+}
+
 export class ProxySession {
   readonly startTime: number;
   readonly method: string;
@@ -544,6 +599,137 @@ export class ProxySession {
   }
 
   /**
+   * 导出 edge 会话的可持久化快照。
+   *
+   * edge 请求的 decide / next / complete 可能落在不同的集群 worker 上，会话状态需要经 Redis
+   * 往返；这里显式列出跨调用仍需保留的字段，运行期句柄（Hono 上下文、中断信号、实时观测
+   * 缓冲、计费价格缓存）不在其中，恢复后按需重新加载。
+   */
+  toEdgeSnapshot(): EdgeSessionSnapshot {
+    return {
+      v: 1,
+      startTime: this.startTime,
+      method: this.method,
+      requestUrl: this.requestUrl.toString(),
+      headers: Array.from(this.headers.entries()),
+      originalHeaders: Array.from(this.originalHeaders.entries()),
+      request: {
+        message: this.request.message,
+        model: this.request.model,
+        note: this.request.note,
+      },
+      rawIntakeModel: this.rawIntakeModel,
+      rawResponsesReasoningEffort: this.rawResponsesReasoningEffort,
+      rawMessagesReasoningEffort: this.rawMessagesReasoningEffort,
+      userName: this.userName,
+      authState: this.authState
+        ? {
+            user: this.authState.user,
+            key: this.authState.key,
+            apiKey: this.authState.apiKey,
+            success: this.authState.success,
+          }
+        : null,
+      provider: this.provider,
+      messageContext: this.messageContext,
+      ttftMs: this.ttftMs,
+      firstByteMs: this.firstByteMs,
+      forwardStartTime: this.forwardStartTime,
+      sessionId: this.sessionId,
+      upstreamSessionSeed: this.upstreamSessionSeed,
+      allowSingleTurnProviderReuse: this.allowSingleTurnProviderReuse,
+      streamingHedgeDisabled: this.streamingHedgeDisabled,
+      sessionBindingAllowed: this.sessionBindingAllowed,
+      clientIp: this.clientIp,
+      requestSequence: this.requestSequence,
+      originalFormat: this.originalFormat,
+      providerType: this.providerType,
+      affinity: this.affinity,
+      sessionIdentityMetadata: this.sessionIdentityMetadata,
+      edgeDigestHints: this.edgeDigestHints,
+      originalModelName: this.originalModelName,
+      originalUrlPathname: this.originalUrlPathname,
+      currentModelRedirect: this.currentModelRedirect,
+      providerChain: this.providerChain,
+      routingTrace: this.routingTrace,
+      routingTraceSummaryDraft: this.routingTraceSummaryDraft,
+      lastSelectionContext: this._lastSelectionContext ?? null,
+      cacheTtlResolved: this.cacheTtlResolved,
+      context1mApplied: this.context1mApplied,
+      groupCostMultiplier: this.groupCostMultiplier,
+      specialSettings: this.specialSettings,
+      highConcurrencyModeEnabled: this.highConcurrencyModeEnabled,
+      rawCrossProviderFallbackEnabled: this.rawCrossProviderFallbackEnabled,
+      providersSnapshot: this.providersSnapshot,
+      providerSessionRefs: Array.from(this.providerSessionRefs.entries()),
+      sessionBindingSnapshot: this.sessionBindingSnapshot,
+    };
+  }
+
+  static fromEdgeSnapshot(snapshot: EdgeSessionSnapshot): ProxySession {
+    const headers = new Headers(snapshot.headers);
+    const session = new ProxySession({
+      startTime: snapshot.startTime,
+      method: snapshot.method,
+      requestUrl: new URL(snapshot.requestUrl),
+      headers,
+      headerLog: formatHeadersForLog(headers),
+      request: {
+        message: snapshot.request.message,
+        log: "(edge digest)",
+        note: snapshot.request.note,
+        model: snapshot.request.model,
+      },
+      userAgent: headers.get("user-agent") || null,
+      context: null as unknown as Context,
+      clientAbortSignal: null,
+      rawIntakeModel: snapshot.rawIntakeModel,
+      rawResponsesReasoningEffort: snapshot.rawResponsesReasoningEffort,
+      rawMessagesReasoningEffort: snapshot.rawMessagesReasoningEffort,
+    });
+    const originalHeaders = session.originalHeaders;
+    for (const name of Array.from(originalHeaders.keys())) originalHeaders.delete(name);
+    for (const [name, value] of snapshot.originalHeaders) originalHeaders.append(name, value);
+
+    session.userName = snapshot.userName;
+    session.authState = snapshot.authState;
+    session.provider = snapshot.provider;
+    session.messageContext = snapshot.messageContext;
+    session.ttftMs = snapshot.ttftMs;
+    session.firstByteMs = snapshot.firstByteMs;
+    session.forwardStartTime = snapshot.forwardStartTime;
+    session.sessionId = snapshot.sessionId;
+    session.upstreamSessionSeed = snapshot.upstreamSessionSeed;
+    session.allowSingleTurnProviderReuse = snapshot.allowSingleTurnProviderReuse;
+    session.streamingHedgeDisabled = snapshot.streamingHedgeDisabled;
+    session.sessionBindingAllowed = snapshot.sessionBindingAllowed;
+    session.clientIp = snapshot.clientIp;
+    session.requestSequence = snapshot.requestSequence;
+    session.originalFormat = snapshot.originalFormat;
+    session.providerType = snapshot.providerType;
+    session.affinity = snapshot.affinity;
+    session.sessionIdentityMetadata = snapshot.sessionIdentityMetadata;
+    session.edgeDigestHints = snapshot.edgeDigestHints;
+    session.originalModelName = snapshot.originalModelName;
+    session.originalUrlPathname = snapshot.originalUrlPathname;
+    session.currentModelRedirect = snapshot.currentModelRedirect;
+    session.providerChain = snapshot.providerChain;
+    session.routingTrace = snapshot.routingTrace;
+    session.routingTraceSummaryDraft = snapshot.routingTraceSummaryDraft;
+    session._lastSelectionContext = snapshot.lastSelectionContext ?? undefined;
+    session.cacheTtlResolved = snapshot.cacheTtlResolved;
+    session.context1mApplied = snapshot.context1mApplied;
+    session.groupCostMultiplier = snapshot.groupCostMultiplier;
+    session.specialSettings = snapshot.specialSettings;
+    session.highConcurrencyModeEnabled = snapshot.highConcurrencyModeEnabled;
+    session.rawCrossProviderFallbackEnabled = snapshot.rawCrossProviderFallbackEnabled;
+    session.providersSnapshot = snapshot.providersSnapshot;
+    session.providerSessionRefs = new Map(snapshot.providerSessionRefs);
+    session.sessionBindingSnapshot = snapshot.sessionBindingSnapshot;
+    return session;
+  }
+
+  /**
    * 检查 header 是否被过滤器修改过。
    *
    * 通过对比原始值和当前值判断。以下情况均视为"已修改"：
@@ -787,12 +973,12 @@ export class ProxySession {
    * Doubles as the TTFB fallback: paths where no gate ran never call `recordFirstByte`,
    * and there TTFB and TTFT are the same moment.
    */
-  recordTtft(): number {
+  recordTtft(atEpochMs: number = Date.now()): number {
     if (this.ttftMs !== null) {
       return this.ttftMs;
     }
 
-    const value = Math.max(0, Date.now() - this.startTime);
+    const value = Math.max(0, atEpochMs - this.startTime);
     this.ttftMs = value;
     if (this.firstByteMs === null) {
       this.firstByteMs = value;

@@ -16,7 +16,7 @@ type ResponseFixerApplied = {
   json: { applied: boolean; details?: string };
 };
 
-const DEFAULT_CONFIG: ResponseFixerConfig = {
+export const DEFAULT_RESPONSE_FIXER_CONFIG: ResponseFixerConfig = {
   fixTruncatedJson: true,
   fixSseFormat: true,
   fixEncoding: true,
@@ -264,7 +264,8 @@ export class ResponseFixer {
       return response;
     }
 
-    const config: ResponseFixerConfig = settings.responseFixerConfig ?? DEFAULT_CONFIG;
+    const config: ResponseFixerConfig =
+      settings.responseFixerConfig ?? DEFAULT_RESPONSE_FIXER_CONFIG;
 
     const contentType = response.headers.get("content-type") || "";
     const isSse = contentType.includes("text/event-stream");

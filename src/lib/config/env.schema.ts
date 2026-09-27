@@ -264,6 +264,19 @@ export const EnvSchema = z.object({
   // 超时后主动断开该输家连接，仅用已收到的内容尝试计费（通常计不出 -> 跳过）。
   HEDGE_LOSER_DRAIN_TIMEOUT_MS: z.coerce.number().int().min(1000).default(120_000),
 
+  // Edge 执行器（远端 Go 节点）控制面：共享密钥未配置时 /api/internal/edge/* 一律返回 503。
+  // 密钥只用于节点间认证，建议 32 位以上随机串，并只在可信内网（如 tailnet）上传输。
+  CCH_EDGE_SHARED_SECRET: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+    z.string().min(32, "CCH_EDGE_SHARED_SECRET 至少 32 个字符").optional()
+  ),
+  // edge 请求状态在 Redis 中的保留时长（秒），需覆盖最长的流式请求
+  CCH_EDGE_STATE_TTL_SECONDS: z.coerce.number().int().min(60).max(86_400).default(1800),
+  // 远端流式期间的心跳间隔（毫秒）；连续 3 个间隔未收到心跳或完成上报即按失败结算
+  CCH_EDGE_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().min(1000).max(300_000).default(15_000),
+  // watchdog 扫描间隔（毫秒），仅在后台任务所属 worker 上运行
+  CCH_EDGE_WATCHDOG_INTERVAL_MS: z.coerce.number().int().min(1000).max(60_000).default(5000),
+
   // 响应结束后后台消费者继续持有请求内存的最长宽限（毫秒）。超时后强制归还租约并记录
   // 卡住的所有者标签；实际宽限不会短于 HEDGE_LOSER_DRAIN_TIMEOUT_MS + 30 秒。
   REQUEST_MEMORY_BACKGROUND_GRACE_MS: z.coerce.number().int().min(1000).default(150_000),

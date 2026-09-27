@@ -66,6 +66,7 @@ import { updateMessageRequestDetails } from "@/repository/message";
 import type { CacheTtlPreference, CacheTtlResolved } from "@/types/cache";
 import type { ProviderChainItem } from "@/types/message";
 import type { Provider, ReasoningEffortOverrideRule } from "@/types/provider";
+import type { RoutingTraceConfigV1 } from "@/types/routing-trace";
 import type {
   ClaudeMetadataUserIdInjectionSpecialSetting,
   SpecialSetting,
@@ -197,9 +198,9 @@ const EMPTY_PREFIX_CHUNK = new Uint8Array(0);
 const LEGACY_STREAMING_HEDGE_DEFAULT_MAX_IN_FLIGHT = 2;
 const LEGACY_STREAMING_HEDGE_MIN_MAX_IN_FLIGHT = 1;
 const LEGACY_STREAMING_HEDGE_MAX_MAX_IN_FLIGHT = 4;
-const CLIENT_ABORT_HEALTH_FALLBACK_THRESHOLD_MS = 30_000;
+export const CLIENT_ABORT_HEALTH_FALLBACK_THRESHOLD_MS = 30_000;
 
-function clampLegacyHedgeMaxInFlight(value: unknown): number {
+export function clampLegacyHedgeMaxInFlight(value: unknown): number {
   const numeric = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(numeric)) return LEGACY_STREAMING_HEDGE_DEFAULT_MAX_IN_FLIGHT;
   return Math.min(
@@ -299,7 +300,7 @@ function applyProviderCustomHeaders(
 }
 
 const RETRY_LIMITS = PROVIDER_LIMITS.MAX_RETRY_ATTEMPTS;
-const MAX_PROVIDER_SWITCHES = 20; // 保险栓：最多切换 20 次供应商（防止无限循环）
+export const MAX_PROVIDER_SWITCHES = 20; // 保险栓：最多切换 20 次供应商（防止无限循环）
 const DISCOVERY_LEASE_HANDOFF_GRACE_SECONDS = 5;
 const DISCOVERY_TERMINAL_CLEANUP_MAX_MS = 1_000;
 const LOSER_BILLING_DRAIN_FIXED_OVERHEAD_BYTES = 3 * 1024 * 1024;
@@ -737,6 +738,7 @@ export type SerialAttemptFailureDecision =
       advanceEndpoint: boolean;
       maxAttemptsPerProvider: number;
       rectifierType?: ReactiveRectifierType;
+      rectifierTrigger?: string;
     }
   | { action: "switch_provider" };
 
@@ -775,7 +777,7 @@ function hasReasoningEffortOverrideRules(
   return Object.hasOwn(provider, "reasoningEffortOverrideRules");
 }
 
-function getReasoningEffortOverrideRules(
+export function getReasoningEffortOverrideRules(
   provider: Provider
 ): readonly ReasoningEffortOverrideRule[] | null {
   return hasReasoningEffortOverrideRules(provider) ? provider.reasoningEffortOverrideRules : null;
@@ -866,7 +868,7 @@ async function readResponseTextUpTo(
   return { text: chunks.join(""), truncated };
 }
 
-function resolveCacheTtlPreference(
+export function resolveCacheTtlPreference(
   keyPref: CacheTtlOption,
   providerPref: CacheTtlOption
 ): CacheTtlResolved | null {
@@ -1034,13 +1036,13 @@ export function buildStreamingIdleTimeoutError(provider: {
   );
 }
 
-function clampRetryAttempts(value: number): number {
+export function clampRetryAttempts(value: number): number {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return RETRY_LIMITS.MIN;
   return Math.min(Math.max(numeric, RETRY_LIMITS.MIN), RETRY_LIMITS.MAX);
 }
 
-function resolveMaxAttemptsForProvider(
+export function resolveMaxAttemptsForProvider(
   provider: ProxySession["provider"],
   envDefault: number
 ): number {
@@ -1051,7 +1053,7 @@ function resolveMaxAttemptsForProvider(
   return clampRetryAttempts(provider.maxRetryAttempts);
 }
 
-function buildEndpointAttemptKey(endpointId: number | null, endpointUrl: string): string {
+export function buildEndpointAttemptKey(endpointId: number | null, endpointUrl: string): string {
   return endpointId != null ? `id:${endpointId}` : `url:${endpointUrl}`;
 }
 
@@ -1115,7 +1117,7 @@ type ClaudeMetadataUserIdInjectionResult = {
   audit: ClaudeMetadataUserIdInjectionSpecialSetting;
 };
 
-async function persistSpecialSettings(session: ProxySession): Promise<void> {
+export async function persistSpecialSettings(session: ProxySession): Promise<void> {
   const specialSettings = session.getSpecialSettings();
   if (!specialSettings || specialSettings.length === 0) {
     return;
@@ -1551,6 +1553,11 @@ export type ReactiveRectifierParams = {
   attemptNumber: number;
   retryAttemptNumber: number;
   retryState: ReactiveRectifierRetryState;
+  /**
+   * 需要完整消息内容、由 edge 执行器远端执行的整流器类型。命中时只做触发检测与
+   * "同供应商仅一次"记账并返回 applied=true；审计在远端回报执行结果后补齐。
+   */
+  deferredRectifierTypes?: ReadonlySet<ReactiveRectifierType>;
 };
 
 async function tryApplyReactiveRectifier(
@@ -1609,6 +1616,17 @@ async function tryApplyReactiveRectifier(
     }
 
     const requestDetailsBeforeRectify = buildRequestDetails(requestSession);
+    if (params.deferredRectifierTypes?.has(descriptor.type)) {
+      descriptor.markRetried(params.retryState);
+      return {
+        matched: true,
+        applied: true,
+        rectifierType: descriptor.type,
+        trigger,
+        requestDetailsBeforeRectify,
+      };
+    }
+
     const mutableMessage = structuredClone(
       requestSession.request.message as Record<string, unknown>
     );
@@ -1650,6 +1668,39 @@ async function tryApplyReactiveRectifier(
   return { matched: false };
 }
 
+const EDGE_DEFERRED_RECTIFIER_TYPES: ReadonlySet<ReactiveRectifierType> = new Set([
+  "thinking_signature_rectifier",
+]);
+
+/**
+ * edge 执行器的反应式整流。控制面只持有合成请求体（顶层字段）：
+ * - 只改写顶层字段的整流器（effort 冲突、thinking budget）照常在合成体上执行，改动经 op diff 下发；
+ * - thinking signature 整流需要 messages 内容，延迟到远端执行（见 deferredRectifierTypes）。
+ */
+export function tryApplyEdgeReactiveRectifier(
+  params: ReactiveRectifierParams
+): Promise<ReactiveRectifierResult> {
+  return tryApplyReactiveRectifier({
+    ...params,
+    deferredRectifierTypes: EDGE_DEFERRED_RECTIFIER_TYPES,
+  });
+}
+
+/**
+ * 远端执行 thinking signature 整流后，按本地同形状补齐审计项。
+ */
+export function buildThinkingSignatureRectifierAudit(
+  rectified: ThinkingSignatureRectifierResult,
+  context: {
+    trigger: ThinkingSignatureRectifierTrigger;
+    provider: Provider;
+    attemptNumber: number;
+    retryAttemptNumber: number;
+  }
+): SpecialSetting {
+  return thinkingSignatureRectifierDescriptor.buildAuditSetting(rectified, context);
+}
+
 /**
  * 为 Claude 请求注入 metadata.user_id
  *
@@ -1674,7 +1725,7 @@ export function injectClaudeMetadataUserId(
   });
 }
 
-function applyClaudeMetadataUserIdInjectionWithAudit(
+export function applyClaudeMetadataUserIdInjectionWithAudit(
   message: Record<string, unknown>,
   session: ProxySession,
   enabled: boolean
@@ -1791,6 +1842,31 @@ function applyClaudeMetadataUserIdInjectionWithAudit(
   };
 }
 
+/** 路由追踪里记录的会话 TTL（秒）。 */
+export function resolveRoutingTraceSessionTtlSeconds(): number {
+  const configuredSessionTtlSeconds = getEnvConfig().SESSION_TTL;
+  return Number.isFinite(configuredSessionTtlSeconds)
+    ? Math.max(1, Math.floor(configuredSessionTtlSeconds))
+    : 300;
+}
+
+/** 路由追踪的配置快照（discovery / legacy hedge / 串行共用）。 */
+export function buildRoutingTraceConfig(
+  settings: SystemSettings,
+  sessionTtlSeconds: number
+): RoutingTraceConfigV1 {
+  return {
+    discoveryConcurrency: Math.max(2, Math.floor(settings.discoveryConcurrency ?? 2)),
+    maxDiscoveryRounds: Math.max(1, Math.floor(settings.maxDiscoveryRounds ?? 2)),
+    discoverySlaMs: Math.max(1, settings.discoverySlaMs ?? 10_000),
+    stickySlaMs: Math.max(1, settings.stickySlaMs ?? 20_000),
+    racingTotalTimeoutMs: Math.max(1, settings.racingTotalTimeoutMs ?? 60_000),
+    stickyTimeoutCooldownMs: Math.max(1, settings.stickyTimeoutCooldownMs ?? 300_000),
+    legacyHedgeMaxInFlight: clampLegacyHedgeMaxInFlight(settings.legacyHedgeMaxInFlight),
+    sessionTtlSeconds,
+  };
+}
+
 export class ProxyForwarder {
   static async send(session: ProxySession): Promise<Response> {
     try {
@@ -1808,10 +1884,7 @@ export class ProxyForwarder {
 
     const requestStartedAt = Date.now();
     const discoverySettings = await getCachedSystemSettings();
-    const configuredSessionTtlSeconds = getEnvConfig().SESSION_TTL;
-    const sessionTtlSeconds = Number.isFinite(configuredSessionTtlSeconds)
-      ? Math.max(1, Math.floor(configuredSessionTtlSeconds))
-      : 300;
+    const sessionTtlSeconds = resolveRoutingTraceSessionTtlSeconds();
     const discoveryPreparation = await ProxyForwarder.prepareStreamingDiscovery(
       session,
       discoverySettings,
@@ -1823,24 +1896,7 @@ export class ProxyForwarder {
         discoveryEnabled: true,
         eligible: true,
         startedAt: requestStartedAt,
-        config: {
-          discoveryConcurrency: Math.max(
-            2,
-            Math.floor(discoverySettings.discoveryConcurrency ?? 2)
-          ),
-          maxDiscoveryRounds: Math.max(1, Math.floor(discoverySettings.maxDiscoveryRounds ?? 2)),
-          discoverySlaMs: Math.max(1, discoverySettings.discoverySlaMs ?? 10_000),
-          stickySlaMs: Math.max(1, discoverySettings.stickySlaMs ?? 20_000),
-          racingTotalTimeoutMs: Math.max(1, discoverySettings.racingTotalTimeoutMs ?? 60_000),
-          stickyTimeoutCooldownMs: Math.max(
-            1,
-            discoverySettings.stickyTimeoutCooldownMs ?? 300_000
-          ),
-          legacyHedgeMaxInFlight: clampLegacyHedgeMaxInFlight(
-            discoverySettings.legacyHedgeMaxInFlight
-          ),
-          sessionTtlSeconds,
-        },
+        config: buildRoutingTraceConfig(discoverySettings, sessionTtlSeconds),
       });
       const discoveryPromise = ProxyForwarder.sendStreamingWithDiscovery(
         session,
@@ -1870,16 +1926,7 @@ export class ProxyForwarder {
       eligible: false,
       bypassReason: discoveryPreparation.reason,
       startedAt: requestStartedAt,
-      config: {
-        discoveryConcurrency: Math.max(2, Math.floor(discoverySettings.discoveryConcurrency ?? 2)),
-        maxDiscoveryRounds: Math.max(1, Math.floor(discoverySettings.maxDiscoveryRounds ?? 2)),
-        discoverySlaMs: Math.max(1, discoverySettings.discoverySlaMs ?? 10_000),
-        stickySlaMs: Math.max(1, discoverySettings.stickySlaMs ?? 20_000),
-        racingTotalTimeoutMs: Math.max(1, discoverySettings.racingTotalTimeoutMs ?? 60_000),
-        stickyTimeoutCooldownMs: Math.max(1, discoverySettings.stickyTimeoutCooldownMs ?? 300_000),
-        legacyHedgeMaxInFlight,
-        sessionTtlSeconds,
-      },
+      config: buildRoutingTraceConfig(discoverySettings, sessionTtlSeconds),
     });
 
     if (useStreamingHedge) {
@@ -2429,88 +2476,16 @@ export class ProxyForwarder {
           }
 
           // ========== 成功分支 ==========
-          if (activeEndpoint.endpointId != null) {
-            await recordEndpointSuccess(activeEndpoint.endpointId);
-          }
-
-          if (shouldAccountCircuitBreaker) {
-            recordSuccess(currentProvider.id);
-          }
-
-          // ⭐ 成功后绑定 session 到供应商（智能绑定策略）
-          if (session.sessionId && session.isSessionBindingAllowed()) {
-            // 使用智能绑定策略（故障转移优先 + 稳定性优化）
-            const result = await SessionManager.updateSessionBindingSmart(
-              session.sessionId,
-              currentProvider.id,
-              currentProvider.priority || 0,
-              totalProvidersAttempted === 1 && attemptCount === 1, // isFirstAttempt
-              totalProvidersAttempted > 1, // isFailoverSuccess: 切换过供应商
-              session.authState?.key?.id ?? null
-            );
-
-            if (result.updated) {
-              logger.info("ProxyForwarder: Session binding updated", {
-                sessionId: session.sessionId,
-                providerId: currentProvider.id,
-                providerName: currentProvider.name,
-                priority: currentProvider.priority,
-                groupTag: currentProvider.groupTag,
-                reason: result.reason,
-                details: result.details,
-                attemptNumber: attemptCount,
-                totalProvidersAttempted,
-              });
-            } else {
-              logger.debug("ProxyForwarder: Session binding not updated", {
-                sessionId: session.sessionId,
-                providerId: currentProvider.id,
-                providerName: currentProvider.name,
-                priority: currentProvider.priority,
-                reason: result.reason,
-                details: result.details,
-              });
-            }
-
-            // ⭐ 统一更新两个数据源（确保监控数据一致）
-            // session:provider (真实绑定) 已在 updateSessionBindingSmart 中更新
-            // session:info (监控信息) 在此更新
-            if (session.shouldTrackSessionObservability()) {
-              void SessionManager.updateSessionProvider(session.sessionId, {
-                providerId: currentProvider.id,
-                providerName: currentProvider.name,
-              }).catch((error) => {
-                logger.error("ProxyForwarder: Failed to update session provider info", { error });
-              });
-            }
-          }
-
-          // 记录到决策链
-          session.addProviderToChain(currentProvider, {
-            ...endpointAudit,
-            reason:
-              totalProvidersAttempted === 1 && attemptCount === 1
-                ? "request_success"
-                : "retry_success",
-            attemptNumber: attemptCount,
-            statusCode: response.status,
-            circuitState: getCircuitState(currentProvider.id),
-          });
-
-          // F3a 亲和写回（非流式成功；流式由 finalizeStream 的终态副作用负责）
-          void retainRequestMemoryUntil(
-            recordAffinityWinner(session, currentProvider.id),
-            "affinity-winner"
-          );
-
-          logger.info("ProxyForwarder: Request successful", {
-            providerId: currentProvider.id,
-            providerName: currentProvider.name,
+          await ProxyForwarder.commitNonStreamSuccess({
+            session,
+            provider: currentProvider,
+            activeEndpoint,
+            endpointAudit,
             attemptNumber: attemptCount,
             totalProvidersAttempted,
-            statusCode: response.status,
+            shouldAccountCircuitBreaker,
+            response,
           });
-
           return response; // ⭐ 成功：立即返回，结束所有循环
         } catch (error) {
           lastError = error as Error;
@@ -2790,6 +2765,108 @@ export class ProxyForwarder {
   }
 
   /**
+   * 非流式成功（响应体通过空响应/假 200 检测后）的状态记账：端点与供应商熔断成功、
+   * 会话智能绑定、决策链与亲和写回。本地串行路径与 edge 执行器完成上报共用。
+   */
+  static async commitNonStreamSuccess(params: {
+    session: ProxySession;
+    provider: Provider;
+    activeEndpoint: { endpointId: number | null; baseUrl: string };
+    endpointAudit: { endpointId: number | null; endpointUrl: string };
+    attemptNumber: number;
+    totalProvidersAttempted: number;
+    shouldAccountCircuitBreaker: boolean;
+    response: { status: number };
+  }): Promise<void> {
+    const {
+      session,
+      provider,
+      activeEndpoint,
+      endpointAudit,
+      attemptNumber,
+      totalProvidersAttempted,
+      shouldAccountCircuitBreaker,
+      response,
+    } = params;
+    if (activeEndpoint.endpointId != null) {
+      await recordEndpointSuccess(activeEndpoint.endpointId);
+    }
+
+    if (shouldAccountCircuitBreaker) {
+      recordSuccess(provider.id);
+    }
+
+    // ⭐ 成功后绑定 session 到供应商（智能绑定策略）
+    if (session.sessionId && session.isSessionBindingAllowed()) {
+      // 使用智能绑定策略（故障转移优先 + 稳定性优化）
+      const result = await SessionManager.updateSessionBindingSmart(
+        session.sessionId,
+        provider.id,
+        provider.priority || 0,
+        totalProvidersAttempted === 1 && attemptNumber === 1, // isFirstAttempt
+        totalProvidersAttempted > 1, // isFailoverSuccess: 切换过供应商
+        session.authState?.key?.id ?? null
+      );
+
+      if (result.updated) {
+        logger.info("ProxyForwarder: Session binding updated", {
+          sessionId: session.sessionId,
+          providerId: provider.id,
+          providerName: provider.name,
+          priority: provider.priority,
+          groupTag: provider.groupTag,
+          reason: result.reason,
+          details: result.details,
+          attemptNumber: attemptNumber,
+          totalProvidersAttempted,
+        });
+      } else {
+        logger.debug("ProxyForwarder: Session binding not updated", {
+          sessionId: session.sessionId,
+          providerId: provider.id,
+          providerName: provider.name,
+          priority: provider.priority,
+          reason: result.reason,
+          details: result.details,
+        });
+      }
+
+      // ⭐ 统一更新两个数据源（确保监控数据一致）
+      // session:provider (真实绑定) 已在 updateSessionBindingSmart 中更新
+      // session:info (监控信息) 在此更新
+      if (session.shouldTrackSessionObservability()) {
+        void SessionManager.updateSessionProvider(session.sessionId, {
+          providerId: provider.id,
+          providerName: provider.name,
+        }).catch((error) => {
+          logger.error("ProxyForwarder: Failed to update session provider info", { error });
+        });
+      }
+    }
+
+    // 记录到决策链
+    session.addProviderToChain(provider, {
+      ...endpointAudit,
+      reason:
+        totalProvidersAttempted === 1 && attemptNumber === 1 ? "request_success" : "retry_success",
+      attemptNumber: attemptNumber,
+      statusCode: response.status,
+      circuitState: getCircuitState(provider.id),
+    });
+
+    // F3a 亲和写回（非流式成功；流式由 finalizeStream 的终态副作用负责）
+    void retainRequestMemoryUntil(recordAffinityWinner(session, provider.id), "affinity-winner");
+
+    logger.info("ProxyForwarder: Request successful", {
+      providerId: provider.id,
+      providerName: provider.name,
+      attemptNumber: attemptNumber,
+      totalProvidersAttempted,
+      statusCode: response.status,
+    });
+  }
+
+  /**
    * 串行转发路径中单次 attempt 失败后的决策与副作用（熔断、决策链、亲和墓碑、端点失败统计、
    * 反应式整流）。本地串行循环与 edge 执行器（/api/internal/edge/next）共用同一张决策表。
    *
@@ -3040,6 +3117,7 @@ export class ProxyForwarder {
           advanceEndpoint: false,
           maxAttemptsPerProvider: Math.max(maxAttemptsPerProvider, attemptCount + 1),
           rectifierType: reactiveRectifierResult.rectifierType,
+          rectifierTrigger: reactiveRectifierResult.trigger,
         };
       }
     }
@@ -5028,7 +5106,7 @@ export class ProxyForwarder {
   /**
    * 选择替代供应商（排除所有已失败的供应商）
    */
-  private static async selectAlternative(
+  static async selectAlternative(
     session: ProxySession,
     excludeProviderIds: number[] // 改为数组，排除所有失败的供应商
   ): Promise<typeof session.provider | null> {
@@ -5192,7 +5270,7 @@ export class ProxyForwarder {
     }
   }
 
-  private static getEndpointPolicy(session: ProxySession) {
+  static getEndpointPolicy(session: ProxySession) {
     const policySession = session as unknown as {
       getEndpointPolicy?: (() => ReturnType<typeof resolveEndpointPolicy>) | undefined;
       endpointPolicy?: ReturnType<typeof resolveEndpointPolicy>;
@@ -8917,7 +8995,7 @@ export class ProxyForwarder {
     }
   }
 
-  private static async resolveStreamingHedgeEndpoint(
+  static async resolveStreamingHedgeEndpoint(
     session: ProxySession,
     provider: Provider
   ): Promise<{
@@ -9171,7 +9249,7 @@ export class ProxyForwarder {
     targetState.releaseAgent = sourceRuntime.releaseAgent;
   }
 
-  private static async clearSessionProviderBinding(
+  static async clearSessionProviderBinding(
     session: ProxySession,
     expectedProviderId: number | null
   ): Promise<void> {
@@ -9180,7 +9258,7 @@ export class ProxyForwarder {
     await SessionManager.clearSessionProvider(session.sessionId, expectedProviderId, keyId);
   }
 
-  private static async clearSessionProviderBindings(
+  static async clearSessionProviderBindings(
     session: ProxySession,
     expectedProviderIds: Iterable<number>
   ): Promise<void> {
@@ -9189,7 +9267,7 @@ export class ProxyForwarder {
     await SessionManager.clearSessionProviders(session.sessionId, expectedProviderIds, keyId);
   }
 
-  private static markProviderFailed(
+  static markProviderFailed(
     session: ProxySession,
     failedProviderIds: number[],
     providerId: number
@@ -9207,7 +9285,7 @@ export class ProxyForwarder {
     ProxyForwarder.releaseProviderSessionRef(session, providerId);
   }
 
-  private static releaseProviderSessionRef(session: ProxySession, providerId: number): boolean {
+  static releaseProviderSessionRef(session: ProxySession, providerId: number): boolean {
     if (!session.sessionId) return false;
     const providerSessionRefConsumer = (
       session as { consumeProviderSessionRef?: (id: number) => boolean }
@@ -9223,7 +9301,7 @@ export class ProxyForwarder {
     return true;
   }
 
-  private static buildAllProvidersUnavailableError(finalError?: Error | null): ProxyError {
+  static buildAllProvidersUnavailableError(finalError?: Error | null): ProxyError {
     const safeClientMessageCandidate =
       finalError instanceof ProxyError &&
       (finalError.upstreamError?.rawBody ||
@@ -9245,7 +9323,7 @@ export class ProxyForwarder {
     });
   }
 
-  private static resolveHedgeTerminalError(
+  static resolveHedgeTerminalError(
     lastError: Error | null,
     lastErrorCategory: ErrorCategory | null
   ): Error {
@@ -9387,7 +9465,7 @@ export class ProxyForwarder {
     );
   }
 
-  private static buildHeaders(
+  static buildHeaders(
     session: ProxySession,
     provider: NonNullable<typeof session.provider>,
     upstreamBaseUrl: string
