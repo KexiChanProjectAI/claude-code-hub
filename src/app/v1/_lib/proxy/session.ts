@@ -50,6 +50,7 @@ import type { BillingModelSource, CodexPriorityBillingSource } from "@/types/sys
 import type { User } from "@/types/user";
 import type { AffinityLookupResult } from "./affinity/affinity-store";
 import type { FingerprintChain } from "./affinity/fingerprint";
+import type { EdgeDigestHints } from "./edge-digest-hints";
 import { type EndpointPolicy, resolveEndpointPolicy } from "./endpoint-policy";
 import { ProxyError } from "./errors";
 import type { ClientFormat } from "./format-mapper";
@@ -262,6 +263,9 @@ export class ProxySession {
 
   // Replay 角色状态（F2 guard 阶段 claim owner 成功后填充，spool 由 handleStream 建立）
   replayState: SessionReplayState | null = null;
+
+  // edge 执行器会话：请求体只含顶层字段的合成体，内容相关判定改用远端预计算摘要
+  edgeDigestHints: EdgeDigestHints | null = null;
 
   private readonly managedEndpoint: string;
   private readonly endpointPolicy: EndpointPolicy;
@@ -498,6 +502,48 @@ export class ProxySession {
   }
 
   /**
+   * 由 edge 执行器上报的请求摘要构建会话。
+   *
+   * 请求体为合成体：只含守卫链与转发准备所需的顶层字段（model、stream、max_tokens、thinking、
+   * output_config、reasoning_effort、metadata）以及与原请求等长的空 messages 数组；
+   * 内容相关的判定通过 edgeDigestHints 读取远端预计算值。
+   */
+  static fromEdgeDigest(init: {
+    receivedAtMs: number;
+    method: string;
+    requestUrl: URL;
+    headers: Headers;
+    syntheticMessage: Record<string, unknown>;
+    hints: EdgeDigestHints;
+  }): ProxySession {
+    const headers = new Headers(init.headers);
+    const message = init.syntheticMessage;
+    const model = typeof message.model === "string" ? message.model : null;
+    const request: ProxyRequestPayload = {
+      message,
+      log: "(edge digest)",
+      model,
+    };
+    const session = new ProxySession({
+      startTime: init.receivedAtMs,
+      method: init.method.toUpperCase(),
+      requestUrl: init.requestUrl,
+      headers,
+      headerLog: formatHeadersForLog(headers),
+      request,
+      userAgent: headers.get("user-agent") || null,
+      // edge 会话没有 Hono 上下文；_lib 下的代理逻辑不读取 context
+      context: null as unknown as Context,
+      clientAbortSignal: null,
+      rawIntakeModel: model,
+      rawResponsesReasoningEffort: extractRawReasoningEffort(message.reasoning),
+      rawMessagesReasoningEffort: extractRawReasoningEffort(message.output_config),
+    });
+    session.edgeDigestHints = init.hints;
+    return session;
+  }
+
+  /**
    * 检查 header 是否被过滤器修改过。
    *
    * 通过对比原始值和当前值判断。以下情况均视为"已修改"：
@@ -678,7 +724,8 @@ export class ProxySession {
   }
 
   shouldPersistSessionDebugArtifacts(): boolean {
-    return !this.highConcurrencyModeEnabled;
+    // edge 会话只持有合成请求体，调试快照会记录失真的正文
+    return !this.highConcurrencyModeEnabled && !this.edgeDigestHints;
   }
 
   shouldPersistSessionRequestArtifacts(): boolean {
@@ -1421,6 +1468,7 @@ export class ProxySession {
    * - [{"role":"user","content":"count"}]
    */
   isProbeRequest(): boolean {
+    if (this.edgeDigestHints) return this.edgeDigestHints.isProbe;
     const messages = this.getMessages();
 
     // 必须是单条消息
@@ -1456,6 +1504,7 @@ export class ProxySession {
     if (endpoint !== "/v1/messages") {
       return false;
     }
+    if (this.edgeDigestHints) return this.edgeDigestHints.isWarmup;
 
     const msg = this.request.message as Record<string, unknown>;
     const messages = msg.messages;

@@ -93,9 +93,7 @@ export class ProxyError extends Error {
     response: Response,
     provider: { id: number; name: string }
   ): Promise<ProxyError> {
-    const contentType = response.headers.get("content-type") || "";
     let body = "";
-    let parsed: unknown;
 
     // 1. 读取响应体
     try {
@@ -103,6 +101,31 @@ export class ProxyError extends Error {
     } catch (error) {
       body = `Failed to read response body: ${(error as Error).message}`;
     }
+
+    return ProxyError.fromUpstreamSnapshot(
+      {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+        bodyText: body,
+      },
+      provider
+    );
+  }
+
+  /**
+   * 从已读取的上游错误响应快照构建 ProxyError。
+   *
+   * 与 fromUpstreamResponse 共用同一套解析/截断/request_id 提取逻辑；
+   * edge 执行器上报的失败 attempt（状态码 + 响应头 + 有界 body 文本）经由此处还原为同形错误。
+   */
+  static fromUpstreamSnapshot(
+    snapshot: { status: number; statusText: string; headers: Headers; bodyText: string },
+    provider: { id: number; name: string }
+  ): ProxyError {
+    const contentType = snapshot.headers.get("content-type") || "";
+    const body = snapshot.bodyText;
+    let parsed: unknown;
 
     // 2. 尝试解析 JSON
     if (contentType.includes("application/json") && body) {
@@ -115,7 +138,7 @@ export class ProxyError extends Error {
 
     // 3. 提取错误消息
     const extractedMessage = ProxyError.extractErrorMessage(parsed);
-    const fallbackMessage = `Provider returned ${response.status}: ${response.statusText}`;
+    const fallbackMessage = `Provider returned ${snapshot.status}: ${snapshot.statusText}`;
     const message = extractedMessage || fallbackMessage;
 
     // 4. 智能截断响应体
@@ -124,9 +147,9 @@ export class ProxyError extends Error {
     // 5. 提取 request_id（从响应体或响应头）
     const requestId =
       ProxyError.extractRequestIdFromBody(parsed) ||
-      ProxyError.extractRequestIdFromHeaders(response.headers);
+      ProxyError.extractRequestIdFromHeaders(snapshot.headers);
 
-    return new ProxyError(message, response.status, {
+    return new ProxyError(message, snapshot.status, {
       body: truncatedBody,
       parsed,
       providerId: provider.id,
@@ -800,6 +823,18 @@ export function isClientAbortError(error: Error): boolean {
  * @param error - Error to check
  * @returns true if error is a transport error
  */
+/**
+ * 构建一个可被 isTransportError / categorizeErrorAsync 识别的传输层错误。
+ * edge 执行器以 undici 风格错误码上报网络失败（ECONNREFUSED、UND_ERR_SOCKET 等），
+ * 由此还原后走与本地转发完全相同的分类分支。
+ */
+export function createTransportError(code: string, message: string): Error {
+  const error = new Error(message || code) as Error & { code?: string };
+  error.name = "TransportError";
+  error.code = code;
+  return error;
+}
+
 export function isTransportError(error: Error): boolean {
   const TRANSPORT_ERROR_CODES = new Set([
     "UND_ERR_SOCKET",

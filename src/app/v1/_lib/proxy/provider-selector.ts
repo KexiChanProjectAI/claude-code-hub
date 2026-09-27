@@ -29,12 +29,9 @@ import type { ProviderChainItem } from "@/types/message";
 import type { Provider } from "@/types/provider";
 import { type AffinityLookupResult, getAffinityStore } from "./affinity/affinity-store";
 import { isAffinityRoutingEnabledWith } from "./affinity/config";
-import {
-  computeFingerprintChain,
-  fingerprintsDeepestFirst,
-  fingerprintTip,
-} from "./affinity/fingerprint";
+import { fingerprintsDeepestFirst, fingerprintTip } from "./affinity/fingerprint";
 import { isClientAllowedDetailed } from "./client-detector";
+import { computeSessionFingerprintChain } from "./edge-digest-hints";
 import type { ClientFormat } from "./format-mapper";
 import { getVerboseProviderErrorCached } from "./provider-selector-settings-cache";
 import { ProxyResponses } from "./responses";
@@ -688,11 +685,7 @@ export class ProxyProviderResolver {
     const env = getEnvConfig();
     if (!affinityRoutingEnabled && !isCacheEffectivenessEnabled()) return false;
 
-    const chain = computeFingerprintChain(
-      session.request.message,
-      session.originalFormat,
-      env.PREFIX_AFFINITY_WINDOW
-    );
+    const chain = computeSessionFingerprintChain(session, env.PREFIX_AFFINITY_WINDOW);
     if (!chain) return false;
 
     session.affinity = {

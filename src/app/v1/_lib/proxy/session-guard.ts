@@ -9,11 +9,8 @@ import { headersToSanitizedObject, SessionManager } from "@/lib/session-manager"
 import { SessionTracker } from "@/lib/session-tracker";
 import { completeCodexSessionIdentifiers } from "../codex/session-completer";
 import { getAffinityStore } from "./affinity/affinity-store";
-import {
-  computeFingerprintChain,
-  fingerprintsDeepestFirst,
-  fingerprintTip,
-} from "./affinity/fingerprint";
+import { fingerprintsDeepestFirst, fingerprintTip } from "./affinity/fingerprint";
+import { computeSessionFingerprintChain, getEdgeDigestHints } from "./edge-digest-hints";
 import type { ProxySession } from "./session";
 
 const CLIENT_HEADER_SNAPSHOT_BLOCKLIST = [
@@ -164,8 +161,16 @@ export class ProxySessionGuard {
       // 2. 获取 messages 数组
       const messages = session.getMessages();
 
-      // 3. 获取或创建 session_id
-      const sessionId = await SessionManager.getOrCreateSessionId(keyId, messages, clientSessionId);
+      // 3. 获取或创建 session_id（edge 会话只持有合成体，内容哈希由远端预计算）
+      const edgeHints = getEdgeDigestHints(session);
+      const sessionId = edgeHints
+        ? await SessionManager.getOrCreateSessionId(
+            keyId,
+            messages,
+            clientSessionId,
+            edgeHints.messagesHash
+          )
+        : await SessionManager.getOrCreateSessionId(keyId, messages, clientSessionId);
 
       // 4. 设置到 session 对象
       session.setSessionId(sessionId, {
@@ -183,9 +188,8 @@ export class ProxySessionGuard {
         systemSettings.affinityIgnoreClientSessionId &&
         session.getEndpointPolicy().kind === "default"
       ) {
-        const chain = computeFingerprintChain(
-          session.request.message as Record<string, unknown>,
-          session.originalFormat,
+        const chain = computeSessionFingerprintChain(
+          session,
           getEnvConfig().PREFIX_AFFINITY_WINDOW
         );
         if (chain) {

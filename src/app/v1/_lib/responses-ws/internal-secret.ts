@@ -78,7 +78,7 @@ export function ensureInternalSecret(): string {
  * is short (UUID), so this is just hygiene; the real protection is that the
  * value is never sent off-process.
  */
-function safeEquals(a: string, b: string): boolean {
+export function safeEquals(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;
   for (let i = 0; i < a.length; i += 1) {

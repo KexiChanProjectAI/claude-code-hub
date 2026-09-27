@@ -103,7 +103,11 @@ import { type DiscoveryAction, DiscoveryCoordinator } from "./discovery-coordina
 import { startDiscoveryLeaseHeartbeat } from "./discovery-lease-heartbeat";
 import { type DiscoveryProtocol, DiscoveryValidityParser } from "./discovery-validity";
 import { isStandardProxyEndpointPath } from "./endpoint-family-catalog";
-import { resolveEndpointPolicy, shouldEnforceStrictEndpointPoolPolicy } from "./endpoint-policy";
+import {
+  type EndpointPolicy,
+  resolveEndpointPolicy,
+  shouldEnforceStrictEndpointPoolPolicy,
+} from "./endpoint-policy";
 import {
   ALL_PROVIDERS_UNAVAILABLE_MESSAGE,
   buildRequestDetails,
@@ -664,20 +668,20 @@ type StreamingHedgeAttempt = {
   } | null;
 };
 
-type ReactiveRectifierRetryState = {
+export type ReactiveRectifierRetryState = {
   thinkingSignatureRetried: boolean;
   thinkingBudgetRetried: boolean;
   thinkingEffortConflictRetried: boolean;
   geminiFunctionIdRetried: boolean;
 };
 
-type ReactiveRectifierType =
+export type ReactiveRectifierType =
   | "thinking_signature_rectifier"
   | "thinking_budget_rectifier"
   | "thinking_effort_conflict_rectifier"
   | "gemini_function_id_rectifier";
 
-type ReactiveRectifierResult =
+export type ReactiveRectifierResult =
   | { matched: false }
   | {
       matched: true;
@@ -693,6 +697,50 @@ type ReactiveRectifierResult =
       trigger: string;
       requestDetailsBeforeRectify: ReturnType<typeof buildRequestDetails>;
     };
+
+export type SerialAttemptFailureContext = {
+  session: ProxySession;
+  provider: Provider;
+  error: Error;
+  activeEndpoint: { endpointId: number | null; baseUrl: string };
+  endpointAudit: { endpointId: number | null; endpointUrl: string };
+  endpointPolicy: EndpointPolicy;
+  attemptCount: number;
+  maxAttemptsPerProvider: number;
+  totalProvidersAttempted: number;
+  rawCrossProviderFallbackEnabled: boolean;
+  shouldSkipRawRetryAndProviderSwitch: boolean;
+  shouldAccountCircuitBreaker: boolean;
+  isMcpRequest: boolean;
+  endpointCandidateKeys: ReadonlySet<string>;
+  /** 决策函数会原地追加超时端点 */
+  timedOutEndpointKeys: Set<string>;
+  /** 决策函数会原地追加失败供应商 */
+  failedProviderIds: number[];
+  /** 反应式整流器会原地标记 */
+  reactiveRectifierRetryState: ReactiveRectifierRetryState;
+  currentEndpointIndex: number;
+  endpointCandidateCount: number;
+  attemptDispatched: boolean;
+  attemptFirstByteSeen: boolean;
+  /** 当前 attempt 自派发起的健康归因耗时（已扣除暂停时长） */
+  getAttemptElapsedMs: () => number;
+  /** 默认原地整流 session.request.message；edge 执行器传入仅检测的实现 */
+  applyReactiveRectifier?: (params: ReactiveRectifierParams) => Promise<ReactiveRectifierResult>;
+};
+
+export type SerialAttemptFailureDecision =
+  | { action: "throw"; error: Error }
+  | {
+      action: "retry";
+      delayMs: number;
+      advanceEndpoint: boolean;
+      maxAttemptsPerProvider: number;
+      rectifierType?: ReactiveRectifierType;
+    }
+  | { action: "switch_provider" };
+
+const SERIAL_RETRY_DELAY_MS = 100;
 
 type DetailRequestAfterSnapshot = {
   body: string | null;
@@ -914,7 +962,55 @@ export function mergeAnthropicCacheTtlBetaFlag(existing: string | null | undefin
  * 与提交后的静默超时同构：错误规则/熔断/切换逻辑无需区分静默发生在门控前后；
  * 串行与 hedge 竞速路径共用，保证同一故障归类一致。
  */
-function buildStreamingIdleTimeoutError(provider: {
+/**
+ * 首字节 / 非流式总时长超时（524）。本地 doForwardPrepared 计时器与 edge 执行器上报的超时共用。
+ */
+export function buildProviderResponseTimeoutError(
+  provider: { id: number; name: string },
+  timeoutType: "streaming_first_byte" | "non_streaming_total",
+  timeoutMs: number
+): ProxyError {
+  const parsed = {
+    error: {
+      type: "timeout_error",
+      message: `Provider failed to respond within ${timeoutMs}ms`,
+      timeout_type: timeoutType,
+      timeout_ms: timeoutMs,
+    },
+  };
+  return new ProxyError(
+    `${timeoutType === "streaming_first_byte" ? "供应商首字节响应超时" : "供应商响应超时"}: ${timeoutMs}ms 内未收到数据`,
+    524,
+    {
+      body: JSON.stringify(parsed),
+      parsed,
+      providerId: provider.id,
+      providerName: provider.name,
+    }
+  );
+}
+
+/**
+ * 流式门控在收到首个有效内容帧前被首字节计时器中止（524）。
+ */
+export function buildFirstValidContentTimeoutError(provider: {
+  id: number;
+  name: string;
+}): ProxyError {
+  return new ProxyError(`供应商首个有效内容超时: 门控在收到有效内容帧前被首字节计时器中止`, 524, {
+    body: JSON.stringify({
+      error: {
+        type: "timeout_error",
+        message: "Provider failed to deliver first valid content frame",
+        timeout_type: "streaming_first_valid_content",
+      },
+    }),
+    providerId: provider.id,
+    providerName: provider.name,
+  });
+}
+
+export function buildStreamingIdleTimeoutError(provider: {
   id: number;
   name: string;
   streamingIdleTimeoutMs: number;
@@ -978,7 +1074,7 @@ function buildEndpointAttemptKey(endpointId: number | null, endpointUrl: string)
  * @param obj - 原始请求对象
  * @returns 过滤后的请求对象
  */
-function filterPrivateParameters(obj: unknown): unknown {
+export function filterPrivateParameters(obj: unknown): unknown {
   // 非对象类型直接返回
   if (typeof obj !== "object" || obj === null) {
     return obj;
@@ -1446,7 +1542,7 @@ function getReactiveRectifierDisplayName(rectifierType: ReactiveRectifierType): 
   return rectifierType;
 }
 
-async function tryApplyReactiveRectifier(params: {
+export type ReactiveRectifierParams = {
   error: Error;
   provider: Provider;
   requestSession: ProxySession;
@@ -1455,7 +1551,11 @@ async function tryApplyReactiveRectifier(params: {
   attemptNumber: number;
   retryAttemptNumber: number;
   retryState: ReactiveRectifierRetryState;
-}): Promise<ReactiveRectifierResult> {
+};
+
+async function tryApplyReactiveRectifier(
+  params: ReactiveRectifierParams
+): Promise<ReactiveRectifierResult> {
   if (
     isProviderLocalModelUnavailableError(params.error) ||
     isRetryableUpstreamStorageCapacityError(params.error)
@@ -1823,150 +1923,21 @@ export class ProxyForwarder {
       };
       let applyProviderOverrides = true;
 
-      const requestPath = session.requestUrl.pathname;
-      const providerVendorId = currentProvider.providerVendorId ?? 0;
-      const isMcpRequest =
-        currentProvider.providerType !== "gemini" &&
-        currentProvider.providerType !== "gemini-cli" &&
-        !isStandardProxyEndpointPath(requestPath);
-      const endpointPolicy = ProxyForwarder.getEndpointPolicy(session);
-      const shouldAccountCircuitBreaker = endpointPolicy.allowCircuitBreakerAccounting;
-      const shouldEnforceStrictEndpointPool =
-        !isMcpRequest &&
-        shouldEnforceStrictEndpointPoolPolicy(endpointPolicy) &&
-        providerVendorId > 0;
-      let endpointSelectionError: Error | null = null;
-
-      const endpointCandidates: Array<{
-        endpointId: number | null;
-        baseUrl: string;
-      }> = [];
-
-      if (isMcpRequest) {
-        endpointCandidates.push({
-          endpointId: null,
-          baseUrl: currentProvider.url,
-        });
-      } else if (providerVendorId > 0) {
-        try {
-          const preferred = await getPreferredProviderEndpoints({
-            vendorId: providerVendorId,
-            providerType: currentProvider.providerType,
-          });
-          endpointCandidates.push(...preferred.map((e) => ({ endpointId: e.id, baseUrl: e.url })));
-        } catch (error) {
-          endpointSelectionError =
-            error instanceof Error
-              ? error
-              : new Error(typeof error === "string" ? error : String(error));
-          logger.warn("[ProxyForwarder] Failed to load provider endpoints", {
-            providerId: currentProvider.id,
-            vendorId: providerVendorId,
-            providerType: currentProvider.providerType,
-            error: endpointSelectionError.message,
-            strictEndpointPolicy: shouldEnforceStrictEndpointPool,
-            reason: "selector_error",
-          });
-        }
-      }
-
-      if (endpointCandidates.length === 0) {
-        if (shouldEnforceStrictEndpointPool) {
-          const strictBlockCause = endpointSelectionError
-            ? "selector_error"
-            : "no_endpoint_candidates";
-
-          logger.warn(
-            "ProxyForwarder: Strict endpoint policy blocked legacy provider.url fallback",
-            {
-              providerId: currentProvider.id,
-              vendorId: providerVendorId,
-              providerType: currentProvider.providerType,
-              requestPath,
-              reason: "strict_blocked_legacy_fallback",
-              strictBlockCause,
-              selectorError: endpointSelectionError?.message,
-            }
-          );
-
-          // Record endpoint pool exhaustion in provider chain for audit trail
-          const exhaustionContext: Record<string, unknown> = {
-            strictBlockCause,
-          };
-          if (endpointSelectionError) {
-            exhaustionContext.selectorError = endpointSelectionError.message;
-          }
-
-          // Collect endpoint filter stats for no_endpoint_candidates (selector_error has no data)
-          let filterStats: ProviderChainItem["endpointFilterStats"];
-          if (!endpointSelectionError) {
-            try {
-              const stats = await getEndpointFilterStats({
-                vendorId: providerVendorId,
-                providerType: currentProvider.providerType,
-              });
-              filterStats = stats;
-            } catch (statsError) {
-              logger.warn("[ProxyForwarder] Failed to collect endpoint filter stats", {
-                providerId: currentProvider.id,
-                vendorId: providerVendorId,
-                error: statsError instanceof Error ? statsError.message : String(statsError),
-              });
-            }
-          }
-
-          session.addProviderToChain(currentProvider, {
-            reason: "endpoint_pool_exhausted",
-            strictBlockCause: strictBlockCause as ProviderChainItem["strictBlockCause"],
-            // 为避免被 initial_selection/session_reuse 去重吞掉，这里需要写入 attemptNumber。
-            // 同时也能让“决策链/技术时间线”把它当作一次实际尝试（虽然请求未发出）。
-            attemptNumber: 1,
-            ...(filterStats ? { endpointFilterStats: filterStats } : {}),
-            errorMessage: endpointSelectionError?.message,
-          });
-
-          if (shouldSkipRawRetryAndProviderSwitch) {
-            logger.debug(
-              "ProxyForwarder: raw passthrough endpoint pool exhaustion, skipping provider switch",
-              {
-                providerId: currentProvider.id,
-                providerName: currentProvider.name,
-                strictBlockCause,
-                selectorError: endpointSelectionError?.message,
-                policyKind: endpointPolicy.kind,
-              }
-            );
-            throw new ProxyError("No available provider endpoints", 503, {
-              body: "",
-              providerId: currentProvider.id,
-              providerName: currentProvider.name,
-            });
-          }
-
-          ProxyForwarder.markProviderFailed(session, failedProviderIds, currentProvider.id);
-          attemptCount = maxAttemptsPerProvider;
-        } else {
-          endpointCandidates.push({
-            endpointId: null,
-            baseUrl: currentProvider.url,
-          });
-        }
-      }
-
-      // Truncate endpoints to maxRetryAttempts count
-      // Ensures only the N lowest-latency endpoints are used (N = maxRetryAttempts)
-      // Note: getPreferredProviderEndpoints already returns endpoints sorted by latency (ascending)
-      if (endpointCandidates.length > maxAttemptsPerProvider) {
-        const originalCount = endpointCandidates.length;
-        endpointCandidates.length = maxAttemptsPerProvider;
-
-        logger.debug("ProxyForwarder: Truncated endpoint candidates to match maxRetryAttempts", {
-          providerId: currentProvider.id,
-          providerName: currentProvider.name,
-          originalEndpointCount: originalCount,
-          truncatedTo: maxAttemptsPerProvider,
-          selectedEndpointIds: endpointCandidates.map((e) => e.endpointId),
-        });
+      const {
+        endpointCandidates,
+        isMcpRequest,
+        endpointPolicy,
+        shouldAccountCircuitBreaker,
+        blocked: endpointPoolBlocked,
+      } = await ProxyForwarder.resolveSerialEndpointCandidates({
+        session,
+        provider: currentProvider,
+        maxAttemptsPerProvider,
+        shouldSkipRawRetryAndProviderSwitch,
+        failedProviderIds,
+      });
+      if (endpointPoolBlocked) {
+        attemptCount = maxAttemptsPerProvider;
       }
 
       const endpointCandidateKeys = new Set(
@@ -2169,21 +2140,7 @@ export class ProxyForwarder {
                   }
 
                   if (timedOutBeforeContent) {
-                    throw new ProxyError(
-                      `供应商首个有效内容超时: 门控在收到有效内容帧前被首字节计时器中止`,
-                      524,
-                      {
-                        body: JSON.stringify({
-                          error: {
-                            type: "timeout_error",
-                            message: "Provider failed to deliver first valid content frame",
-                            timeout_type: "streaming_first_valid_content",
-                          },
-                        }),
-                        providerId: currentProvider.id,
-                        providerName: currentProvider.name,
-                      }
-                    );
+                    throw buildFirstValidContentTimeoutError(currentProvider);
                   }
                   throw gate.error;
                 }
@@ -2557,681 +2514,52 @@ export class ProxyForwarder {
           return response; // ⭐ 成功：立即返回，结束所有循环
         } catch (error) {
           lastError = error as Error;
-
-          // ⭐ 1. 分类错误（供应商错误 vs 系统错误 vs 客户端中断）
-          // 使用异步版本确保错误规则已加载
-          let errorCategory = await categorizeErrorAsync(lastError);
-          // 上游额度：402 / 429 余额不足 -> 被动标记该供应商额度耗尽（fire-and-forget，不影响重试）
-          if (!session.isProbeRequest?.()) {
-            void maybeMarkUpstreamQuotaExhausted(currentProvider, lastError);
-          }
-          const databaseError = findSafeDatabaseError(lastError);
-          if (databaseError) {
-            errorCategory = ErrorCategory.LOCAL_OVERLOAD;
-          }
-          if (errorCategory === ErrorCategory.LOCAL_OVERLOAD && !databaseError) throw lastError;
-
-          // F3a：亲和提名的供应商发生供应商侧失败 -> 定向写墓碑（短 TTL 自愈防羊群）
-          // request-scoped 的空完成不算供应商侧失败：写墓碑会让后续请求绕开健康的粘性供应商
-          if (
-            (errorCategory === ErrorCategory.PROVIDER_ERROR ||
-              errorCategory === ErrorCategory.RESOURCE_NOT_FOUND) &&
-            !isRequestScopedGateFailure(lastError)
-          ) {
-            void retainRequestMemoryUntil(
-              tombstoneAffinityOnFailure(session, currentProvider.id),
-              "affinity-tombstone"
-            );
-          }
-          const errorMessage =
-            databaseError?.message ??
-            (lastError instanceof ProxyError
-              ? lastError.getDetailedErrorMessage()
-              : lastError.message);
-
-          const isTimeoutError = lastError instanceof ProxyError && lastError.statusCode === 524;
-
-          if (isTimeoutError) {
-            timedOutEndpointKeys.add(
-              buildEndpointAttemptKey(activeEndpoint.endpointId, activeEndpoint.baseUrl)
-            );
-          }
-
-          if (!databaseError && activeEndpoint.endpointId != null) {
-            if (isTimeoutError || errorCategory === ErrorCategory.SYSTEM_ERROR) {
-              await recordEndpointFailure(activeEndpoint.endpointId, lastError);
-            }
-          }
-
-          // ⭐ 2. 客户端中断处理（不计入熔断器，不重试，立即返回）
-          if (errorCategory === ErrorCategory.CLIENT_ABORT) {
-            logger.warn("ProxyForwarder: Client aborted, stopping immediately", {
-              providerId: currentProvider.id,
-              providerName: currentProvider.name,
-              attemptNumber: attemptCount,
-              totalProvidersAttempted,
-            });
-
-            const now = performance.now();
-            const elapsedMs = Math.max(
-              0,
-              now -
-                attemptStartedAtMonotonic -
-                healthPausedDurationMs -
-                (healthPausedAtMonotonic === null ? 0 : now - healthPausedAtMonotonic)
-            );
-            const thresholdMs =
-              currentProvider.firstByteTimeoutStreamingMs > 0
-                ? currentProvider.firstByteTimeoutStreamingMs
-                : CLIENT_ABORT_HEALTH_FALLBACK_THRESHOLD_MS;
-            const qualifiesForHealth =
-              attemptDispatched &&
-              !attemptFirstByteSeen &&
-              elapsedMs >= thresholdMs &&
-              endpointPolicy.allowCircuitBreakerAccounting;
-
-            if (qualifiesForHealth) {
-              const abortFailure = new ProxyError(
-                "Client aborted while provider was waiting for the first byte",
-                499,
-                undefined,
-                true
-              );
-              await recordFailure(currentProvider.id, abortFailure).catch((healthError) => {
-                logger.warn("ProxyForwarder: Failed to account serial client abort health", {
-                  providerId: currentProvider.id,
-                  error: healthError instanceof Error ? healthError.message : String(healthError),
-                });
-              });
-              session.appendRoutingTraceEvent({
-                type: "client_abort_no_first_byte",
-                attemptId: `legacy-serial-${totalProvidersAttempted}-${attemptCount}`,
-                provider: {
-                  id: currentProvider.id,
-                  name: currentProvider.name,
-                  priority: currentProvider.priority || 0,
-                },
-                outcome: "provider_failure",
-                cancellationKind: "client_abort",
-                reason: "external_client_abort",
-                effectiveThresholdMs: thresholdMs,
-                circuitAccountingApplied: true,
-                availabilityAccountingApplied: true,
-                durationMs: Math.round(elapsedMs),
-              });
-            }
-
-            await ProxyForwarder.clearSessionProviderBinding(session, currentProvider.id);
-
-            // 记录到决策链（标记为客户端中断）
-            session.addProviderToChain(currentProvider, {
-              ...endpointAudit,
-              reason: qualifiesForHealth ? "client_abort_no_first_byte" : "client_abort",
-              circuitState: getCircuitState(currentProvider.id),
-              attemptNumber: attemptCount,
-              errorMessage: "Client aborted request",
-              errorDetails: {
-                system: {
-                  errorType: "ClientAbort",
-                  errorName: "ClientAbort",
-                  errorMessage: "Client aborted request",
-                },
-                request: buildRequestDetails(session),
-              },
-            });
-
-            throw lastError;
-          }
-
-          if (databaseError) {
-            const admission = findDbPoolAdmissionError(lastError);
-            logger.warn("ProxyForwarder: Local database operation failed", {
-              providerId: currentProvider.id,
-              providerName: currentProvider.name,
-              endpointId: activeEndpoint.endpointId,
-              pool: admission?.pool,
-              maxOutstanding: admission?.maxOutstanding,
-              attemptNumber: attemptCount,
-            });
-
-            session.addProviderToChain(currentProvider, {
-              ...endpointAudit,
-              reason: "system_error",
-              circuitState: getCircuitState(currentProvider.id),
-              attemptNumber: attemptCount,
-              errorMessage: databaseError.message,
-              errorDetails: {
-                system: {
-                  errorType:
-                    databaseError.kind === "admission" ? "DbPoolAdmissionError" : "DatabaseError",
-                  errorName:
-                    databaseError.kind === "admission" ? "DbPoolAdmissionError" : "DatabaseError",
-                  errorMessage: databaseError.message,
-                  errorCode: databaseError.code,
-                },
-                request: buildRequestDetails(session),
-              },
-            });
-
-            throw lastError;
-          }
-
-          // 2.5 Reactive rectifier：命中后对同供应商“整流 + 重试一次”
-          const reactiveRectifierResult = await tryApplyReactiveRectifier({
-            error: lastError,
+          const decision = await ProxyForwarder.handleSerialAttemptFailure({
+            session,
             provider: currentProvider,
-            requestSession: session,
-            persistSession: session,
-            errorMessage,
-            attemptNumber: attemptCount,
-            retryAttemptNumber: attemptCount + 1,
-            retryState: reactiveRectifierRetryState,
+            error: lastError,
+            activeEndpoint,
+            endpointAudit,
+            endpointPolicy,
+            attemptCount,
+            maxAttemptsPerProvider,
+            totalProvidersAttempted,
+            rawCrossProviderFallbackEnabled,
+            shouldSkipRawRetryAndProviderSwitch,
+            shouldAccountCircuitBreaker,
+            isMcpRequest,
+            endpointCandidateKeys,
+            timedOutEndpointKeys,
+            failedProviderIds,
+            reactiveRectifierRetryState,
+            currentEndpointIndex,
+            endpointCandidateCount: endpointCandidates.length,
+            attemptDispatched,
+            attemptFirstByteSeen,
+            getAttemptElapsedMs: () => {
+              const now = performance.now();
+              return Math.max(
+                0,
+                now -
+                  attemptStartedAtMonotonic -
+                  healthPausedDurationMs -
+                  (healthPausedAtMonotonic === null ? 0 : now - healthPausedAtMonotonic)
+              );
+            },
           });
 
-          if (reactiveRectifierResult.matched) {
-            if (!reactiveRectifierResult.applied) {
-              if (reactiveRectifierResult.reason === "not_applicable") {
-                logger.info(
-                  `ProxyForwarder: ${getReactiveRectifierDisplayName(
-                    reactiveRectifierResult.rectifierType
-                  )} not applicable, skipping retry`,
-                  {
-                    providerId: currentProvider.id,
-                    providerName: currentProvider.name,
-                    trigger: reactiveRectifierResult.trigger,
-                    attemptNumber: attemptCount,
-                  }
-                );
-              }
-
-              errorCategory = ErrorCategory.NON_RETRYABLE_CLIENT_ERROR;
-            } else {
-              logger.info(
-                `ProxyForwarder: ${getReactiveRectifierDisplayName(
-                  reactiveRectifierResult.rectifierType
-                )} applied, retrying`,
-                {
-                  providerId: currentProvider.id,
-                  providerName: currentProvider.name,
-                  trigger: reactiveRectifierResult.trigger,
-                  attemptNumber: attemptCount,
-                  willRetryAttemptNumber: attemptCount + 1,
-                }
-              );
-
-              session.addProviderToChain(
-                currentProvider,
-                buildRetryFailedChainEntry(
-                  currentProvider,
-                  endpointAudit,
-                  attemptCount,
-                  lastError,
-                  errorMessage,
-                  reactiveRectifierResult.requestDetailsBeforeRectify,
-                  rawCrossProviderFallbackEnabled
-                )
-              );
-
-              // 确保即使 maxAttemptsPerProvider=1 也能完成一次额外重试
-              maxAttemptsPerProvider = Math.max(maxAttemptsPerProvider, attemptCount + 1);
-              continue;
-            }
+          if (decision.action === "throw") {
+            throw decision.error;
           }
-
-          // ⭐ 3. 不可重试的客户端输入错误处理（不计入熔断器，不重试，立即返回）
-          if (errorCategory === ErrorCategory.NON_RETRYABLE_CLIENT_ERROR) {
-            const detectionResult = await getErrorDetectionResultAsync(lastError);
-            const matchedRule = buildMatchedRuleDetails(detectionResult);
-            const matchedRuleLogContext = buildMatchedRuleLogContext(matchedRule);
-            const clientErrorChainEntry = buildClientErrorChainEntry(
-              currentProvider,
-              endpointAudit,
-              attemptCount,
-              lastError,
-              errorMessage,
-              buildRequestDetails(session),
-              matchedRule,
-              rawCrossProviderFallbackEnabled
-            );
-
-            if (lastError instanceof ProxyError) {
-              // Original path: full ProxyError fields available
-              logger.warn("ProxyForwarder: Non-retryable client error, stopping immediately", {
-                providerId: currentProvider.id,
-                providerName: currentProvider.name,
-                statusCode: lastError.statusCode,
-                statusCodeInferred: lastError.upstreamError?.statusCodeInferred ?? false,
-                error: errorMessage,
-                attemptNumber: attemptCount,
-                totalProvidersAttempted,
-                reason:
-                  "White-listed client error (prompt length, content filter, PDF limit, or thinking format)",
-                ...matchedRuleLogContext,
-              });
-            } else {
-              // Plain Error path: omit ProxyError-only fields
-              logger.warn(
-                "ProxyForwarder: Non-retryable client error (plain error), stopping immediately",
-                {
-                  providerId: currentProvider.id,
-                  providerName: currentProvider.name,
-                  error: lastError.message,
-                  attemptNumber: attemptCount,
-                  totalProvidersAttempted,
-                  reason: "White-listed client error matched by error rule",
-                  ...matchedRuleLogContext,
-                }
-              );
-            }
-
-            // 记录到决策链（标记为不可重试的客户端错误）
-            // 注意：不调用 recordFailure()，因为这不是供应商的问题，是客户端输入问题
-            session.addProviderToChain(currentProvider, clientErrorChainEntry);
-
-            // 立即抛出错误，不重试，不切换供应商
-            // 白名单错误不计入熔断器，因为是客户端输入问题，不是供应商故障
-            throw lastError;
-          }
-
-          // ⭐ 4. 系统错误处理（不计入熔断器，先重试1次当前供应商）
-          if (errorCategory === ErrorCategory.SYSTEM_ERROR) {
-            const err = lastError as Error & {
-              code?: string; // Node.js 错误码：如 'ENOTFOUND'、'ECONNREFUSED'、'ETIMEDOUT'、'ECONNRESET'
-              errno?: number;
-              syscall?: string; // 系统调用：如 'getaddrinfo'、'connect'、'read'、'write'
-            };
-
-            logger.warn("ProxyForwarder: System/network error occurred", {
-              providerId: currentProvider.id,
-              providerName: currentProvider.name,
-              error: errorMessage,
-              attemptNumber: attemptCount,
-              totalProvidersAttempted,
-              willRetry: attemptCount < maxAttemptsPerProvider,
-            });
-
-            // 记录到决策链（不计入 failedProviderIds）
-            session.addProviderToChain(currentProvider, {
-              ...endpointAudit,
-              reason: "system_error",
-              circuitState: getCircuitState(currentProvider.id),
-              attemptNumber: attemptCount,
-              errorMessage: errorMessage,
-              errorDetails: {
-                system: {
-                  errorType: err.constructor.name,
-                  errorName: err.name,
-                  errorMessage: err.message || err.name || "Unknown error",
-                  errorCode: err.code,
-                  errorSyscall: err.syscall,
-                  errorStack: err.stack?.split("\n").slice(0, 3).join("\n"),
-                },
-                request: buildRequestDetails(session),
-              },
-            });
-
-            if (shouldSkipRawRetryAndProviderSwitch) {
-              logger.debug(
-                "ProxyForwarder: raw passthrough endpoint system error, skipping retry and provider switch",
-                {
-                  providerId: currentProvider.id,
-                  providerName: currentProvider.name,
-                  error: errorMessage,
-                  policyKind: endpointPolicy.kind,
-                }
-              );
-              throw lastError;
-            }
-
-            // 第1次失败：等待100ms后重试当前供应商
-            if (attemptCount < maxAttemptsPerProvider) {
-              // Network error: advance to next endpoint for retry
-              // This implements "endpoint stickiness" where network errors switch endpoints
-              // but non-network errors (PROVIDER_ERROR) keep the same endpoint
-              currentEndpointIndex++;
-              logger.debug("ProxyForwarder: Advancing endpoint index due to network error", {
-                providerId: currentProvider.id,
-                previousEndpointIndex: currentEndpointIndex - 1,
-                newEndpointIndex: currentEndpointIndex,
-                maxEndpointIndex: endpointCandidates.length - 1,
-              });
-
-              await new Promise((resolve) => setTimeout(resolve, 100));
-              continue; // Continue retry with next endpoint
-            }
-
-            // 第2次失败：跳出内层循环，切换供应商
-            logger.warn("ProxyForwarder: System error persists, will switch provider", {
-              providerId: currentProvider.id,
-              providerName: currentProvider.name,
-              totalProvidersAttempted,
-            });
-
-            // ⭐ 检查是否启用了网络错误计入熔断器
-            const env = getEnvConfig();
-
-            // 无论是否计入熔断器，都要加入 failedProviderIds（避免重复选择同一供应商）
-            ProxyForwarder.markProviderFailed(session, failedProviderIds, currentProvider.id);
-
-            if (env.ENABLE_CIRCUIT_BREAKER_ON_NETWORK_ERRORS) {
-              logger.warn(
-                "ProxyForwarder: Network error will be counted towards circuit breaker (enabled by config)",
-                {
-                  providerId: currentProvider.id,
-                  providerName: currentProvider.name,
-                  errorType: err.constructor.name,
-                  errorCode: err.code,
-                }
-              );
-
-              // 计入熔断器
-              if (shouldAccountCircuitBreaker) {
-                await recordFailure(currentProvider.id, lastError);
-              }
-            } else {
-              logger.debug(
-                "ProxyForwarder: Network error not counted towards circuit breaker (disabled by default)",
-                {
-                  providerId: currentProvider.id,
-                  providerName: currentProvider.name,
-                }
-              );
-            }
-
+          if (decision.action === "switch_provider") {
             break; // ⭐ 跳出内层循环，进入供应商切换逻辑
           }
-
-          // 5. 上游 404 错误处理（不计入熔断器；Provider 局部模型缺口直接切换）
-          if (errorCategory === ErrorCategory.RESOURCE_NOT_FOUND) {
-            const proxyError = lastError as ProxyError;
-            const providerLocalModelUnavailable = isProviderLocalModelUnavailableError(proxyError);
-            const willRetry =
-              !providerLocalModelUnavailable && attemptCount < maxAttemptsPerProvider;
-
-            logger.warn("ProxyForwarder: Upstream 404 error", {
-              providerId: currentProvider.id,
-              providerName: currentProvider.name,
-              statusCode: 404,
-              statusCodeInferred: proxyError.upstreamError?.statusCodeInferred ?? false,
-              error: errorMessage,
-              attemptNumber: attemptCount,
-              totalProvidersAttempted,
-              willRetry,
-              providerLocalModelUnavailable,
-            });
-
-            // 记录到决策链（标记为 resource_not_found，不计入熔断）
-            session.addProviderToChain(currentProvider, {
-              ...endpointAudit,
-              reason: "resource_not_found",
-              circuitState: getCircuitState(currentProvider.id),
-              attemptNumber: attemptCount,
-              rawCrossProviderFallbackEnabled: rawCrossProviderFallbackEnabled || undefined,
-              errorMessage: errorMessage,
-              statusCode: 404,
-              statusCodeInferred: proxyError.upstreamError?.statusCodeInferred ?? false,
-              errorDetails: {
-                provider: rawCrossProviderFallbackEnabled
-                  ? {
-                      id: currentProvider.id,
-                      name: currentProvider.name,
-                      statusCode: 404,
-                      statusText: proxyError.message,
-                    }
-                  : {
-                      id: currentProvider.id,
-                      name: currentProvider.name,
-                      statusCode: 404,
-                      statusText: proxyError.message,
-                      upstreamBody: proxyError.upstreamError?.body,
-                      upstreamParsed: proxyError.upstreamError?.parsed,
-                    },
-                request: buildRequestDetails(session),
-              },
-            });
-
-            if (shouldSkipRawRetryAndProviderSwitch) {
-              logger.debug(
-                "ProxyForwarder: raw passthrough endpoint 404, skipping retry and provider switch",
-                {
-                  providerId: currentProvider.id,
-                  providerName: currentProvider.name,
-                  error: errorMessage,
-                  policyKind: endpointPolicy.kind,
-                }
-              );
-              throw lastError;
-            }
-
-            // 不调用 recordFailure()，不计入熔断器
-
-            // 未耗尽重试次数：等待 100ms 后继续重试当前供应商
-            if (willRetry) {
-              await new Promise((resolve) => setTimeout(resolve, 100));
-              continue;
-            }
-
-            // 重试耗尽：加入失败列表并切换供应商
-            ProxyForwarder.markProviderFailed(session, failedProviderIds, currentProvider.id);
-            break; // ⭐ 跳出内层循环，进入供应商切换逻辑
+          maxAttemptsPerProvider = decision.maxAttemptsPerProvider;
+          if (decision.advanceEndpoint) {
+            currentEndpointIndex++;
           }
-
-          // ⭐ 6. 供应商错误处理（所有 4xx/5xx HTTP 错误 + 空响应错误，计入熔断器，重试耗尽后切换）
-          if (errorCategory === ErrorCategory.PROVIDER_ERROR) {
-            // 🆕 空响应错误特殊处理（EmptyResponseError 不是 ProxyError）
-            if (isEmptyResponseError(lastError)) {
-              const emptyError = lastError as EmptyResponseError;
-              const willRetry = attemptCount < maxAttemptsPerProvider;
-
-              logger.warn("ProxyForwarder: Empty response detected", {
-                providerId: currentProvider.id,
-                providerName: currentProvider.name,
-                reason: emptyError.reason,
-                error: emptyError.message,
-                attemptNumber: attemptCount,
-                totalProvidersAttempted,
-                willRetry,
-              });
-
-              // 获取熔断器健康信息
-              const { health, config } = await getProviderHealthInfo(currentProvider.id);
-
-              // 记录到决策链
-              session.addProviderToChain(currentProvider, {
-                ...endpointAudit,
-                reason: "retry_failed",
-                circuitState: getCircuitState(currentProvider.id),
-                attemptNumber: attemptCount,
-                rawCrossProviderFallbackEnabled: rawCrossProviderFallbackEnabled || undefined,
-                errorMessage: emptyError.message,
-                circuitFailureCount: health.failureCount + 1,
-                circuitFailureThreshold: config.failureThreshold,
-                statusCode: 520, // Web Server Returned an Unknown Error
-                errorDetails: {
-                  provider: {
-                    id: currentProvider.id,
-                    name: currentProvider.name,
-                    statusCode: 520,
-                    statusText: `Empty response: ${emptyError.reason}`,
-                  },
-                  request: buildRequestDetails(session),
-                },
-              });
-
-              if (shouldSkipRawRetryAndProviderSwitch) {
-                logger.debug(
-                  "ProxyForwarder: raw passthrough empty response, skipping retry and provider switch",
-                  {
-                    providerId: currentProvider.id,
-                    providerName: currentProvider.name,
-                    error: emptyError.message,
-                    policyKind: endpointPolicy.kind,
-                  }
-                );
-                throw lastError;
-              }
-
-              // 未耗尽重试次数：等待 100ms 后继续重试当前供应商
-              if (willRetry) {
-                await new Promise((resolve) => setTimeout(resolve, 100));
-                continue;
-              }
-
-              // 重试耗尽：计入熔断器并切换供应商
-              if (!session.isProbeRequest()) {
-                if (shouldAccountCircuitBreaker) {
-                  await recordFailure(currentProvider.id, lastError);
-                }
-              }
-
-              ProxyForwarder.markProviderFailed(session, failedProviderIds, currentProvider.id);
-              break; // 跳出内层循环，进入供应商切换逻辑
-            }
-
-            // 常规 ProxyError 处理
-            const proxyError = lastError as ProxyError;
-            const statusCode = proxyError.statusCode;
-            const willRetry = attemptCount < maxAttemptsPerProvider;
-
-            if (
-              !isMcpRequest &&
-              statusCode === 524 &&
-              currentProvider.providerVendorId &&
-              endpointCandidateKeys.size > 0 &&
-              timedOutEndpointKeys.size >= endpointCandidateKeys.size &&
-              !willRetry
-            ) {
-              // Record to decision chain BEFORE triggering vendor-type circuit breaker
-              session.addProviderToChain(currentProvider, {
-                ...endpointAudit,
-                reason: "vendor_type_all_timeout",
-                attemptNumber: attemptCount,
-                rawCrossProviderFallbackEnabled: rawCrossProviderFallbackEnabled || undefined,
-                statusCode: 524,
-                errorMessage: errorMessage,
-                errorDetails: {
-                  provider: rawCrossProviderFallbackEnabled
-                    ? {
-                        id: currentProvider.id,
-                        name: currentProvider.name,
-                        statusCode: 524,
-                        statusText: proxyError.message,
-                      }
-                    : {
-                        id: currentProvider.id,
-                        name: currentProvider.name,
-                        statusCode: 524,
-                        statusText: proxyError.message,
-                        upstreamBody: proxyError.upstreamError?.body,
-                        upstreamParsed: proxyError.upstreamError?.parsed,
-                      },
-                  request: buildRequestDetails(session),
-                },
-              });
-
-              await recordVendorTypeAllEndpointsTimeout(
-                currentProvider.providerVendorId,
-                currentProvider.providerType
-              );
-              ProxyForwarder.markProviderFailed(session, failedProviderIds, currentProvider.id);
-              break;
-            }
-
-            // Raw passthrough endpoints: no circuit breaker, no provider switch, no retry
-            if (!endpointPolicy.allowRetry && !rawCrossProviderFallbackEnabled) {
-              logger.debug(
-                "ProxyForwarder: raw passthrough endpoint error, skipping circuit breaker and provider switch",
-                {
-                  providerId: currentProvider.id,
-                  providerName: currentProvider.name,
-                  statusCode,
-                  error: proxyError.message,
-                  policyKind: endpointPolicy.kind,
-                }
-              );
-              // Throw immediately: no retry, no provider switch
-              throw lastError;
-            }
-
-            logger.warn("ProxyForwarder: Provider error occurred", {
-              providerId: currentProvider.id,
-              providerName: currentProvider.name,
-              statusCode: statusCode,
-              statusCodeInferred: proxyError.upstreamError?.statusCodeInferred ?? false,
-              error: errorMessage,
-              attemptNumber: attemptCount,
-              totalProvidersAttempted,
-              willRetry,
-            });
-
-            // 获取熔断器健康信息（用于决策链显示）
-            const { health, config } = await getProviderHealthInfo(currentProvider.id);
-
-            // 记录到决策链
-            session.addProviderToChain(currentProvider, {
-              ...endpointAudit,
-              reason: "retry_failed",
-              circuitState: getCircuitState(currentProvider.id),
-              attemptNumber: attemptCount,
-              rawCrossProviderFallbackEnabled: rawCrossProviderFallbackEnabled || undefined,
-              errorMessage: errorMessage,
-              circuitFailureCount: health.failureCount + 1, // 包含本次失败
-              circuitFailureThreshold: config.failureThreshold,
-              statusCode: statusCode,
-              statusCodeInferred: proxyError.upstreamError?.statusCodeInferred ?? false,
-              errorDetails: {
-                provider: rawCrossProviderFallbackEnabled
-                  ? {
-                      id: currentProvider.id,
-                      name: currentProvider.name,
-                      statusCode: statusCode,
-                      statusText: proxyError.message,
-                    }
-                  : {
-                      id: currentProvider.id,
-                      name: currentProvider.name,
-                      statusCode: statusCode,
-                      statusText: proxyError.message,
-                      upstreamBody: proxyError.upstreamError?.body,
-                      upstreamParsed: proxyError.upstreamError?.parsed,
-                    },
-                request: buildRequestDetails(session),
-              },
-            });
-
-            // 未耗尽重试次数：等待 100ms 后继续重试当前供应商
-            if (willRetry) {
-              if (statusCode === 524) {
-                currentEndpointIndex++;
-                logger.debug("ProxyForwarder: Advancing endpoint index due to upstream timeout", {
-                  providerId: currentProvider.id,
-                  previousEndpointIndex: currentEndpointIndex - 1,
-                  newEndpointIndex: currentEndpointIndex,
-                  maxEndpointIndex: endpointCandidates.length - 1,
-                });
-              }
-
-              await new Promise((resolve) => setTimeout(resolve, 100));
-              continue;
-            }
-
-            // ⭐ 重试耗尽：只有非探测请求才计入熔断器
-            if (session.isProbeRequest()) {
-              logger.debug("ProxyForwarder: Probe request error, skipping circuit breaker", {
-                providerId: currentProvider.id,
-                providerName: currentProvider.name,
-                messagesCount: session.getMessagesLength(),
-              });
-            } else {
-              // 门控的 empty_stream 由请求内容决定，不计入供应商健康度（仍 failover）
-              if (shouldAccountCircuitBreaker && !isRequestScopedGateFailure(lastError)) {
-                await recordFailure(currentProvider.id, lastError);
-              }
-            }
-
-            // 加入失败列表并切换供应商
-            ProxyForwarder.markProviderFailed(session, failedProviderIds, currentProvider.id);
-            break; // 跳出内层循环，进入供应商切换逻辑
+          if (decision.delayMs > 0) {
+            await new Promise((resolve) => setTimeout(resolve, decision.delayMs));
           }
         }
       } // ========== 内层循环结束 ==========
@@ -3281,6 +2609,913 @@ export class ProxyForwarder {
     if (session.provider?.id != null) attemptedProviderIds.add(session.provider.id);
     await ProxyForwarder.clearSessionProviderBindings(session, attemptedProviderIds);
     throw ProxyForwarder.buildAllProvidersUnavailableError(lastError); // Service Unavailable
+  }
+
+  /**
+   * 串行路径：为当前供应商解析端点候选（按延迟升序、截断到最大重试次数），并处理
+   * strict 端点池耗尽（写决策链；raw 直通时抛 503，否则记为失败供应商）。
+   * 本地串行循环与 edge 执行器共用。blocked=true 表示该供应商不应发起任何尝试。
+   */
+  static async resolveSerialEndpointCandidates(params: {
+    session: ProxySession;
+    provider: Provider;
+    maxAttemptsPerProvider: number;
+    shouldSkipRawRetryAndProviderSwitch: boolean;
+    failedProviderIds: number[];
+  }): Promise<{
+    endpointCandidates: Array<{ endpointId: number | null; baseUrl: string }>;
+    isMcpRequest: boolean;
+    endpointPolicy: EndpointPolicy;
+    shouldAccountCircuitBreaker: boolean;
+    blocked: boolean;
+  }> {
+    const {
+      session,
+      provider,
+      maxAttemptsPerProvider,
+      shouldSkipRawRetryAndProviderSwitch,
+      failedProviderIds,
+    } = params;
+    let blocked = false;
+    const requestPath = session.requestUrl.pathname;
+    const providerVendorId = provider.providerVendorId ?? 0;
+    const isMcpRequest =
+      provider.providerType !== "gemini" &&
+      provider.providerType !== "gemini-cli" &&
+      !isStandardProxyEndpointPath(requestPath);
+    const endpointPolicy = ProxyForwarder.getEndpointPolicy(session);
+    const shouldAccountCircuitBreaker = endpointPolicy.allowCircuitBreakerAccounting;
+    const shouldEnforceStrictEndpointPool =
+      !isMcpRequest &&
+      shouldEnforceStrictEndpointPoolPolicy(endpointPolicy) &&
+      providerVendorId > 0;
+    let endpointSelectionError: Error | null = null;
+
+    const endpointCandidates: Array<{
+      endpointId: number | null;
+      baseUrl: string;
+    }> = [];
+
+    if (isMcpRequest) {
+      endpointCandidates.push({
+        endpointId: null,
+        baseUrl: provider.url,
+      });
+    } else if (providerVendorId > 0) {
+      try {
+        const preferred = await getPreferredProviderEndpoints({
+          vendorId: providerVendorId,
+          providerType: provider.providerType,
+        });
+        endpointCandidates.push(...preferred.map((e) => ({ endpointId: e.id, baseUrl: e.url })));
+      } catch (error) {
+        endpointSelectionError =
+          error instanceof Error
+            ? error
+            : new Error(typeof error === "string" ? error : String(error));
+        logger.warn("[ProxyForwarder] Failed to load provider endpoints", {
+          providerId: provider.id,
+          vendorId: providerVendorId,
+          providerType: provider.providerType,
+          error: endpointSelectionError.message,
+          strictEndpointPolicy: shouldEnforceStrictEndpointPool,
+          reason: "selector_error",
+        });
+      }
+    }
+
+    if (endpointCandidates.length === 0) {
+      if (shouldEnforceStrictEndpointPool) {
+        const strictBlockCause = endpointSelectionError
+          ? "selector_error"
+          : "no_endpoint_candidates";
+
+        logger.warn("ProxyForwarder: Strict endpoint policy blocked legacy provider.url fallback", {
+          providerId: provider.id,
+          vendorId: providerVendorId,
+          providerType: provider.providerType,
+          requestPath,
+          reason: "strict_blocked_legacy_fallback",
+          strictBlockCause,
+          selectorError: endpointSelectionError?.message,
+        });
+
+        // Record endpoint pool exhaustion in provider chain for audit trail
+        const exhaustionContext: Record<string, unknown> = {
+          strictBlockCause,
+        };
+        if (endpointSelectionError) {
+          exhaustionContext.selectorError = endpointSelectionError.message;
+        }
+
+        // Collect endpoint filter stats for no_endpoint_candidates (selector_error has no data)
+        let filterStats: ProviderChainItem["endpointFilterStats"];
+        if (!endpointSelectionError) {
+          try {
+            const stats = await getEndpointFilterStats({
+              vendorId: providerVendorId,
+              providerType: provider.providerType,
+            });
+            filterStats = stats;
+          } catch (statsError) {
+            logger.warn("[ProxyForwarder] Failed to collect endpoint filter stats", {
+              providerId: provider.id,
+              vendorId: providerVendorId,
+              error: statsError instanceof Error ? statsError.message : String(statsError),
+            });
+          }
+        }
+
+        session.addProviderToChain(provider, {
+          reason: "endpoint_pool_exhausted",
+          strictBlockCause: strictBlockCause as ProviderChainItem["strictBlockCause"],
+          // 为避免被 initial_selection/session_reuse 去重吞掉，这里需要写入 attemptNumber。
+          // 同时也能让“决策链/技术时间线”把它当作一次实际尝试（虽然请求未发出）。
+          attemptNumber: 1,
+          ...(filterStats ? { endpointFilterStats: filterStats } : {}),
+          errorMessage: endpointSelectionError?.message,
+        });
+
+        if (shouldSkipRawRetryAndProviderSwitch) {
+          logger.debug(
+            "ProxyForwarder: raw passthrough endpoint pool exhaustion, skipping provider switch",
+            {
+              providerId: provider.id,
+              providerName: provider.name,
+              strictBlockCause,
+              selectorError: endpointSelectionError?.message,
+              policyKind: endpointPolicy.kind,
+            }
+          );
+          throw new ProxyError("No available provider endpoints", 503, {
+            body: "",
+            providerId: provider.id,
+            providerName: provider.name,
+          });
+        }
+
+        ProxyForwarder.markProviderFailed(session, failedProviderIds, provider.id);
+        blocked = true;
+      } else {
+        endpointCandidates.push({
+          endpointId: null,
+          baseUrl: provider.url,
+        });
+      }
+    }
+
+    // Truncate endpoints to maxRetryAttempts count
+    // Ensures only the N lowest-latency endpoints are used (N = maxRetryAttempts)
+    // Note: getPreferredProviderEndpoints already returns endpoints sorted by latency (ascending)
+    if (endpointCandidates.length > maxAttemptsPerProvider) {
+      const originalCount = endpointCandidates.length;
+      endpointCandidates.length = maxAttemptsPerProvider;
+
+      logger.debug("ProxyForwarder: Truncated endpoint candidates to match maxRetryAttempts", {
+        providerId: provider.id,
+        providerName: provider.name,
+        originalEndpointCount: originalCount,
+        truncatedTo: maxAttemptsPerProvider,
+        selectedEndpointIds: endpointCandidates.map((e) => e.endpointId),
+      });
+    }
+
+    return {
+      endpointCandidates,
+      isMcpRequest,
+      endpointPolicy,
+      shouldAccountCircuitBreaker,
+      blocked,
+    };
+  }
+
+  /**
+   * 串行转发路径中单次 attempt 失败后的决策与副作用（熔断、决策链、亲和墓碑、端点失败统计、
+   * 反应式整流）。本地串行循环与 edge 执行器（/api/internal/edge/next）共用同一张决策表。
+   *
+   * 返回动作而不是直接 throw/continue/break：
+   * - throw：终止请求，调用方抛出 error
+   * - retry：同供应商重试（调用方等待 delayMs，按 advanceEndpoint 推进端点游标）
+   * - switch_provider：当前供应商已记入 failedProviderIds，调用方切换供应商
+   */
+  static async handleSerialAttemptFailure(
+    context: SerialAttemptFailureContext
+  ): Promise<SerialAttemptFailureDecision> {
+    const {
+      session,
+      provider: currentProvider,
+      error: lastError,
+      activeEndpoint,
+      endpointAudit,
+      endpointPolicy,
+      attemptCount,
+      maxAttemptsPerProvider,
+      totalProvidersAttempted,
+      rawCrossProviderFallbackEnabled,
+      shouldSkipRawRetryAndProviderSwitch,
+      shouldAccountCircuitBreaker,
+      isMcpRequest,
+      endpointCandidateKeys,
+      timedOutEndpointKeys,
+      failedProviderIds,
+      reactiveRectifierRetryState,
+      currentEndpointIndex,
+      endpointCandidateCount,
+      attemptDispatched,
+      attemptFirstByteSeen,
+      getAttemptElapsedMs,
+    } = context;
+    const applyReactiveRectifier = context.applyReactiveRectifier ?? tryApplyReactiveRectifier;
+
+    // ⭐ 1. 分类错误（供应商错误 vs 系统错误 vs 客户端中断）
+    // 使用异步版本确保错误规则已加载
+    let errorCategory = await categorizeErrorAsync(lastError);
+    // 上游额度：402 / 429 余额不足 -> 被动标记该供应商额度耗尽（fire-and-forget，不影响重试）
+    if (!session.isProbeRequest?.()) {
+      void maybeMarkUpstreamQuotaExhausted(currentProvider, lastError);
+    }
+    const databaseError = findSafeDatabaseError(lastError);
+    if (databaseError) {
+      errorCategory = ErrorCategory.LOCAL_OVERLOAD;
+    }
+    if (errorCategory === ErrorCategory.LOCAL_OVERLOAD && !databaseError)
+      return { action: "throw", error: lastError };
+
+    // F3a：亲和提名的供应商发生供应商侧失败 -> 定向写墓碑（短 TTL 自愈防羊群）
+    // request-scoped 的空完成不算供应商侧失败：写墓碑会让后续请求绕开健康的粘性供应商
+    if (
+      (errorCategory === ErrorCategory.PROVIDER_ERROR ||
+        errorCategory === ErrorCategory.RESOURCE_NOT_FOUND) &&
+      !isRequestScopedGateFailure(lastError)
+    ) {
+      void retainRequestMemoryUntil(
+        tombstoneAffinityOnFailure(session, currentProvider.id),
+        "affinity-tombstone"
+      );
+    }
+    const errorMessage =
+      databaseError?.message ??
+      (lastError instanceof ProxyError ? lastError.getDetailedErrorMessage() : lastError.message);
+
+    const isTimeoutError = lastError instanceof ProxyError && lastError.statusCode === 524;
+
+    if (isTimeoutError) {
+      timedOutEndpointKeys.add(
+        buildEndpointAttemptKey(activeEndpoint.endpointId, activeEndpoint.baseUrl)
+      );
+    }
+
+    if (!databaseError && activeEndpoint.endpointId != null) {
+      if (isTimeoutError || errorCategory === ErrorCategory.SYSTEM_ERROR) {
+        await recordEndpointFailure(activeEndpoint.endpointId, lastError);
+      }
+    }
+
+    // ⭐ 2. 客户端中断处理（不计入熔断器，不重试，立即返回）
+    if (errorCategory === ErrorCategory.CLIENT_ABORT) {
+      logger.warn("ProxyForwarder: Client aborted, stopping immediately", {
+        providerId: currentProvider.id,
+        providerName: currentProvider.name,
+        attemptNumber: attemptCount,
+        totalProvidersAttempted,
+      });
+
+      const elapsedMs = getAttemptElapsedMs();
+      const thresholdMs =
+        currentProvider.firstByteTimeoutStreamingMs > 0
+          ? currentProvider.firstByteTimeoutStreamingMs
+          : CLIENT_ABORT_HEALTH_FALLBACK_THRESHOLD_MS;
+      const qualifiesForHealth =
+        attemptDispatched &&
+        !attemptFirstByteSeen &&
+        elapsedMs >= thresholdMs &&
+        endpointPolicy.allowCircuitBreakerAccounting;
+
+      if (qualifiesForHealth) {
+        const abortFailure = new ProxyError(
+          "Client aborted while provider was waiting for the first byte",
+          499,
+          undefined,
+          true
+        );
+        await recordFailure(currentProvider.id, abortFailure).catch((healthError) => {
+          logger.warn("ProxyForwarder: Failed to account serial client abort health", {
+            providerId: currentProvider.id,
+            error: healthError instanceof Error ? healthError.message : String(healthError),
+          });
+        });
+        session.appendRoutingTraceEvent({
+          type: "client_abort_no_first_byte",
+          attemptId: `legacy-serial-${totalProvidersAttempted}-${attemptCount}`,
+          provider: {
+            id: currentProvider.id,
+            name: currentProvider.name,
+            priority: currentProvider.priority || 0,
+          },
+          outcome: "provider_failure",
+          cancellationKind: "client_abort",
+          reason: "external_client_abort",
+          effectiveThresholdMs: thresholdMs,
+          circuitAccountingApplied: true,
+          availabilityAccountingApplied: true,
+          durationMs: Math.round(elapsedMs),
+        });
+      }
+
+      await ProxyForwarder.clearSessionProviderBinding(session, currentProvider.id);
+
+      // 记录到决策链（标记为客户端中断）
+      session.addProviderToChain(currentProvider, {
+        ...endpointAudit,
+        reason: qualifiesForHealth ? "client_abort_no_first_byte" : "client_abort",
+        circuitState: getCircuitState(currentProvider.id),
+        attemptNumber: attemptCount,
+        errorMessage: "Client aborted request",
+        errorDetails: {
+          system: {
+            errorType: "ClientAbort",
+            errorName: "ClientAbort",
+            errorMessage: "Client aborted request",
+          },
+          request: buildRequestDetails(session),
+        },
+      });
+
+      return { action: "throw", error: lastError };
+    }
+
+    if (databaseError) {
+      const admission = findDbPoolAdmissionError(lastError);
+      logger.warn("ProxyForwarder: Local database operation failed", {
+        providerId: currentProvider.id,
+        providerName: currentProvider.name,
+        endpointId: activeEndpoint.endpointId,
+        pool: admission?.pool,
+        maxOutstanding: admission?.maxOutstanding,
+        attemptNumber: attemptCount,
+      });
+
+      session.addProviderToChain(currentProvider, {
+        ...endpointAudit,
+        reason: "system_error",
+        circuitState: getCircuitState(currentProvider.id),
+        attemptNumber: attemptCount,
+        errorMessage: databaseError.message,
+        errorDetails: {
+          system: {
+            errorType:
+              databaseError.kind === "admission" ? "DbPoolAdmissionError" : "DatabaseError",
+            errorName:
+              databaseError.kind === "admission" ? "DbPoolAdmissionError" : "DatabaseError",
+            errorMessage: databaseError.message,
+            errorCode: databaseError.code,
+          },
+          request: buildRequestDetails(session),
+        },
+      });
+
+      return { action: "throw", error: lastError };
+    }
+
+    // 2.5 Reactive rectifier：命中后对同供应商“整流 + 重试一次”
+    const reactiveRectifierResult = await applyReactiveRectifier({
+      error: lastError,
+      provider: currentProvider,
+      requestSession: session,
+      persistSession: session,
+      errorMessage,
+      attemptNumber: attemptCount,
+      retryAttemptNumber: attemptCount + 1,
+      retryState: reactiveRectifierRetryState,
+    });
+
+    if (reactiveRectifierResult.matched) {
+      if (!reactiveRectifierResult.applied) {
+        if (reactiveRectifierResult.reason === "not_applicable") {
+          logger.info(
+            `ProxyForwarder: ${getReactiveRectifierDisplayName(
+              reactiveRectifierResult.rectifierType
+            )} not applicable, skipping retry`,
+            {
+              providerId: currentProvider.id,
+              providerName: currentProvider.name,
+              trigger: reactiveRectifierResult.trigger,
+              attemptNumber: attemptCount,
+            }
+          );
+        }
+
+        errorCategory = ErrorCategory.NON_RETRYABLE_CLIENT_ERROR;
+      } else {
+        logger.info(
+          `ProxyForwarder: ${getReactiveRectifierDisplayName(
+            reactiveRectifierResult.rectifierType
+          )} applied, retrying`,
+          {
+            providerId: currentProvider.id,
+            providerName: currentProvider.name,
+            trigger: reactiveRectifierResult.trigger,
+            attemptNumber: attemptCount,
+            willRetryAttemptNumber: attemptCount + 1,
+          }
+        );
+
+        session.addProviderToChain(
+          currentProvider,
+          buildRetryFailedChainEntry(
+            currentProvider,
+            endpointAudit,
+            attemptCount,
+            lastError,
+            errorMessage,
+            reactiveRectifierResult.requestDetailsBeforeRectify,
+            rawCrossProviderFallbackEnabled
+          )
+        );
+
+        // 确保即使 maxAttemptsPerProvider=1 也能完成一次额外重试
+        return {
+          action: "retry",
+          delayMs: 0,
+          advanceEndpoint: false,
+          maxAttemptsPerProvider: Math.max(maxAttemptsPerProvider, attemptCount + 1),
+          rectifierType: reactiveRectifierResult.rectifierType,
+        };
+      }
+    }
+
+    // ⭐ 3. 不可重试的客户端输入错误处理（不计入熔断器，不重试，立即返回）
+    if (errorCategory === ErrorCategory.NON_RETRYABLE_CLIENT_ERROR) {
+      const detectionResult = await getErrorDetectionResultAsync(lastError);
+      const matchedRule = buildMatchedRuleDetails(detectionResult);
+      const matchedRuleLogContext = buildMatchedRuleLogContext(matchedRule);
+      const clientErrorChainEntry = buildClientErrorChainEntry(
+        currentProvider,
+        endpointAudit,
+        attemptCount,
+        lastError,
+        errorMessage,
+        buildRequestDetails(session),
+        matchedRule,
+        rawCrossProviderFallbackEnabled
+      );
+
+      if (lastError instanceof ProxyError) {
+        // Original path: full ProxyError fields available
+        logger.warn("ProxyForwarder: Non-retryable client error, stopping immediately", {
+          providerId: currentProvider.id,
+          providerName: currentProvider.name,
+          statusCode: lastError.statusCode,
+          statusCodeInferred: lastError.upstreamError?.statusCodeInferred ?? false,
+          error: errorMessage,
+          attemptNumber: attemptCount,
+          totalProvidersAttempted,
+          reason:
+            "White-listed client error (prompt length, content filter, PDF limit, or thinking format)",
+          ...matchedRuleLogContext,
+        });
+      } else {
+        // Plain Error path: omit ProxyError-only fields
+        logger.warn(
+          "ProxyForwarder: Non-retryable client error (plain error), stopping immediately",
+          {
+            providerId: currentProvider.id,
+            providerName: currentProvider.name,
+            error: lastError.message,
+            attemptNumber: attemptCount,
+            totalProvidersAttempted,
+            reason: "White-listed client error matched by error rule",
+            ...matchedRuleLogContext,
+          }
+        );
+      }
+
+      // 记录到决策链（标记为不可重试的客户端错误）
+      // 注意：不调用 recordFailure()，因为这不是供应商的问题，是客户端输入问题
+      session.addProviderToChain(currentProvider, clientErrorChainEntry);
+
+      // 立即抛出错误，不重试，不切换供应商
+      // 白名单错误不计入熔断器，因为是客户端输入问题，不是供应商故障
+      return { action: "throw", error: lastError };
+    }
+
+    // ⭐ 4. 系统错误处理（不计入熔断器，先重试1次当前供应商）
+    if (errorCategory === ErrorCategory.SYSTEM_ERROR) {
+      const err = lastError as Error & {
+        code?: string; // Node.js 错误码：如 'ENOTFOUND'、'ECONNREFUSED'、'ETIMEDOUT'、'ECONNRESET'
+        errno?: number;
+        syscall?: string; // 系统调用：如 'getaddrinfo'、'connect'、'read'、'write'
+      };
+
+      logger.warn("ProxyForwarder: System/network error occurred", {
+        providerId: currentProvider.id,
+        providerName: currentProvider.name,
+        error: errorMessage,
+        attemptNumber: attemptCount,
+        totalProvidersAttempted,
+        willRetry: attemptCount < maxAttemptsPerProvider,
+      });
+
+      // 记录到决策链（不计入 failedProviderIds）
+      session.addProviderToChain(currentProvider, {
+        ...endpointAudit,
+        reason: "system_error",
+        circuitState: getCircuitState(currentProvider.id),
+        attemptNumber: attemptCount,
+        errorMessage: errorMessage,
+        errorDetails: {
+          system: {
+            errorType: err.constructor.name,
+            errorName: err.name,
+            errorMessage: err.message || err.name || "Unknown error",
+            errorCode: err.code,
+            errorSyscall: err.syscall,
+            errorStack: err.stack?.split("\n").slice(0, 3).join("\n"),
+          },
+          request: buildRequestDetails(session),
+        },
+      });
+
+      if (shouldSkipRawRetryAndProviderSwitch) {
+        logger.debug(
+          "ProxyForwarder: raw passthrough endpoint system error, skipping retry and provider switch",
+          {
+            providerId: currentProvider.id,
+            providerName: currentProvider.name,
+            error: errorMessage,
+            policyKind: endpointPolicy.kind,
+          }
+        );
+        return { action: "throw", error: lastError };
+      }
+
+      // 第1次失败：等待100ms后重试当前供应商
+      if (attemptCount < maxAttemptsPerProvider) {
+        // Network error: advance to next endpoint for retry
+        // This implements "endpoint stickiness" where network errors switch endpoints
+        // but non-network errors (PROVIDER_ERROR) keep the same endpoint
+        logger.debug("ProxyForwarder: Advancing endpoint index due to network error", {
+          providerId: currentProvider.id,
+          previousEndpointIndex: currentEndpointIndex,
+          newEndpointIndex: currentEndpointIndex + 1,
+          maxEndpointIndex: endpointCandidateCount - 1,
+        });
+
+        // Continue retry with next endpoint
+        return {
+          action: "retry",
+          delayMs: SERIAL_RETRY_DELAY_MS,
+          advanceEndpoint: true,
+          maxAttemptsPerProvider,
+        };
+      }
+
+      // 第2次失败：跳出内层循环，切换供应商
+      logger.warn("ProxyForwarder: System error persists, will switch provider", {
+        providerId: currentProvider.id,
+        providerName: currentProvider.name,
+        totalProvidersAttempted,
+      });
+
+      // ⭐ 检查是否启用了网络错误计入熔断器
+      const env = getEnvConfig();
+
+      // 无论是否计入熔断器，都要加入 failedProviderIds（避免重复选择同一供应商）
+      ProxyForwarder.markProviderFailed(session, failedProviderIds, currentProvider.id);
+
+      if (env.ENABLE_CIRCUIT_BREAKER_ON_NETWORK_ERRORS) {
+        logger.warn(
+          "ProxyForwarder: Network error will be counted towards circuit breaker (enabled by config)",
+          {
+            providerId: currentProvider.id,
+            providerName: currentProvider.name,
+            errorType: err.constructor.name,
+            errorCode: err.code,
+          }
+        );
+
+        // 计入熔断器
+        if (shouldAccountCircuitBreaker) {
+          await recordFailure(currentProvider.id, lastError);
+        }
+      } else {
+        logger.debug(
+          "ProxyForwarder: Network error not counted towards circuit breaker (disabled by default)",
+          {
+            providerId: currentProvider.id,
+            providerName: currentProvider.name,
+          }
+        );
+      }
+
+      return { action: "switch_provider" };
+    }
+
+    // 5. 上游 404 错误处理（不计入熔断器；Provider 局部模型缺口直接切换）
+    if (errorCategory === ErrorCategory.RESOURCE_NOT_FOUND) {
+      const proxyError = lastError as ProxyError;
+      const providerLocalModelUnavailable = isProviderLocalModelUnavailableError(proxyError);
+      const willRetry = !providerLocalModelUnavailable && attemptCount < maxAttemptsPerProvider;
+
+      logger.warn("ProxyForwarder: Upstream 404 error", {
+        providerId: currentProvider.id,
+        providerName: currentProvider.name,
+        statusCode: 404,
+        statusCodeInferred: proxyError.upstreamError?.statusCodeInferred ?? false,
+        error: errorMessage,
+        attemptNumber: attemptCount,
+        totalProvidersAttempted,
+        willRetry,
+        providerLocalModelUnavailable,
+      });
+
+      // 记录到决策链（标记为 resource_not_found，不计入熔断）
+      session.addProviderToChain(currentProvider, {
+        ...endpointAudit,
+        reason: "resource_not_found",
+        circuitState: getCircuitState(currentProvider.id),
+        attemptNumber: attemptCount,
+        rawCrossProviderFallbackEnabled: rawCrossProviderFallbackEnabled || undefined,
+        errorMessage: errorMessage,
+        statusCode: 404,
+        statusCodeInferred: proxyError.upstreamError?.statusCodeInferred ?? false,
+        errorDetails: {
+          provider: rawCrossProviderFallbackEnabled
+            ? {
+                id: currentProvider.id,
+                name: currentProvider.name,
+                statusCode: 404,
+                statusText: proxyError.message,
+              }
+            : {
+                id: currentProvider.id,
+                name: currentProvider.name,
+                statusCode: 404,
+                statusText: proxyError.message,
+                upstreamBody: proxyError.upstreamError?.body,
+                upstreamParsed: proxyError.upstreamError?.parsed,
+              },
+          request: buildRequestDetails(session),
+        },
+      });
+
+      if (shouldSkipRawRetryAndProviderSwitch) {
+        logger.debug(
+          "ProxyForwarder: raw passthrough endpoint 404, skipping retry and provider switch",
+          {
+            providerId: currentProvider.id,
+            providerName: currentProvider.name,
+            error: errorMessage,
+            policyKind: endpointPolicy.kind,
+          }
+        );
+        return { action: "throw", error: lastError };
+      }
+
+      // 不调用 recordFailure()，不计入熔断器
+
+      // 未耗尽重试次数：等待 100ms 后继续重试当前供应商
+      if (willRetry) {
+        return {
+          action: "retry",
+          delayMs: SERIAL_RETRY_DELAY_MS,
+          advanceEndpoint: false,
+          maxAttemptsPerProvider,
+        };
+      }
+
+      // 重试耗尽：加入失败列表并切换供应商
+      ProxyForwarder.markProviderFailed(session, failedProviderIds, currentProvider.id);
+      return { action: "switch_provider" };
+    }
+
+    // ⭐ 6. 供应商错误处理（所有 4xx/5xx HTTP 错误 + 空响应错误，计入熔断器，重试耗尽后切换）
+    if (errorCategory === ErrorCategory.PROVIDER_ERROR) {
+      // 🆕 空响应错误特殊处理（EmptyResponseError 不是 ProxyError）
+      if (isEmptyResponseError(lastError)) {
+        const emptyError = lastError as EmptyResponseError;
+        const willRetry = attemptCount < maxAttemptsPerProvider;
+
+        logger.warn("ProxyForwarder: Empty response detected", {
+          providerId: currentProvider.id,
+          providerName: currentProvider.name,
+          reason: emptyError.reason,
+          error: emptyError.message,
+          attemptNumber: attemptCount,
+          totalProvidersAttempted,
+          willRetry,
+        });
+
+        // 获取熔断器健康信息
+        const { health, config } = await getProviderHealthInfo(currentProvider.id);
+
+        // 记录到决策链
+        session.addProviderToChain(currentProvider, {
+          ...endpointAudit,
+          reason: "retry_failed",
+          circuitState: getCircuitState(currentProvider.id),
+          attemptNumber: attemptCount,
+          rawCrossProviderFallbackEnabled: rawCrossProviderFallbackEnabled || undefined,
+          errorMessage: emptyError.message,
+          circuitFailureCount: health.failureCount + 1,
+          circuitFailureThreshold: config.failureThreshold,
+          statusCode: 520, // Web Server Returned an Unknown Error
+          errorDetails: {
+            provider: {
+              id: currentProvider.id,
+              name: currentProvider.name,
+              statusCode: 520,
+              statusText: `Empty response: ${emptyError.reason}`,
+            },
+            request: buildRequestDetails(session),
+          },
+        });
+
+        if (shouldSkipRawRetryAndProviderSwitch) {
+          logger.debug(
+            "ProxyForwarder: raw passthrough empty response, skipping retry and provider switch",
+            {
+              providerId: currentProvider.id,
+              providerName: currentProvider.name,
+              error: emptyError.message,
+              policyKind: endpointPolicy.kind,
+            }
+          );
+          return { action: "throw", error: lastError };
+        }
+
+        // 未耗尽重试次数：等待 100ms 后继续重试当前供应商
+        if (willRetry) {
+          return {
+            action: "retry",
+            delayMs: SERIAL_RETRY_DELAY_MS,
+            advanceEndpoint: false,
+            maxAttemptsPerProvider,
+          };
+        }
+
+        // 重试耗尽：计入熔断器并切换供应商
+        if (!session.isProbeRequest()) {
+          if (shouldAccountCircuitBreaker) {
+            await recordFailure(currentProvider.id, lastError);
+          }
+        }
+
+        ProxyForwarder.markProviderFailed(session, failedProviderIds, currentProvider.id);
+        return { action: "switch_provider" };
+      }
+
+      // 常规 ProxyError 处理
+      const proxyError = lastError as ProxyError;
+      const statusCode = proxyError.statusCode;
+      const willRetry = attemptCount < maxAttemptsPerProvider;
+
+      if (
+        !isMcpRequest &&
+        statusCode === 524 &&
+        currentProvider.providerVendorId &&
+        endpointCandidateKeys.size > 0 &&
+        timedOutEndpointKeys.size >= endpointCandidateKeys.size &&
+        !willRetry
+      ) {
+        // Record to decision chain BEFORE triggering vendor-type circuit breaker
+        session.addProviderToChain(currentProvider, {
+          ...endpointAudit,
+          reason: "vendor_type_all_timeout",
+          attemptNumber: attemptCount,
+          rawCrossProviderFallbackEnabled: rawCrossProviderFallbackEnabled || undefined,
+          statusCode: 524,
+          errorMessage: errorMessage,
+          errorDetails: {
+            provider: rawCrossProviderFallbackEnabled
+              ? {
+                  id: currentProvider.id,
+                  name: currentProvider.name,
+                  statusCode: 524,
+                  statusText: proxyError.message,
+                }
+              : {
+                  id: currentProvider.id,
+                  name: currentProvider.name,
+                  statusCode: 524,
+                  statusText: proxyError.message,
+                  upstreamBody: proxyError.upstreamError?.body,
+                  upstreamParsed: proxyError.upstreamError?.parsed,
+                },
+            request: buildRequestDetails(session),
+          },
+        });
+
+        await recordVendorTypeAllEndpointsTimeout(
+          currentProvider.providerVendorId,
+          currentProvider.providerType
+        );
+        ProxyForwarder.markProviderFailed(session, failedProviderIds, currentProvider.id);
+        return { action: "switch_provider" };
+      }
+
+      // Raw passthrough endpoints: no circuit breaker, no provider switch, no retry
+      if (!endpointPolicy.allowRetry && !rawCrossProviderFallbackEnabled) {
+        logger.debug(
+          "ProxyForwarder: raw passthrough endpoint error, skipping circuit breaker and provider switch",
+          {
+            providerId: currentProvider.id,
+            providerName: currentProvider.name,
+            statusCode,
+            error: proxyError.message,
+            policyKind: endpointPolicy.kind,
+          }
+        );
+        // Throw immediately: no retry, no provider switch
+        return { action: "throw", error: lastError };
+      }
+
+      logger.warn("ProxyForwarder: Provider error occurred", {
+        providerId: currentProvider.id,
+        providerName: currentProvider.name,
+        statusCode: statusCode,
+        statusCodeInferred: proxyError.upstreamError?.statusCodeInferred ?? false,
+        error: errorMessage,
+        attemptNumber: attemptCount,
+        totalProvidersAttempted,
+        willRetry,
+      });
+
+      // 获取熔断器健康信息（用于决策链显示）
+      const { health, config } = await getProviderHealthInfo(currentProvider.id);
+
+      // 记录到决策链
+      session.addProviderToChain(currentProvider, {
+        ...endpointAudit,
+        reason: "retry_failed",
+        circuitState: getCircuitState(currentProvider.id),
+        attemptNumber: attemptCount,
+        rawCrossProviderFallbackEnabled: rawCrossProviderFallbackEnabled || undefined,
+        errorMessage: errorMessage,
+        circuitFailureCount: health.failureCount + 1, // 包含本次失败
+        circuitFailureThreshold: config.failureThreshold,
+        statusCode: statusCode,
+        statusCodeInferred: proxyError.upstreamError?.statusCodeInferred ?? false,
+        errorDetails: {
+          provider: rawCrossProviderFallbackEnabled
+            ? {
+                id: currentProvider.id,
+                name: currentProvider.name,
+                statusCode: statusCode,
+                statusText: proxyError.message,
+              }
+            : {
+                id: currentProvider.id,
+                name: currentProvider.name,
+                statusCode: statusCode,
+                statusText: proxyError.message,
+                upstreamBody: proxyError.upstreamError?.body,
+                upstreamParsed: proxyError.upstreamError?.parsed,
+              },
+          request: buildRequestDetails(session),
+        },
+      });
+
+      // 未耗尽重试次数：等待 100ms 后继续重试当前供应商
+      if (willRetry) {
+        if (statusCode === 524) {
+          logger.debug("ProxyForwarder: Advancing endpoint index due to upstream timeout", {
+            providerId: currentProvider.id,
+            previousEndpointIndex: currentEndpointIndex,
+            newEndpointIndex: currentEndpointIndex + 1,
+            maxEndpointIndex: endpointCandidateCount - 1,
+          });
+        }
+
+        return {
+          action: "retry",
+          delayMs: SERIAL_RETRY_DELAY_MS,
+          advanceEndpoint: statusCode === 524,
+          maxAttemptsPerProvider,
+        };
+      }
+
+      // ⭐ 重试耗尽：只有非探测请求才计入熔断器
+      if (session.isProbeRequest()) {
+        logger.debug("ProxyForwarder: Probe request error, skipping circuit breaker", {
+          providerId: currentProvider.id,
+          providerName: currentProvider.name,
+          messagesCount: session.getMessagesLength(),
+        });
+      } else {
+        // 门控的 empty_stream 由请求内容决定，不计入供应商健康度（仍 failover）
+        if (shouldAccountCircuitBreaker && !isRequestScopedGateFailure(lastError)) {
+          await recordFailure(currentProvider.id, lastError);
+        }
+      }
+
+      // 加入失败列表并切换供应商
+      ProxyForwarder.markProviderFailed(session, failedProviderIds, currentProvider.id);
+      return { action: "switch_provider" };
+    }
+
+    // 所有分类均已在上方处理；保持与历史循环一致的兜底：直接进入下一次尝试
+    return { action: "retry", delayMs: 0, advanceEndpoint: false, maxAttemptsPerProvider };
   }
 
   /**
@@ -3965,7 +4200,7 @@ export class ProxyForwarder {
     // 1. 首包/总响应超时：根据请求类型选择
     const responseController = new AbortController();
     let responseTimeoutMs: number;
-    let responseTimeoutType: string;
+    let responseTimeoutType: "streaming_first_byte" | "non_streaming_total";
 
     if (isStreaming) {
       // 流式请求：使用首字节超时（快速失败）
@@ -4031,30 +4266,7 @@ export class ProxyForwarder {
       scheduleResponseTimeout("stream_gate_budget_resume", responseTimeoutRemainingMs);
     };
     const buildResponseTimeoutError = () =>
-      new ProxyError(
-        `${responseTimeoutType === "streaming_first_byte" ? "供应商首字节响应超时" : "供应商响应超时"}: ${responseTimeoutMs}ms 内未收到数据`,
-        524,
-        {
-          body: JSON.stringify({
-            error: {
-              type: "timeout_error",
-              message: `Provider failed to respond within ${responseTimeoutMs}ms`,
-              timeout_type: responseTimeoutType,
-              timeout_ms: responseTimeoutMs,
-            },
-          }),
-          parsed: {
-            error: {
-              type: "timeout_error",
-              message: `Provider failed to respond within ${responseTimeoutMs}ms`,
-              timeout_type: responseTimeoutType,
-              timeout_ms: responseTimeoutMs,
-            },
-          },
-          providerId: provider.id,
-          providerName: provider.name,
-        }
-      );
+      buildProviderResponseTimeoutError(provider, responseTimeoutType, responseTimeoutMs);
 
     if (responseTimeoutMs > 0) {
       scheduleResponseTimeout("initial");

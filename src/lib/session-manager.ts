@@ -899,12 +899,15 @@ export class SessionManager {
    * @param keyId - API Key ID
    * @param messages - 消息数组
    * @param clientSessionId - 客户端传递的 session_id（可选）
+   * @param precomputedContentHash - 预计算的 messages 内容哈希（edge 会话只持有合成请求体，
+   *   由远端按 calculateMessagesHash 同算法计算）；传入时不再基于 messages 计算
    * @returns session_id
    */
   static async getOrCreateSessionId(
     keyId: number,
     messages: unknown,
-    clientSessionId?: string | null
+    clientSessionId?: string | null,
+    precomputedContentHash?: string | null
   ): Promise<string> {
     const redis = getRedisClient();
 
@@ -936,7 +939,10 @@ export class SessionManager {
         messagesLength: Array.isArray(messages) ? messages.length : 0,
       }
     );
-    const contentHash = SessionManager.calculateMessagesHash(messages);
+    const contentHash =
+      precomputedContentHash !== undefined
+        ? precomputedContentHash
+        : SessionManager.calculateMessagesHash(messages);
     if (!contentHash) {
       // 降级：无法计算哈希，生成新 session
       const newId = SessionManager.generateSessionId();
