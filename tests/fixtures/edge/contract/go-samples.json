@@ -1,0 +1,387 @@
+{
+  "complete": {
+    "requestId": 1,
+    "edgeToken": "tttttttttttttttttttttttttttttttt",
+    "winner": {
+      "stepId": "1:1:1",
+      "upstreamStatus": 200,
+      "responseHeaders": [
+        [
+          "content-type",
+          "text/event-stream"
+        ]
+      ],
+      "isStreaming": true,
+      "streamEndedNormally": true,
+      "clientAborted": false,
+      "abortReason": null,
+      "firstByteSeen": true,
+      "sseEventCount": 3,
+      "compactSse": "event: message_stop\ndata: {}\n\n",
+      "compactTruncated": false,
+      "nonStreamBody": null,
+      "protocol": {
+        "sawContent": true,
+        "sawTerminal": true,
+        "sawIncomplete": false,
+        "observationIncomplete": false,
+        "failure": {
+          "verdict": "error",
+          "eventName": "error",
+          "afterContent": false,
+          "sawMalformed": false
+        }
+      },
+      "gateCommit": {
+        "frameIndex": 2,
+        "chunkIndex": 1,
+        "eventName": "content_block_delta",
+        "bufferedBytes": 10,
+        "echoExcludedBytes": 0,
+        "gateWaitMs": 3
+      },
+      "fixer": {
+        "hit": true,
+        "fixersApplied": [
+          {
+            "fixer": "sse",
+            "applied": true
+          }
+        ],
+        "totalBytesProcessed": 0,
+        "processingTimeMs": 0
+      },
+      "timing": {
+        "dispatchedAtMs": 1000,
+        "firstByteAtMs": 1100,
+        "firstTokenAtMs": 1200,
+        "endedAtMs": 2000,
+        "healthElapsedMs": 1000
+      },
+      "bytesToClient": 42
+    },
+    "losers": []
+  },
+  "complete_non_stream": {
+    "requestId": 2,
+    "edgeToken": "tttttttttttttttttttttttttttttttt",
+    "winner": {
+      "stepId": "2:1:1",
+      "upstreamStatus": 200,
+      "responseHeaders": [],
+      "isStreaming": false,
+      "streamEndedNormally": false,
+      "clientAborted": false,
+      "abortReason": "CLIENT_ABORTED",
+      "firstByteSeen": false,
+      "sseEventCount": 0,
+      "compactSse": "",
+      "compactTruncated": false,
+      "nonStreamBody": {
+        "text": "{\"usage\":{}}",
+        "truncated": false
+      },
+      "protocol": null,
+      "gateCommit": null,
+      "fixer": null,
+      "timing": {
+        "dispatchedAtMs": 1,
+        "firstByteAtMs": null,
+        "firstTokenAtMs": null,
+        "endedAtMs": 2,
+        "healthElapsedMs": 0
+      },
+      "bytesToClient": 0
+    },
+    "losers": [
+      {
+        "stepId": "2:2:1",
+        "upstreamStatus": 200,
+        "drainComplete": false,
+        "meteringText": "",
+        "endedAtMs": 3
+      }
+    ]
+  },
+  "heartbeat": {
+    "requestId": 1,
+    "edgeToken": "tttttttttttttttttttttttttttttttt",
+    "bytesForwarded": 10
+  },
+  "next_failure_client_abort": {
+    "requestId": 1,
+    "edgeToken": "tttttttttttttttttttttttttttttttt",
+    "stepId": "1:1:1",
+    "event": {
+      "dispatched": true,
+      "failure": {
+        "kind": "client_abort"
+      },
+      "firstByteSeen": false,
+      "opResults": {
+        "billingHeader": {
+          "removedCount": 1,
+          "extractedValues": [
+            "x"
+          ]
+        }
+      },
+      "timing": {
+        "dispatchedAtMs": 1000,
+        "firstByteAtMs": null,
+        "endedAtMs": 1500,
+        "healthElapsedMs": 500
+      },
+      "type": "failure"
+    }
+  },
+  "next_failure_empty_response": {
+    "requestId": 1,
+    "edgeToken": "tttttttttttttttttttttttttttttttt",
+    "stepId": "1:1:1",
+    "event": {
+      "dispatched": true,
+      "failure": {
+        "kind": "empty_response",
+        "reason": "empty_body"
+      },
+      "firstByteSeen": false,
+      "opResults": {
+        "billingHeader": {
+          "removedCount": 1,
+          "extractedValues": [
+            "x"
+          ]
+        }
+      },
+      "timing": {
+        "dispatchedAtMs": 1000,
+        "firstByteAtMs": null,
+        "endedAtMs": 1500,
+        "healthElapsedMs": 500
+      },
+      "type": "failure"
+    }
+  },
+  "next_failure_gate": {
+    "requestId": 1,
+    "edgeToken": "tttttttttttttttttttttttttttttttt",
+    "stepId": "1:1:1",
+    "event": {
+      "dispatched": true,
+      "failure": {
+        "bufferedBytes": 10,
+        "echoExcludedBytes": 0,
+        "frameData": "{}",
+        "framesSeen": 1,
+        "inferenceText": "{}",
+        "kind": "gate",
+        "reason": "gate_error",
+        "terminalBeforeContent": false
+      },
+      "firstByteSeen": false,
+      "opResults": {
+        "billingHeader": {
+          "removedCount": 1,
+          "extractedValues": [
+            "x"
+          ]
+        }
+      },
+      "timing": {
+        "dispatchedAtMs": 1000,
+        "firstByteAtMs": null,
+        "endedAtMs": 1500,
+        "healthElapsedMs": 500
+      },
+      "type": "failure"
+    }
+  },
+  "next_failure_invalid_step": {
+    "requestId": 1,
+    "edgeToken": "tttttttttttttttttttttttttttttttt",
+    "stepId": "1:1:1",
+    "event": {
+      "dispatched": true,
+      "failure": {
+        "kind": "invalid_step",
+        "message": "unknown op"
+      },
+      "firstByteSeen": false,
+      "opResults": {
+        "billingHeader": {
+          "removedCount": 1,
+          "extractedValues": [
+            "x"
+          ]
+        }
+      },
+      "timing": {
+        "dispatchedAtMs": 1000,
+        "firstByteAtMs": null,
+        "endedAtMs": 1500,
+        "healthElapsedMs": 500
+      },
+      "type": "failure"
+    }
+  },
+  "next_failure_local_capacity": {
+    "requestId": 1,
+    "edgeToken": "tttttttttttttttttttttttttttttttt",
+    "stepId": "1:1:1",
+    "event": {
+      "dispatched": true,
+      "failure": {
+        "kind": "local_capacity",
+        "message": "full"
+      },
+      "firstByteSeen": false,
+      "opResults": {
+        "billingHeader": {
+          "removedCount": 1,
+          "extractedValues": [
+            "x"
+          ]
+        }
+      },
+      "timing": {
+        "dispatchedAtMs": 1000,
+        "firstByteAtMs": null,
+        "endedAtMs": 1500,
+        "healthElapsedMs": 500
+      },
+      "type": "failure"
+    }
+  },
+  "next_failure_timeout": {
+    "requestId": 1,
+    "edgeToken": "tttttttttttttttttttttttttttttttt",
+    "stepId": "1:1:1",
+    "event": {
+      "dispatched": true,
+      "failure": {
+        "kind": "timeout",
+        "timeoutType": "streaming_first_byte"
+      },
+      "firstByteSeen": false,
+      "opResults": {
+        "billingHeader": {
+          "removedCount": 1,
+          "extractedValues": [
+            "x"
+          ]
+        }
+      },
+      "timing": {
+        "dispatchedAtMs": 1000,
+        "firstByteAtMs": null,
+        "endedAtMs": 1500,
+        "healthElapsedMs": 500
+      },
+      "type": "failure"
+    }
+  },
+  "next_failure_transport": {
+    "requestId": 1,
+    "edgeToken": "tttttttttttttttttttttttttttttttt",
+    "stepId": "1:1:1",
+    "event": {
+      "dispatched": true,
+      "failure": {
+        "code": "ECONNRESET",
+        "kind": "transport",
+        "message": "reset"
+      },
+      "firstByteSeen": false,
+      "opResults": {
+        "billingHeader": {
+          "removedCount": 1,
+          "extractedValues": [
+            "x"
+          ]
+        }
+      },
+      "timing": {
+        "dispatchedAtMs": 1000,
+        "firstByteAtMs": null,
+        "endedAtMs": 1500,
+        "healthElapsedMs": 500
+      },
+      "type": "failure"
+    }
+  },
+  "next_failure_upstream_status": {
+    "requestId": 1,
+    "edgeToken": "tttttttttttttttttttttttttttttttt",
+    "stepId": "1:1:1",
+    "event": {
+      "dispatched": true,
+      "failure": {
+        "bodyText": "{\"error\":{}}",
+        "bodyTruncated": false,
+        "headers": [
+          [
+            "content-type",
+            "application/json"
+          ]
+        ],
+        "kind": "upstream_status",
+        "status": 529,
+        "statusText": "Overloaded"
+      },
+      "firstByteSeen": false,
+      "opResults": {
+        "billingHeader": {
+          "removedCount": 1,
+          "extractedValues": [
+            "x"
+          ]
+        }
+      },
+      "timing": {
+        "dispatchedAtMs": 1000,
+        "firstByteAtMs": null,
+        "endedAtMs": 1500,
+        "healthElapsedMs": 500
+      },
+      "type": "failure"
+    }
+  },
+  "next_hedge_threshold": {
+    "requestId": 1,
+    "edgeToken": "tttttttttttttttttttttttttttttttt",
+    "stepId": "1:1:1",
+    "event": {
+      "type": "hedge_threshold"
+    }
+  },
+  "next_rectifier_not_applicable": {
+    "requestId": 1,
+    "edgeToken": "tttttttttttttttttttttttttttttttt",
+    "stepId": "1:1:2",
+    "event": {
+      "opResults": {
+        "thinkingSignature": {
+          "applied": false,
+          "removedThinkingBlocks": 0,
+          "removedRedactedThinkingBlocks": 0,
+          "removedSignatureFields": 0,
+          "removedTopLevelThinking": false
+        }
+      },
+      "type": "rectifier_not_applicable"
+    }
+  },
+  "next_suspect_2xx": {
+    "requestId": 1,
+    "edgeToken": "tttttttttttttttttttttttttttttttt",
+    "stepId": "1:1:1",
+    "event": {
+      "bodyText": "\u003chtml\u003e",
+      "bodyTruncated": false,
+      "headers": [],
+      "status": 200,
+      "type": "suspect_2xx"
+    }
+  }
+}

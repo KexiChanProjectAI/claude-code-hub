@@ -114,7 +114,8 @@
       "!**/dist",
       "!**/drizzle",
       "!**/docs-site",
-      "!src/lib/api-client/v1/openapi-types.gen.ts"
+      "!src/lib/api-client/v1/openapi-types.gen.ts",
+      "!tests/fixtures/edge"
     ]
   }
 }

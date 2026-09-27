@@ -92,3 +92,7 @@ tmp/
 .omx/
 .opencode/
 bunx-*/
+
+# Go edge executor build output
+edge/bin/
+edge/coverage.out

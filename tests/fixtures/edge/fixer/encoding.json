@@ -1,0 +1,79 @@
+[
+  {
+    "name": "valid_utf8_passthrough",
+    "inputB64": "SGVsbG8g5LiW55WM",
+    "expectedDataB64": "SGVsbG8g5LiW55WM",
+    "expectedApplied": false,
+    "expectedDetails": null
+  },
+  {
+    "name": "utf8_bom_stripped",
+    "inputB64": "77u/SGVsbG8=",
+    "expectedDataB64": "SGVsbG8=",
+    "expectedApplied": true,
+    "expectedDetails": "removed_utf8_bom"
+  },
+  {
+    "name": "utf16_bom_stripped",
+    "inputB64": "//5BAA==",
+    "expectedDataB64": "QQ==",
+    "expectedApplied": true,
+    "expectedDetails": "removed_utf16_bom"
+  },
+  {
+    "name": "null_bytes_stripped",
+    "inputB64": "SGUAbGxv",
+    "expectedDataB64": "SGVsbG8=",
+    "expectedApplied": true,
+    "expectedDetails": "removed_null_bytes"
+  },
+  {
+    "name": "invalid_utf8_lossy_fixed",
+    "inputB64": "wyhh",
+    "expectedDataB64": "77+9KGE=",
+    "expectedApplied": true,
+    "expectedDetails": "lossy_utf8_decode_encode"
+  },
+  {
+    "name": "overlong_lead_then_valid_continuation",
+    "inputB64": "4ICAYQ==",
+    "expectedDataB64": "77+977+977+9YQ==",
+    "expectedApplied": true,
+    "expectedDetails": "lossy_utf8_decode_encode"
+  },
+  {
+    "name": "truncated_multibyte_at_end",
+    "inputB64": "YeKC",
+    "expectedDataB64": "Ye+/vQ==",
+    "expectedApplied": true,
+    "expectedDetails": "lossy_utf8_decode_encode"
+  },
+  {
+    "name": "lone_continuation_byte",
+    "inputB64": "YYBi",
+    "expectedDataB64": "Ye+/vWI=",
+    "expectedApplied": true,
+    "expectedDetails": "lossy_utf8_decode_encode"
+  },
+  {
+    "name": "surrogate_range_rejected",
+    "inputB64": "7aCA",
+    "expectedDataB64": "77+977+977+9",
+    "expectedApplied": true,
+    "expectedDetails": "lossy_utf8_decode_encode"
+  },
+  {
+    "name": "f4_upper_boundary",
+    "inputB64": "9JCAgA==",
+    "expectedDataB64": "77+977+977+977+9",
+    "expectedApplied": true,
+    "expectedDetails": "lossy_utf8_decode_encode"
+  },
+  {
+    "name": "empty_input",
+    "inputB64": "",
+    "expectedDataB64": "",
+    "expectedApplied": false,
+    "expectedDetails": null
+  }
+]

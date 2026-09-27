@@ -1,0 +1,180 @@
+[
+  {
+    "name": "compaction content also counts as terminal completion",
+    "family": "openai-responses",
+    "chunks": [
+      "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[{\"type\":\"compaction\",\"encrypted_content\":\"opaque\"}]}}\n\n"
+    ],
+    "expected": {
+      "sawContent": true,
+      "sawTerminal": true,
+      "sawIncomplete": false,
+      "observationIncomplete": false,
+      "failure": null
+    }
+  },
+  {
+    "name": "gemini content with finishReason in same frame",
+    "family": "gemini",
+    "chunks": [
+      "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"done\"}]},\"finishReason\":\"STOP\"}]}\n"
+    ],
+    "expected": {
+      "sawContent": true,
+      "sawTerminal": true,
+      "sawIncomplete": false,
+      "observationIncomplete": false,
+      "failure": null
+    }
+  },
+  {
+    "name": "content then failure then terminal, EOF flush",
+    "family": "openai-responses",
+    "chunks": [
+      "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\n",
+      "event: response.failed\ndata: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\"}}\n\n",
+      "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}"
+    ],
+    "expected": {
+      "sawContent": true,
+      "sawTerminal": true,
+      "sawIncomplete": false,
+      "observationIncomplete": false,
+      "failure": {
+        "afterContent": true,
+        "verdict": "error",
+        "eventName": "response.failed"
+      }
+    }
+  },
+  {
+    "name": "malformed terminal-ish frame recorded as terminal failure",
+    "family": "anthropic",
+    "chunks": [
+      "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"ok\"}}\n\n",
+      "event: message_stop\ndata: {not-json}\n\n"
+    ],
+    "expected": {
+      "sawContent": true,
+      "sawTerminal": false,
+      "sawIncomplete": false,
+      "observationIncomplete": false,
+      "failure": {
+        "afterContent": true,
+        "verdict": "malformed",
+        "eventName": "message_stop"
+      }
+    }
+  },
+  {
+    "name": "explicit error overrides earlier malformed, keeps sawMalformed",
+    "family": "openai-responses",
+    "chunks": [
+      "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\n",
+      "event: response.in_progress\ndata: not-json\n\n",
+      "event: response.failed\ndata: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\"}}\n\n"
+    ],
+    "expected": {
+      "sawContent": true,
+      "sawTerminal": false,
+      "sawIncomplete": false,
+      "observationIncomplete": false,
+      "failure": {
+        "afterContent": true,
+        "verdict": "error",
+        "eventName": "response.failed",
+        "sawMalformed": true
+      }
+    }
+  },
+  {
+    "name": "tool metadata alone is not content",
+    "family": "anthropic",
+    "chunks": [
+      "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"content_block\":{\"type\":\"tool_use\",\"name\":\"lookup\"}}\n\n",
+      "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+    ],
+    "expected": {
+      "sawContent": false,
+      "sawTerminal": true,
+      "sawIncomplete": false,
+      "observationIncomplete": false,
+      "failure": null
+    }
+  },
+  {
+    "name": "content without terminal",
+    "family": "openai-chat",
+    "chunks": [
+      "data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\n"
+    ],
+    "expected": {
+      "sawContent": true,
+      "sawTerminal": false,
+      "sawIncomplete": false,
+      "observationIncomplete": false,
+      "failure": null
+    }
+  },
+  {
+    "name": "openai-chat DONE is success terminal",
+    "family": "openai-chat",
+    "chunks": [
+      "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n",
+      "data: [DONE]\n\n"
+    ],
+    "expected": {
+      "sawContent": true,
+      "sawTerminal": true,
+      "sawIncomplete": false,
+      "observationIncomplete": false,
+      "failure": null
+    }
+  },
+  {
+    "name": "responses incomplete via event name",
+    "family": "openai-responses",
+    "chunks": [
+      "event: response.incomplete\ndata: {\"type\":\"response.incomplete\",\"response\":{\"status\":\"incomplete\"}}\n\n"
+    ],
+    "expected": {
+      "sawContent": false,
+      "sawTerminal": false,
+      "sawIncomplete": true,
+      "observationIncomplete": false,
+      "failure": null
+    }
+  },
+  {
+    "name": "responses incomplete via bare data",
+    "family": "openai-responses",
+    "chunks": [
+      "data: {\"type\":\"response.incomplete\",\"response\":{\"status\":\"incomplete\"}}\n\n"
+    ],
+    "expected": {
+      "sawContent": false,
+      "sawTerminal": false,
+      "sawIncomplete": true,
+      "observationIncomplete": false,
+      "failure": null
+    }
+  },
+  {
+    "name": "finish flushes malformed frame with no terminating blank line",
+    "family": "openai-responses",
+    "chunks": [
+      "event: response.completed\ndata: not-json"
+    ],
+    "expected": {
+      "sawContent": false,
+      "sawTerminal": false,
+      "sawIncomplete": false,
+      "observationIncomplete": false,
+      "failure": {
+        "afterContent": false,
+        "verdict": "malformed",
+        "eventName": "response.completed"
+      }
+    }
+  }
+]

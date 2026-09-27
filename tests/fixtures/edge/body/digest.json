@@ -1,0 +1,1609 @@
+[
+  {
+    "name": "claude_basic_chain",
+    "body": "{\"model\":\"claude-sonnet-4-5\",\"system\":\"You are a helpful assistant.\",\"tools\":[{\"name\":\"read_file\",\"description\":\"Read a file\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}}}},{\"name\":\"bash\",\"description\":\"Run a command\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"cmd\":{\"type\":\"string\"}}}}],\"messages\":[{\"role\":\"user\",\"content\":\"hello\"},{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"hi there\"}]},{\"role\":\"user\",\"content\":\"next question\"}]}",
+    "path": "/v1/messages",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 475,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "claude-sonnet-4-5"
+      },
+      "messagesCount": 3,
+      "systemKind": "string",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "9413a7377e1fcd04",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "03aefa74dbffc401e2a8f03108891616",
+          "prefixBytes": 185
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "35631feb5ea784b1e998ece3aa1a5c41",
+            "prefixBytes": 201
+          },
+          {
+            "depth": 2,
+            "fp": "a37fdf4d05f82fa3e8a2629014846930",
+            "prefixBytes": 225
+          },
+          {
+            "depth": 3,
+            "fp": "ba222a266bee839ac94446076cb4daf0",
+            "prefixBytes": 249
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "claude_prefix_extended",
+    "body": "{\"model\":\"claude-sonnet-4-5\",\"system\":\"You are a helpful assistant.\",\"tools\":[{\"name\":\"read_file\",\"description\":\"Read a file\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}}}},{\"name\":\"bash\",\"description\":\"Run a command\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"cmd\":{\"type\":\"string\"}}}}],\"messages\":[{\"role\":\"user\",\"content\":\"hello\"},{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"hi there\"}]},{\"role\":\"user\",\"content\":\"next question\"},{\"role\":\"user\",\"content\":\"more\"}]}",
+    "path": "/v1/messages",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 508,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "claude-sonnet-4-5"
+      },
+      "messagesCount": 4,
+      "systemKind": "string",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "9413a7377e1fcd04",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "03aefa74dbffc401e2a8f03108891616",
+          "prefixBytes": 185
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "35631feb5ea784b1e998ece3aa1a5c41",
+            "prefixBytes": 201
+          },
+          {
+            "depth": 2,
+            "fp": "a37fdf4d05f82fa3e8a2629014846930",
+            "prefixBytes": 225
+          },
+          {
+            "depth": 3,
+            "fp": "ba222a266bee839ac94446076cb4daf0",
+            "prefixBytes": 249
+          },
+          {
+            "depth": 4,
+            "fp": "4a5b648c040ecaa72213080fb3458d49",
+            "prefixBytes": 264
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "claude_empty_messages",
+    "body": "{\"model\":\"claude-sonnet-4-5\",\"system\":\"You are a helpful assistant.\",\"tools\":[{\"name\":\"read_file\",\"description\":\"Read a file\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}}}},{\"name\":\"bash\",\"description\":\"Run a command\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"cmd\":{\"type\":\"string\"}}}}],\"messages\":[]}",
+    "path": "/v1/messages",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 333,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "claude-sonnet-4-5"
+      },
+      "messagesCount": 0,
+      "systemKind": "string",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": null,
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "03aefa74dbffc401e2a8f03108891616",
+          "prefixBytes": 185
+        },
+        "tail": []
+      }
+    }
+  },
+  {
+    "name": "claude_missing_system_and_tools",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}",
+    "path": "/v1/messages",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 48,
+      "bodyParseError": null,
+      "topLevel": {},
+      "messagesCount": 1,
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "2cf24dba5fb0a30e",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "ffe679bb831c95b67dc17819c63c5090",
+          "prefixBytes": 1
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "22ea0c6598e6a03b6d995e9a95f523e3",
+            "prefixBytes": 17
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "claude_empty_content_array_skipped",
+    "body": "{\"model\":\"claude-sonnet-4-5\",\"system\":\"You are a helpful assistant.\",\"tools\":[{\"name\":\"read_file\",\"description\":\"Read a file\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}}}},{\"name\":\"bash\",\"description\":\"Run a command\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"cmd\":{\"type\":\"string\"}}}}],\"messages\":[{\"role\":\"user\",\"content\":[]},{\"role\":\"user\",\"content\":\"hello\"}]}",
+    "path": "/v1/messages",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 395,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "claude-sonnet-4-5"
+      },
+      "messagesCount": 2,
+      "systemKind": "string",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "94582e26c4c46203",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "03aefa74dbffc401e2a8f03108891616",
+          "prefixBytes": 185
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "35631feb5ea784b1e998ece3aa1a5c41",
+            "prefixBytes": 201
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "claude_tool_use_id_stripped",
+    "body": "{\"model\":\"claude-sonnet-4-5\",\"system\":\"You are a helpful assistant.\",\"tools\":[{\"name\":\"read_file\",\"description\":\"Read a file\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}}}},{\"name\":\"bash\",\"description\":\"Run a command\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"cmd\":{\"type\":\"string\"}}}}],\"messages\":[{\"role\":\"user\",\"content\":\"hello\"},{\"role\":\"assistant\",\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu_aaa\",\"name\":\"read_file\",\"input\":{\"path\":\"a.ts\"}}]},{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"toolu_aaa\",\"content\":\"file body\"}]}]}",
+    "path": "/v1/messages",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 578,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "claude-sonnet-4-5"
+      },
+      "messagesCount": 3,
+      "systemKind": "string",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "74a8d599e4c84f57",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "03aefa74dbffc401e2a8f03108891616",
+          "prefixBytes": 185
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "35631feb5ea784b1e998ece3aa1a5c41",
+            "prefixBytes": 201
+          },
+          {
+            "depth": 2,
+            "fp": "00c2d6b7c9a92b22b1794e84d63cb963",
+            "prefixBytes": 246
+          },
+          {
+            "depth": 3,
+            "fp": "fb6091803da5f8bb132a8b91c2074875",
+            "prefixBytes": 273
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "claude_thinking_signature_not_hashed",
+    "body": "{\"model\":\"claude-sonnet-4-5\",\"system\":\"You are a helpful assistant.\",\"tools\":[{\"name\":\"read_file\",\"description\":\"Read a file\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}}}},{\"name\":\"bash\",\"description\":\"Run a command\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"cmd\":{\"type\":\"string\"}}}}],\"messages\":[{\"role\":\"user\",\"content\":\"hello\"},{\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"step by step\",\"signature\":\"sig-one\"}]}]}",
+    "path": "/v1/messages",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 467,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "claude-sonnet-4-5"
+      },
+      "messagesCount": 2,
+      "systemKind": "string",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "ecde74e5ec28f31f",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "03aefa74dbffc401e2a8f03108891616",
+          "prefixBytes": 185
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "35631feb5ea784b1e998ece3aa1a5c41",
+            "prefixBytes": 201
+          },
+          {
+            "depth": 2,
+            "fp": "86f360baf567db8231eda60f2853b39b",
+            "prefixBytes": 233
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "claude_unknown_block_type",
+    "body": "{\"model\":\"claude-sonnet-4-5\",\"system\":\"You are a helpful assistant.\",\"tools\":[{\"name\":\"read_file\",\"description\":\"Read a file\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}}}},{\"name\":\"bash\",\"description\":\"Run a command\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"cmd\":{\"type\":\"string\"}}}}],\"messages\":[{\"role\":\"user\",\"content\":\"hello\"},{\"role\":\"assistant\",\"content\":[{\"type\":\"server_tool_use\",\"id\":\"srvtoolu_1\",\"name\":\"web_search\",\"payload\":{\"q\":\"x\"}}]}]}",
+    "path": "/v1/messages",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 484,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "claude-sonnet-4-5"
+      },
+      "messagesCount": 2,
+      "systemKind": "string",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "ecde74e5ec28f31f",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "03aefa74dbffc401e2a8f03108891616",
+          "prefixBytes": 185
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "35631feb5ea784b1e998ece3aa1a5c41",
+            "prefixBytes": 201
+          },
+          {
+            "depth": 2,
+            "fp": "a81e8fcfaa71842090468d73dcf8f17c",
+            "prefixBytes": 294
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "claude_cache_control_boundary",
+    "body": "{\"model\":\"claude-sonnet-4-5\",\"system\":\"You are a helpful assistant.\",\"tools\":[{\"name\":\"read_file\",\"description\":\"Read a file\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}}}},{\"name\":\"bash\",\"description\":\"Run a command\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"cmd\":{\"type\":\"string\"}}}}],\"messages\":[{\"role\":\"user\",\"content\":\"hello\"},{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"long context\",\"cache_control\":{\"type\":\"ephemeral\"}}]}]}",
+    "path": "/v1/messages",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 469,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "claude-sonnet-4-5"
+      },
+      "messagesCount": 2,
+      "systemKind": "string",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "7b060394d68b951a",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "03aefa74dbffc401e2a8f03108891616",
+          "prefixBytes": 185
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "35631feb5ea784b1e998ece3aa1a5c41",
+            "prefixBytes": 201
+          },
+          {
+            "depth": 2,
+            "fp": "513743ddcf936dbabcd18c747e518f74",
+            "prefixBytes": 224,
+            "hasCacheControl": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "claude_window_truncation_70_messages",
+    "body": "{\"model\":\"claude-sonnet-4-5\",\"system\":\"You are a helpful assistant.\",\"tools\":[{\"name\":\"read_file\",\"description\":\"Read a file\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}}}},{\"name\":\"bash\",\"description\":\"Run a command\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"cmd\":{\"type\":\"string\"}}}}],\"messages\":[{\"role\":\"user\",\"content\":\"message 0\"},{\"role\":\"assistant\",\"content\":\"message 1\"},{\"role\":\"user\",\"content\":\"message 2\"},{\"role\":\"assistant\",\"content\":\"message 3\"},{\"role\":\"user\",\"content\":\"message 4\"},{\"role\":\"assistant\",\"content\":\"message 5\"},{\"role\":\"user\",\"content\":\"message 6\"},{\"role\":\"assistant\",\"content\":\"message 7\"},{\"role\":\"user\",\"content\":\"message 8\"},{\"role\":\"assistant\",\"content\":\"message 9\"},{\"role\":\"user\",\"content\":\"message 10\"},{\"role\":\"assistant\",\"content\":\"message 11\"},{\"role\":\"user\",\"content\":\"message 12\"},{\"role\":\"assistant\",\"content\":\"message 13\"},{\"role\":\"user\",\"content\":\"message 14\"},{\"role\":\"assistant\",\"content\":\"message 15\"},{\"role\":\"user\",\"content\":\"message 16\"},{\"role\":\"assistant\",\"content\":\"message 17\"},{\"role\":\"user\",\"content\":\"message 18\"},{\"role\":\"assistant\",\"content\":\"message 19\"},{\"role\":\"user\",\"content\":\"message 20\"},{\"role\":\"assistant\",\"content\":\"message 21\"},{\"role\":\"user\",\"content\":\"message 22\"},{\"role\":\"assistant\",\"content\":\"message 23\"},{\"role\":\"user\",\"content\":\"message 24\"},{\"role\":\"assistant\",\"content\":\"message 25\"},{\"role\":\"user\",\"content\":\"message 26\"},{\"role\":\"assistant\",\"content\":\"message 27\"},{\"role\":\"user\",\"content\":\"message 28\"},{\"role\":\"assistant\",\"content\":\"message 29\"},{\"role\":\"user\",\"content\":\"message 30\"},{\"role\":\"assistant\",\"content\":\"message 31\"},{\"role\":\"user\",\"content\":\"message 32\"},{\"role\":\"assistant\",\"content\":\"message 33\"},{\"role\":\"user\",\"content\":\"message 34\"},{\"role\":\"assistant\",\"content\":\"message 35\"},{\"role\":\"user\",\"content\":\"message 36\"},{\"role\":\"assistant\",\"content\":\"message 37\"},{\"role\":\"user\",\"content\":\"message 38\"},{\"role\":\"assistant\",\"content\":\"message 39\"},{\"role\":\"user\",\"content\":\"message 40\"},{\"role\":\"assistant\",\"content\":\"message 41\"},{\"role\":\"user\",\"content\":\"message 42\"},{\"role\":\"assistant\",\"content\":\"message 43\"},{\"role\":\"user\",\"content\":\"message 44\"},{\"role\":\"assistant\",\"content\":\"message 45\"},{\"role\":\"user\",\"content\":\"message 46\"},{\"role\":\"assistant\",\"content\":\"message 47\"},{\"role\":\"user\",\"content\":\"message 48\"},{\"role\":\"assistant\",\"content\":\"message 49\"},{\"role\":\"user\",\"content\":\"message 50\"},{\"role\":\"assistant\",\"content\":\"message 51\"},{\"role\":\"user\",\"content\":\"message 52\"},{\"role\":\"assistant\",\"content\":\"message 53\"},{\"role\":\"user\",\"content\":\"message 54\"},{\"role\":\"assistant\",\"content\":\"message 55\"},{\"role\":\"user\",\"content\":\"message 56\"},{\"role\":\"assistant\",\"content\":\"message 57\"},{\"role\":\"user\",\"content\":\"message 58\"},{\"role\":\"assistant\",\"content\":\"message 59\"},{\"role\":\"user\",\"content\":\"message 60\"},{\"role\":\"assistant\",\"content\":\"message 61\"},{\"role\":\"user\",\"content\":\"message 62\"},{\"role\":\"assistant\",\"content\":\"message 63\"},{\"role\":\"user\",\"content\":\"message 64\"},{\"role\":\"assistant\",\"content\":\"message 65\"},{\"role\":\"user\",\"content\":\"message 66\"},{\"role\":\"assistant\",\"content\":\"message 67\"},{\"role\":\"user\",\"content\":\"message 68\"},{\"role\":\"assistant\",\"content\":\"message 69\"}]}",
+    "path": "/v1/messages",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 3227,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "claude-sonnet-4-5"
+      },
+      "messagesCount": 70,
+      "systemKind": "string",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "cd80fe949c6f2b88",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "03aefa74dbffc401e2a8f03108891616",
+          "prefixBytes": 185
+        },
+        "tail": [
+          {
+            "depth": 7,
+            "fp": "ce1760733ab96ddfc68d8e0fbe8f264f",
+            "prefixBytes": 340
+          },
+          {
+            "depth": 8,
+            "fp": "b3c00c59addbff6f7e14a8873e6ecabf",
+            "prefixBytes": 365
+          },
+          {
+            "depth": 9,
+            "fp": "dcbd083e757e3bd33e37a58f044f7397",
+            "prefixBytes": 385
+          },
+          {
+            "depth": 10,
+            "fp": "e6e404597c45ec66bee9c16f78893ee1",
+            "prefixBytes": 410
+          },
+          {
+            "depth": 11,
+            "fp": "4415a4841ec83450f9327fb0a357d501",
+            "prefixBytes": 431
+          },
+          {
+            "depth": 12,
+            "fp": "800a79c91c779ec8b1f619988ed01132",
+            "prefixBytes": 457
+          },
+          {
+            "depth": 13,
+            "fp": "08772cc18804a7a24fa3c4c870155dfc",
+            "prefixBytes": 478
+          },
+          {
+            "depth": 14,
+            "fp": "2562e5fec1956b7a096de94473ff13ef",
+            "prefixBytes": 504
+          },
+          {
+            "depth": 15,
+            "fp": "156ef6efd49233300743296276708287",
+            "prefixBytes": 525
+          },
+          {
+            "depth": 16,
+            "fp": "a1f3571e255093a6ff14c2f4e6d904e0",
+            "prefixBytes": 551
+          },
+          {
+            "depth": 17,
+            "fp": "a34082669987c343f975e70dfcc4dee7",
+            "prefixBytes": 572
+          },
+          {
+            "depth": 18,
+            "fp": "e0fcff35ce6688d40e1256ebc238acc8",
+            "prefixBytes": 598
+          },
+          {
+            "depth": 19,
+            "fp": "8e02a452a101dd34d9991e0947237862",
+            "prefixBytes": 619
+          },
+          {
+            "depth": 20,
+            "fp": "2a3833d168a1639d252c92f17476d42b",
+            "prefixBytes": 645
+          },
+          {
+            "depth": 21,
+            "fp": "7414b890f4ff1f44972134552aa2a1f2",
+            "prefixBytes": 666
+          },
+          {
+            "depth": 22,
+            "fp": "add6970ea39089a5e8e098bf3da02dd9",
+            "prefixBytes": 692
+          },
+          {
+            "depth": 23,
+            "fp": "a7ed4b80a561728b7e4e887858acd84b",
+            "prefixBytes": 713
+          },
+          {
+            "depth": 24,
+            "fp": "ab045902ad1b0f43f450a8d5c7877bba",
+            "prefixBytes": 739
+          },
+          {
+            "depth": 25,
+            "fp": "4a2192b759a6423804364930c04640e5",
+            "prefixBytes": 760
+          },
+          {
+            "depth": 26,
+            "fp": "c17050af43ee8b083594b79819c6b4c4",
+            "prefixBytes": 786
+          },
+          {
+            "depth": 27,
+            "fp": "59b5dce7b9a0f7a30b68455c3bd4a15f",
+            "prefixBytes": 807
+          },
+          {
+            "depth": 28,
+            "fp": "a0f857f3ae604fa469896288c314e756",
+            "prefixBytes": 833
+          },
+          {
+            "depth": 29,
+            "fp": "0e6a3533705253f2b1232588d1d3213c",
+            "prefixBytes": 854
+          },
+          {
+            "depth": 30,
+            "fp": "6f6a9d092144585fc65174082e5fc4b2",
+            "prefixBytes": 880
+          },
+          {
+            "depth": 31,
+            "fp": "7b8ee03d09791be0b1343091d08a922a",
+            "prefixBytes": 901
+          },
+          {
+            "depth": 32,
+            "fp": "85e9b3e028ade59e9cc57046d09ba721",
+            "prefixBytes": 927
+          },
+          {
+            "depth": 33,
+            "fp": "7631dcef27a4dfa5703801c01d0e0404",
+            "prefixBytes": 948
+          },
+          {
+            "depth": 34,
+            "fp": "0f62c62e88b266f33bc0a8b59bb5ca56",
+            "prefixBytes": 974
+          },
+          {
+            "depth": 35,
+            "fp": "e80c4b4d8a6d97717b839b00c05d5e41",
+            "prefixBytes": 995
+          },
+          {
+            "depth": 36,
+            "fp": "c30e0b747394c0547af23aaff1f8880a",
+            "prefixBytes": 1021
+          },
+          {
+            "depth": 37,
+            "fp": "0f10740334cee3d692bbf95b55eda7fb",
+            "prefixBytes": 1042
+          },
+          {
+            "depth": 38,
+            "fp": "5f720b6c696541d4668e46fc9048cda7",
+            "prefixBytes": 1068
+          },
+          {
+            "depth": 39,
+            "fp": "693baf6c103b738a0e34cdbac96be416",
+            "prefixBytes": 1089
+          },
+          {
+            "depth": 40,
+            "fp": "88e1cd69f173ee7d24b6a0c6c92f79d1",
+            "prefixBytes": 1115
+          },
+          {
+            "depth": 41,
+            "fp": "9c86c47c311403b0817a20391f87b27e",
+            "prefixBytes": 1136
+          },
+          {
+            "depth": 42,
+            "fp": "c9f9415eed1fcd8118791e01c6718fb9",
+            "prefixBytes": 1162
+          },
+          {
+            "depth": 43,
+            "fp": "1d726148307b71f92681421a6954933d",
+            "prefixBytes": 1183
+          },
+          {
+            "depth": 44,
+            "fp": "75c220f1256c0d557dc0f2f2d74b4d15",
+            "prefixBytes": 1209
+          },
+          {
+            "depth": 45,
+            "fp": "957065d5f6f87b1fb02fc7095f31b074",
+            "prefixBytes": 1230
+          },
+          {
+            "depth": 46,
+            "fp": "37887ec8db707f872781ecf84310c247",
+            "prefixBytes": 1256
+          },
+          {
+            "depth": 47,
+            "fp": "f97c297771872378723e81a09b594103",
+            "prefixBytes": 1277
+          },
+          {
+            "depth": 48,
+            "fp": "1ca77809f1198591350c8c2ea4e206d7",
+            "prefixBytes": 1303
+          },
+          {
+            "depth": 49,
+            "fp": "678ea815dafad55348204f3880fe7711",
+            "prefixBytes": 1324
+          },
+          {
+            "depth": 50,
+            "fp": "261ad2a61283a38d6e6c9478b3a5d5c8",
+            "prefixBytes": 1350
+          },
+          {
+            "depth": 51,
+            "fp": "2aa43ab35d15e5afe85e32394ebf6b41",
+            "prefixBytes": 1371
+          },
+          {
+            "depth": 52,
+            "fp": "d634cfd0682392f58ea86fe808bee709",
+            "prefixBytes": 1397
+          },
+          {
+            "depth": 53,
+            "fp": "a5ffab84c18e727e67eec4b76989617a",
+            "prefixBytes": 1418
+          },
+          {
+            "depth": 54,
+            "fp": "e6c5a15b2b383f2c7fab5526a39185df",
+            "prefixBytes": 1444
+          },
+          {
+            "depth": 55,
+            "fp": "b9473a3ef46726309fddd3be0fce54ed",
+            "prefixBytes": 1465
+          },
+          {
+            "depth": 56,
+            "fp": "f4947c486a45043fb2881bad830073d1",
+            "prefixBytes": 1491
+          },
+          {
+            "depth": 57,
+            "fp": "eb153e2d33af87acdc590456b0abbd29",
+            "prefixBytes": 1512
+          },
+          {
+            "depth": 58,
+            "fp": "9e1752ea6f61f35e54ff488d6ee5ef53",
+            "prefixBytes": 1538
+          },
+          {
+            "depth": 59,
+            "fp": "03c39b057c87cdce23a4dd261efc98a3",
+            "prefixBytes": 1559
+          },
+          {
+            "depth": 60,
+            "fp": "796e6ee4658cf5e83905f166b9727ecc",
+            "prefixBytes": 1585
+          },
+          {
+            "depth": 61,
+            "fp": "de69419c9a61c9aab2c23fe179b3f5aa",
+            "prefixBytes": 1606
+          },
+          {
+            "depth": 62,
+            "fp": "8da2d175f174a3773285f7742e9a4f62",
+            "prefixBytes": 1632
+          },
+          {
+            "depth": 63,
+            "fp": "4f42e8a547b3c98d6ecfa6c83120fb87",
+            "prefixBytes": 1653
+          },
+          {
+            "depth": 64,
+            "fp": "e234bcb70e8de5873940a093269bd4b0",
+            "prefixBytes": 1679
+          },
+          {
+            "depth": 65,
+            "fp": "5d4d7126ea6b524dc616d5064ac95f38",
+            "prefixBytes": 1700
+          },
+          {
+            "depth": 66,
+            "fp": "e645030794243dfde37d5c6a5ea29499",
+            "prefixBytes": 1726
+          },
+          {
+            "depth": 67,
+            "fp": "e2c8c8bd403f8c376d839579075ec5ed",
+            "prefixBytes": 1747
+          },
+          {
+            "depth": 68,
+            "fp": "3fbca0988528f6d496dd19596832ecd8",
+            "prefixBytes": 1773
+          },
+          {
+            "depth": 69,
+            "fp": "740cc0ae2063b47999a767597b227184",
+            "prefixBytes": 1794
+          },
+          {
+            "depth": 70,
+            "fp": "5e7985fbc8221aea74e8297a8ae34faf",
+            "prefixBytes": 1820
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "claude_media_image_base64",
+    "body": "{\"model\":\"claude-sonnet-4-5\",\"system\":\"You are a helpful assistant.\",\"tools\":[{\"name\":\"read_file\",\"description\":\"Read a file\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}}}},{\"name\":\"bash\",\"description\":\"Run a command\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"cmd\":{\"type\":\"string\"}}}}],\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"image\",\"source\":{\"type\":\"base64\",\"media_type\":\"image/png\",\"data\":\"AAAABBBB\"}},{\"type\":\"text\",\"text\":\"describe\"}]}]}",
+    "path": "/v1/messages",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 481,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "claude-sonnet-4-5"
+      },
+      "messagesCount": 1,
+      "systemKind": "string",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "c52028f34e378d1e",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "03aefa74dbffc401e2a8f03108891616",
+          "prefixBytes": 185
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "a014a702a0936ff7c31d0ef3fb35dcaa",
+            "prefixBytes": 253
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "claude_media_document_url",
+    "body": "{\"model\":\"claude-sonnet-4-5\",\"system\":\"You are a helpful assistant.\",\"tools\":[{\"name\":\"read_file\",\"description\":\"Read a file\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}}}},{\"name\":\"bash\",\"description\":\"Run a command\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"cmd\":{\"type\":\"string\"}}}}],\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"document\",\"source\":{\"media_type\":\"application/pdf\",\"url\":\"https://a.example/x.pdf\"}}]}]}",
+    "path": "/v1/messages",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 454,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "claude-sonnet-4-5"
+      },
+      "messagesCount": 1,
+      "systemKind": "string",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "e3b0c44298fc1c14",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "03aefa74dbffc401e2a8f03108891616",
+          "prefixBytes": 185
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "2653df013fccd6c118a8dbbae480c39b",
+            "prefixBytes": 239
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "claude_media_no_source",
+    "body": "{\"model\":\"claude-sonnet-4-5\",\"system\":\"You are a helpful assistant.\",\"tools\":[{\"name\":\"read_file\",\"description\":\"Read a file\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}}}},{\"name\":\"bash\",\"description\":\"Run a command\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"cmd\":{\"type\":\"string\"}}}}],\"messages\":[{\"role\":\"assistant\",\"content\":[{\"type\":\"redacted_thinking\",\"data\":\"opaque\"},{\"type\":\"image\",\"source\":null}]}]}",
+    "path": "/v1/messages",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 441,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "claude-sonnet-4-5"
+      },
+      "messagesCount": 1,
+      "systemKind": "string",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "e3b0c44298fc1c14",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "03aefa74dbffc401e2a8f03108891616",
+          "prefixBytes": 185
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "aeb7d237954e2e599a1fd13bcecace31",
+            "prefixBytes": 227
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "claude_tools_reverse_order",
+    "body": "{\"model\":\"claude-sonnet-4-5\",\"system\":\"You are a helpful assistant.\",\"tools\":[{\"name\":\"bash\",\"description\":\"Run a command\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"cmd\":{\"type\":\"string\"}}}},{\"name\":\"read_file\",\"description\":\"Read a file\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}}}}],\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}",
+    "path": "/v1/messages",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 366,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "claude-sonnet-4-5"
+      },
+      "messagesCount": 1,
+      "systemKind": "string",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "2cf24dba5fb0a30e",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "03aefa74dbffc401e2a8f03108891616",
+          "prefixBytes": 185
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "35631feb5ea784b1e998ece3aa1a5c41",
+            "prefixBytes": 201
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "claude_system_block_array",
+    "body": "{\"model\":\"claude-sonnet-4-5\",\"system\":[{\"type\":\"text\",\"text\":\"block system\"},\"loose text\"],\"tools\":[{\"name\":\"read_file\",\"description\":\"Read a file\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}}}},{\"name\":\"bash\",\"description\":\"Run a command\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"cmd\":{\"type\":\"string\"}}}}],\"messages\":[null,{\"role\":\"user\",\"content\":\"hello\"},{\"role\":\"assistant\",\"content\":[\"raw string block\",null]}]}",
+    "path": "/v1/messages",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 450,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "claude-sonnet-4-5"
+      },
+      "messagesCount": 3,
+      "systemKind": "array",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "ecde74e5ec28f31f",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "bf0c6fd1dac4b8bc397ac802437f2553",
+          "prefixBytes": 191
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "2c31e163e992b3a9dbf340e9b5cbb86f",
+            "prefixBytes": 207
+          },
+          {
+            "depth": 2,
+            "fp": "14aff485e19f8dded578bd319e2759c9",
+            "prefixBytes": 239
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "unicode_keys_and_private_params",
+    "body": "{\"model\":\"claude-sonnet-4-5\",\"messages\":[{\"role\":\"user\",\"content\":\"你好😀 unicode text\"},{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"reply\"}],\"_internal\":{\"_secret\":\"x\"}}],\"metadata\":{\"user_id\":\"u1\",\"_private\":true,\"nested\":{\"_alsoPrivate\":1}}}",
+    "path": "/v1/messages",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 258,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "claude-sonnet-4-5",
+        "metadata": {
+          "user_id": "u1",
+          "_private": true,
+          "nested": {
+            "_alsoPrivate": 1
+          }
+        }
+      },
+      "messagesCount": 2,
+      "systemKind": "absent",
+      "hasPrivateParams": true,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "a101e94086674ef9",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "ffe679bb831c95b67dc17819c63c5090",
+          "prefixBytes": 1
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "fecdfd691f61b75928b6a5221e4330d4",
+            "prefixBytes": 35
+          },
+          {
+            "depth": 2,
+            "fp": "942abe43d2b3bdea4ec9c7d6d078ac94",
+            "prefixBytes": 56
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "top_level_number_literals",
+    "body": "{\"model\":\"claude-sonnet-4-5\",\"max_tokens\":4096,\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}],\"metadata\":{\"n_exp\":1e+21,\"n_neg_zero\":0,\"n_one_point_zero\":1,\"n_big_int\":12345678901234567000,\"n_small\":0.000001,\"n_tiny_exp\":1e-7}}",
+    "path": "/v1/messages",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 227,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "claude-sonnet-4-5",
+        "max_tokens": 4096,
+        "metadata": {
+          "n_exp": 1e+21,
+          "n_neg_zero": 0,
+          "n_one_point_zero": 1,
+          "n_big_int": 12345678901234567000,
+          "n_small": 0.000001,
+          "n_tiny_exp": 1e-7
+        }
+      },
+      "messagesCount": 1,
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "2cf24dba5fb0a30e",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "ffe679bb831c95b67dc17819c63c5090",
+          "prefixBytes": 1
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "22ea0c6598e6a03b6d995e9a95f523e3",
+            "prefixBytes": 17
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "probe_foo",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"foo\"}]}",
+    "path": "/v1/messages",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 46,
+      "bodyParseError": null,
+      "topLevel": {},
+      "messagesCount": 1,
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": true,
+      "isWarmup": false,
+      "messagesHash": "2c26b46b68ffc68f",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "ffe679bb831c95b67dc17819c63c5090",
+          "prefixBytes": 1
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "78fc6b7850de2f128872711931ea3a6f",
+            "prefixBytes": 15
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "probe_count_uppercase_trimmed",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"  COUNT  \"}]}",
+    "path": "/v1/messages",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 52,
+      "bodyParseError": null,
+      "topLevel": {},
+      "messagesCount": 1,
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": true,
+      "isWarmup": false,
+      "messagesHash": "952dbecd413e0811",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "ffe679bb831c95b67dc17819c63c5090",
+          "prefixBytes": 1
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "bcafc66239ce88446e89d9a0a853ee88",
+            "prefixBytes": 21
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "not_probe_two_messages",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"foo\"},{\"role\":\"user\",\"content\":\"bar\"}]}",
+    "path": "/v1/messages",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 78,
+      "bodyParseError": null,
+      "topLevel": {},
+      "messagesCount": 2,
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "0fc7e25e075c7849",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "ffe679bb831c95b67dc17819c63c5090",
+          "prefixBytes": 1
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "78fc6b7850de2f128872711931ea3a6f",
+            "prefixBytes": 15
+          },
+          {
+            "depth": 2,
+            "fp": "e2f8b154373c706c703a665988912665",
+            "prefixBytes": 29
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "not_probe_content_array",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"foo\"}]}]}",
+    "path": "/v1/messages",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 71,
+      "bodyParseError": null,
+      "topLevel": {},
+      "messagesCount": 1,
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "2c26b46b68ffc68f",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "ffe679bb831c95b67dc17819c63c5090",
+          "prefixBytes": 1
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "78fc6b7850de2f128872711931ea3a6f",
+            "prefixBytes": 15
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "not_probe_wrong_text",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}",
+    "path": "/v1/messages",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 48,
+      "bodyParseError": null,
+      "topLevel": {},
+      "messagesCount": 1,
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "2cf24dba5fb0a30e",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "ffe679bb831c95b67dc17819c63c5090",
+          "prefixBytes": 1
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "22ea0c6598e6a03b6d995e9a95f523e3",
+            "prefixBytes": 17
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "warmup_valid",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Warmup\",\"cache_control\":{\"type\":\"ephemeral\"}}]}]}",
+    "path": "/v1/messages",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 111,
+      "bodyParseError": null,
+      "topLevel": {},
+      "messagesCount": 1,
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": true,
+      "messagesHash": "111a4d2e2ef3e422",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "ffe679bb831c95b67dc17819c63c5090",
+          "prefixBytes": 1
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "0149640e3f131be0494e231e37f7e59e",
+            "prefixBytes": 18,
+            "hasCacheControl": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "warmup_wrong_path",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Warmup\",\"cache_control\":{\"type\":\"ephemeral\"}}]}]}",
+    "path": "/v1/messages/count_tokens",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/messages/count_tokens",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 111,
+      "bodyParseError": null,
+      "topLevel": {},
+      "messagesCount": 1,
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "111a4d2e2ef3e422",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "ffe679bb831c95b67dc17819c63c5090",
+          "prefixBytes": 1
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "0149640e3f131be0494e231e37f7e59e",
+            "prefixBytes": 18,
+            "hasCacheControl": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "warmup_missing_cache_control",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Warmup\"}]}]}",
+    "path": "/v1/messages",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 74,
+      "bodyParseError": null,
+      "topLevel": {},
+      "messagesCount": 1,
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "111a4d2e2ef3e422",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "ffe679bb831c95b67dc17819c63c5090",
+          "prefixBytes": 1
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "0149640e3f131be0494e231e37f7e59e",
+            "prefixBytes": 18
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "warmup_case_insensitive_trimmed",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"  warmup  \",\"cache_control\":{\"type\":\"ephemeral\"}}]}]}",
+    "path": "/v1/messages?beta=true",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/messages?beta=true",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 115,
+      "bodyParseError": null,
+      "topLevel": {},
+      "messagesCount": 1,
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": true,
+      "messagesHash": "5da4eaacf70b712b",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "ffe679bb831c95b67dc17819c63c5090",
+          "prefixBytes": 1
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "262ebdb0fb1ddf8a5f7454af4338cb48",
+            "prefixBytes": 22,
+            "hasCacheControl": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "messages_hash_string_content",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"hi there\"}]}",
+    "path": "/v1/messages",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 51,
+      "bodyParseError": null,
+      "topLevel": {},
+      "messagesCount": 1,
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "9b96a1fe1d548cbb",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "ffe679bb831c95b67dc17819c63c5090",
+          "prefixBytes": 1
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "15fe968d8b513435dbe6855a0cd367b3",
+            "prefixBytes": 20
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "messages_hash_array_text_blocks",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"part1\"},{\"type\":\"image\",\"source\":{}},{\"type\":\"text\",\"text\":\"part2\"}]}]}",
+    "path": "/v1/messages",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 133,
+      "bodyParseError": null,
+      "topLevel": {},
+      "messagesCount": 1,
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "4986fc0feee88f7e",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "ffe679bb831c95b67dc17819c63c5090",
+          "prefixBytes": 1
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "f37dad694559bfde2afd9e5f2c201d9c",
+            "prefixBytes": 36
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "messages_hash_uses_first_three_only",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"m1\"},{\"role\":\"assistant\",\"content\":\"m2\"},{\"role\":\"user\",\"content\":\"m3\"},{\"role\":\"assistant\",\"content\":\"m4 (ignored)\"}]}",
+    "path": "/v1/messages",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 158,
+      "bodyParseError": null,
+      "topLevel": {},
+      "messagesCount": 4,
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "34c00fa986672a62",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "ffe679bb831c95b67dc17819c63c5090",
+          "prefixBytes": 1
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "999823f046df19154f06c5ed9b549294",
+            "prefixBytes": 14
+          },
+          {
+            "depth": 2,
+            "fp": "f6b6c53477cb9ad5675fc520f861e41b",
+            "prefixBytes": 32
+          },
+          {
+            "depth": 3,
+            "fp": "a255b282c8fa5332610d870d9ab9d575",
+            "prefixBytes": 45
+          },
+          {
+            "depth": 4,
+            "fp": "64966c27541d3e9c73291679e2908916",
+            "prefixBytes": 73
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "messages_hash_no_extractable_content",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":42}]}",
+    "path": "/v1/messages",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 43,
+      "bodyParseError": null,
+      "topLevel": {},
+      "messagesCount": 1,
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": null,
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "ffe679bb831c95b67dc17819c63c5090",
+          "prefixBytes": 1
+        },
+        "tail": []
+      }
+    }
+  },
+  {
+    "name": "messages_hash_empty_messages",
+    "body": "{\"messages\":[]}",
+    "path": "/v1/messages",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 15,
+      "bodyParseError": null,
+      "topLevel": {},
+      "messagesCount": 0,
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": null,
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "ffe679bb831c95b67dc17819c63c5090",
+          "prefixBytes": 1
+        },
+        "tail": []
+      }
+    }
+  }
+]

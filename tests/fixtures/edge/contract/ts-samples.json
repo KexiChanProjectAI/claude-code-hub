@@ -1,0 +1,310 @@
+{
+  "digest": {
+    "schemaVersion": 1,
+    "edgeId": "edge-1",
+    "edgeRequestId": "req-1",
+    "receivedAtMs": 1700000000000,
+    "method": "POST",
+    "path": "/v1/messages?beta=true",
+    "headers": [
+      [
+        "content-type",
+        "application/json"
+      ],
+      [
+        "user-agent",
+        "claude-cli/2.1.90"
+      ]
+    ],
+    "clientIp": "10.0.0.1",
+    "bodyBytes": 100,
+    "bodyParseError": null,
+    "topLevel": {
+      "model": "claude-sonnet-4-5",
+      "stream": true,
+      "max_tokens": 1024
+    },
+    "messagesCount": 1,
+    "systemKind": "array",
+    "hasPrivateParams": true,
+    "isProbe": false,
+    "isWarmup": false,
+    "messagesHash": "8f434346648f6b96",
+    "fingerprint": {
+      "sys": {
+        "depth": 0,
+        "fp": "4f73feb2a8d27ea3fccacc7bfba544c2",
+        "prefixBytes": 36
+      },
+      "tail": [
+        {
+          "depth": 1,
+          "fp": "34235842f79647a06e3b561a47e59575",
+          "prefixBytes": 49
+        }
+      ]
+    }
+  },
+  "decide_execute": {
+    "action": "execute",
+    "requestId": 7,
+    "edgeToken": "tttttttttttttttttttttttttttttttttttttttttttttttt",
+    "step": {
+      "stepId": "7:1:1",
+      "attemptNumber": 1,
+      "totalProvidersAttempted": 1,
+      "attemptKind": "normal",
+      "provider": {
+        "id": 9,
+        "name": "p9",
+        "priority": 1,
+        "type": "claude"
+      },
+      "endpoint": {
+        "id": 3,
+        "url": "https://api.example.com/"
+      },
+      "method": "POST",
+      "url": "https://api.example.com/v1/messages?beta=true",
+      "headers": [
+        [
+          "content-type",
+          "application/json"
+        ],
+        [
+          "user-agent",
+          "claude-cli/2.1.90"
+        ],
+        [
+          "host",
+          "api.example.com"
+        ],
+        [
+          "accept-encoding",
+          "identity"
+        ],
+        [
+          "authorization",
+          "Bearer sk-up"
+        ],
+        [
+          "x-api-key",
+          "sk-up"
+        ],
+        [
+          "anthropic-beta",
+          "extended-cache-ttl-2025-04-11, prompt-caching-2024-07-31"
+        ]
+      ],
+      "bodyOps": [
+        {
+          "op": "remove_system_billing_header"
+        },
+        {
+          "op": "set_cache_control_ttl",
+          "ttl": "1h"
+        },
+        {
+          "op": "strip_private_params"
+        },
+        {
+          "op": "set_top_level",
+          "key": "metadata",
+          "value": {
+            "user_id": "{\"device_id\":\"27ea100f283018c730b3ed053cd764ff6ae190964fcabb79820364b84bb16e8f\",\"account_uuid\":\"\",\"session_id\":\"sess_contract\"}"
+          }
+        }
+      ],
+      "delayMs": 0,
+      "isStreaming": true,
+      "timeouts": {
+        "connectMs": 30000,
+        "firstByteMs": 30000,
+        "nonStreamTotalMs": 0,
+        "idleMs": 60000,
+        "headersMs": 600000,
+        "bodyMs": 600000
+      },
+      "transport": {
+        "proxyUrl": null,
+        "proxyFallbackToDirect": false,
+        "http2": false
+      },
+      "gate": {
+        "mode": "enforce",
+        "highConcurrency": false,
+        "idleMs": 60000,
+        "eventCap": 64,
+        "byteCap": 10485760,
+        "captureCommitMarker": true
+      },
+      "fixer": {
+        "enabled": true,
+        "fixTruncatedJson": true,
+        "fixSseFormat": true,
+        "fixEncoding": true,
+        "maxJsonDepth": 200,
+        "maxFixSize": 1048576
+      },
+      "hedge": null,
+      "reporting": {
+        "maxCompactBytes": 262144,
+        "maxHeadBytes": 1048576,
+        "maxNonStreamBodyBytes": 8388608,
+        "maxErrorBodyBytes": 65536,
+        "heartbeatIntervalMs": 15000
+      },
+      "clientAbortDrainMs": 60000
+    }
+  },
+  "decide_delegate": {
+    "action": "delegate",
+    "reason": "edge_disabled"
+  },
+  "decide_fail": {
+    "action": "fail",
+    "response": {
+      "status": 429,
+      "headers": [
+        [
+          "content-type",
+          "application/json; charset=utf-8"
+        ]
+      ],
+      "bodyText": "{\"error\":{\"message\":\"limited\",\"type\":\"rate_limit_error\",\"code\":\"rate_limit_error\"}}"
+    }
+  },
+  "next_retry": {
+    "action": "retry",
+    "step": {
+      "stepId": "7:1:2",
+      "attemptNumber": 1,
+      "totalProvidersAttempted": 1,
+      "attemptKind": "normal",
+      "provider": {
+        "id": 9,
+        "name": "p9",
+        "priority": 1,
+        "type": "claude"
+      },
+      "endpoint": {
+        "id": 3,
+        "url": "https://api.example.com/"
+      },
+      "method": "POST",
+      "url": "https://api.example.com/v1/messages?beta=true",
+      "headers": [
+        [
+          "content-type",
+          "application/json"
+        ],
+        [
+          "user-agent",
+          "claude-cli/2.1.90"
+        ],
+        [
+          "host",
+          "api.example.com"
+        ],
+        [
+          "accept-encoding",
+          "identity"
+        ],
+        [
+          "authorization",
+          "Bearer sk-up"
+        ],
+        [
+          "x-api-key",
+          "sk-up"
+        ],
+        [
+          "anthropic-beta",
+          "extended-cache-ttl-2025-04-11, prompt-caching-2024-07-31"
+        ]
+      ],
+      "bodyOps": [
+        {
+          "op": "remove_system_billing_header"
+        },
+        {
+          "op": "set_cache_control_ttl",
+          "ttl": "1h"
+        },
+        {
+          "op": "strip_private_params"
+        },
+        {
+          "op": "set_top_level",
+          "key": "metadata",
+          "value": {
+            "user_id": "{\"device_id\":\"27ea100f283018c730b3ed053cd764ff6ae190964fcabb79820364b84bb16e8f\",\"account_uuid\":\"\",\"session_id\":\"sess_contract\"}"
+          }
+        }
+      ],
+      "delayMs": 100,
+      "isStreaming": true,
+      "timeouts": {
+        "connectMs": 30000,
+        "firstByteMs": 30000,
+        "nonStreamTotalMs": 0,
+        "idleMs": 60000,
+        "headersMs": 600000,
+        "bodyMs": 600000
+      },
+      "transport": {
+        "proxyUrl": null,
+        "proxyFallbackToDirect": false,
+        "http2": false
+      },
+      "gate": {
+        "mode": "enforce",
+        "highConcurrency": false,
+        "idleMs": 60000,
+        "eventCap": 64,
+        "byteCap": 10485760,
+        "captureCommitMarker": true
+      },
+      "fixer": {
+        "enabled": true,
+        "fixTruncatedJson": true,
+        "fixSseFormat": true,
+        "fixEncoding": true,
+        "maxJsonDepth": 200,
+        "maxFixSize": 1048576
+      },
+      "hedge": null,
+      "reporting": {
+        "maxCompactBytes": 262144,
+        "maxHeadBytes": 1048576,
+        "maxNonStreamBodyBytes": 8388608,
+        "maxErrorBodyBytes": 65536,
+        "heartbeatIntervalMs": 15000
+      },
+      "clientAbortDrainMs": 60000
+    }
+  },
+  "next_fail": {
+    "action": "fail",
+    "response": {
+      "status": 429,
+      "headers": [
+        [
+          "content-type",
+          "application/json; charset=utf-8"
+        ]
+      ],
+      "bodyText": "{\"error\":{\"message\":\"limited\",\"type\":\"rate_limit_error\",\"code\":\"rate_limit_error\"}}"
+    }
+  },
+  "next_none": {
+    "action": "none"
+  },
+  "next_commit": {
+    "action": "commit"
+  },
+  "next_delegate": {
+    "action": "delegate",
+    "reason": "x"
+  }
+}

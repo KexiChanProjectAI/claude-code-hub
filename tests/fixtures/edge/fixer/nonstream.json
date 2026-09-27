@@ -1,0 +1,62 @@
+[
+  {
+    "name": "valid_json_body",
+    "inputB64": "eyJvayI6dHJ1ZX0=",
+    "cfg": {
+      "fixEncoding": true,
+      "fixTruncatedJson": true,
+      "maxJsonDepth": 200,
+      "maxFixSize": 1048576
+    },
+    "expectedEncodingApplied": false,
+    "expectedJsonApplied": false,
+    "expectedHit": false,
+    "expectedDataParsesAsJson": true,
+    "expectedDataB64ForNonJsonCase": null
+  },
+  {
+    "name": "truncated_json_with_bom",
+    "inputB64": "77u/eyJhIjoxLCJiIjo=",
+    "cfg": {
+      "fixEncoding": true,
+      "fixTruncatedJson": true,
+      "maxJsonDepth": 200,
+      "maxFixSize": 1048576
+    },
+    "expectedEncodingApplied": true,
+    "expectedJsonApplied": true,
+    "expectedHit": true,
+    "expectedDataParsesAsJson": true,
+    "expectedDataB64ForNonJsonCase": null
+  },
+  {
+    "name": "invalid_utf8_and_truncated",
+    "inputB64": "eyJhIjoiwyg=",
+    "cfg": {
+      "fixEncoding": true,
+      "fixTruncatedJson": true,
+      "maxJsonDepth": 200,
+      "maxFixSize": 1048576
+    },
+    "expectedEncodingApplied": true,
+    "expectedJsonApplied": true,
+    "expectedHit": true,
+    "expectedDataParsesAsJson": true,
+    "expectedDataB64ForNonJsonCase": null
+  },
+  {
+    "name": "not_json_passthrough",
+    "inputB64": "cGxhaW4gdGV4dCBib2R5",
+    "cfg": {
+      "fixEncoding": true,
+      "fixTruncatedJson": true,
+      "maxJsonDepth": 200,
+      "maxFixSize": 1048576
+    },
+    "expectedEncodingApplied": false,
+    "expectedJsonApplied": false,
+    "expectedHit": false,
+    "expectedDataParsesAsJson": false,
+    "expectedDataB64ForNonJsonCase": "cGxhaW4gdGV4dCBib2R5"
+  }
+]

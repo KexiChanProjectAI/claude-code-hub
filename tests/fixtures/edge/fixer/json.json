@@ -1,0 +1,121 @@
+[
+  {
+    "name": "valid_json_passthrough",
+    "inputB64": "eyJhIjoxfQ==",
+    "maxDepth": 200,
+    "maxSize": 1048576,
+    "expectedApplied": false,
+    "expectedDetails": null,
+    "expectedDataB64": "eyJhIjoxfQ=="
+  },
+  {
+    "name": "unclosed_object",
+    "inputB64": "eyJrZXkiOiJ2YWx1ZSI=",
+    "maxDepth": 200,
+    "maxSize": 1048576,
+    "expectedApplied": true,
+    "expectedDetails": null,
+    "expectedDataB64": "eyJrZXkiOiJ2YWx1ZSJ9",
+    "expectAppliedDataParsesTo": {
+      "key": "value"
+    }
+  },
+  {
+    "name": "unclosed_array",
+    "inputB64": "WzEsIDIsIDM=",
+    "maxDepth": 200,
+    "maxSize": 1048576,
+    "expectedApplied": true,
+    "expectedDetails": null,
+    "expectedDataB64": "WzEsIDIsIDNd",
+    "expectAppliedDataParsesTo": [
+      1,
+      2,
+      3
+    ]
+  },
+  {
+    "name": "unclosed_string",
+    "inputB64": "eyJrZXkiOiJ2YWw=",
+    "maxDepth": 200,
+    "maxSize": 1048576,
+    "expectedApplied": true,
+    "expectedDetails": null,
+    "expectedDataB64": "eyJrZXkiOiJ2YWwifQ==",
+    "expectAppliedDataParsesTo": {
+      "key": "val"
+    }
+  },
+  {
+    "name": "trailing_comma_object",
+    "inputB64": "eyJhIjogMSx9",
+    "maxDepth": 200,
+    "maxSize": 1048576,
+    "expectedApplied": true,
+    "expectedDetails": null,
+    "expectedDataB64": "eyJhIjogMX0=",
+    "expectAppliedDataParsesTo": {
+      "a": 1
+    }
+  },
+  {
+    "name": "trailing_comma_array",
+    "inputB64": "WzEsIDIsXQ==",
+    "maxDepth": 200,
+    "maxSize": 1048576,
+    "expectedApplied": true,
+    "expectedDetails": null,
+    "expectedDataB64": "WzEsIDJd",
+    "expectAppliedDataParsesTo": [
+      1,
+      2
+    ]
+  },
+  {
+    "name": "missing_value_after_colon",
+    "inputB64": "eyJrZXkiOg==",
+    "maxDepth": 200,
+    "maxSize": 1048576,
+    "expectedApplied": true,
+    "expectedDetails": null,
+    "expectedDataB64": "eyJrZXkiOm51bGx9",
+    "expectAppliedDataParsesTo": {
+      "key": null
+    }
+  },
+  {
+    "name": "nested_unclosed",
+    "inputB64": "eyJvdXRlciI6IHsiaW5uZXIiOiBbMSwgMg==",
+    "maxDepth": 200,
+    "maxSize": 1048576,
+    "expectedApplied": true,
+    "expectedDetails": null,
+    "expectedDataB64": "eyJvdXRlciI6IHsiaW5uZXIiOiBbMSwgMl19fQ==",
+    "expectAppliedDataParsesTo": {
+      "outer": {
+        "inner": [
+          1,
+          2
+        ]
+      }
+    }
+  },
+  {
+    "name": "exceeds_max_depth_unchanged",
+    "inputB64": "eyJhIjp7ImIiOnsiYyI6eyJkIjo=",
+    "maxDepth": 3,
+    "maxSize": 1048576,
+    "expectedApplied": false,
+    "expectedDetails": "repair_failed",
+    "expectedDataB64": "eyJhIjp7ImIiOnsiYyI6eyJkIjo="
+  },
+  {
+    "name": "exceeds_max_size_unchanged",
+    "inputB64": "eyJrZXkiOiJ2ZXJ5IGxvbmcgdmFsdWUifQ==",
+    "maxDepth": 200,
+    "maxSize": 10,
+    "expectedApplied": false,
+    "expectedDetails": "exceeded_max_size",
+    "expectedDataB64": "eyJrZXkiOiJ2ZXJ5IGxvbmcgdmFsdWUifQ=="
+  }
+]

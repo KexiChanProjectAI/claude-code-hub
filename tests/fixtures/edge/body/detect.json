@@ -1,0 +1,122 @@
+[
+  {
+    "name": "empty_body",
+    "bodyText": "",
+    "expected": {
+      "isError": true,
+      "code": "FAKE_200_EMPTY_BODY"
+    }
+  },
+  {
+    "name": "whitespace_only_body",
+    "bodyText": "   \n\t  ",
+    "expected": {
+      "isError": true,
+      "code": "FAKE_200_EMPTY_BODY"
+    }
+  },
+  {
+    "name": "html_doctype",
+    "bodyText": "<!DOCTYPE html><html><body>502 Bad Gateway</body></html>",
+    "expected": {
+      "isError": true,
+      "code": "FAKE_200_HTML_BODY"
+    }
+  },
+  {
+    "name": "html_tag_only",
+    "bodyText": "<html><head></head><body>error</body></html>",
+    "expected": {
+      "isError": true,
+      "code": "FAKE_200_HTML_BODY"
+    }
+  },
+  {
+    "name": "not_html_angle_bracket_text",
+    "bodyText": "<tag>not really html</tag>",
+    "expected": {
+      "isError": false
+    }
+  },
+  {
+    "name": "json_error_string_non_empty",
+    "bodyText": "{\"error\":\"invalid api key\"}",
+    "expected": {
+      "isError": true,
+      "code": "FAKE_200_JSON_ERROR_NON_EMPTY"
+    }
+  },
+  {
+    "name": "json_error_object_with_message",
+    "bodyText": "{\"error\":{\"message\":\"rate limited\",\"type\":\"rate_limit_error\"}}",
+    "expected": {
+      "isError": true,
+      "code": "FAKE_200_JSON_ERROR_MESSAGE_NON_EMPTY"
+    }
+  },
+  {
+    "name": "json_error_empty_string_not_error",
+    "bodyText": "{\"error\":\"\"}",
+    "expected": {
+      "isError": false
+    }
+  },
+  {
+    "name": "json_error_null_not_error",
+    "bodyText": "{\"error\":null}",
+    "expected": {
+      "isError": false
+    }
+  },
+  {
+    "name": "json_no_error_field",
+    "bodyText": "{\"type\":\"message\",\"content\":[{\"type\":\"text\",\"text\":\"hi\"}]}",
+    "expected": {
+      "isError": false
+    }
+  },
+  {
+    "name": "json_message_keyword_not_checked_because_max_chars_zero",
+    "bodyText": "{\"message\":\"an error occurred processing your request\"}",
+    "expected": {
+      "isError": false
+    }
+  },
+  {
+    "name": "openai_responses_failed_status",
+    "bodyText": "{\"id\":\"resp_123\",\"object\":\"response\",\"status\":\"failed\",\"error\":{\"message\":\"server error\",\"code\":\"server_error\"}}",
+    "expected": {
+      "isError": true,
+      "code": "FAKE_200_OPENAI_RESPONSE_FAILED"
+    }
+  },
+  {
+    "name": "openai_responses_failed_event_type",
+    "bodyText": "{\"type\":\"response.failed\",\"response\":{\"id\":\"resp_456\",\"status\":\"failed\",\"error\":\"boom\"}}",
+    "expected": {
+      "isError": true,
+      "code": "FAKE_200_OPENAI_RESPONSE_FAILED"
+    }
+  },
+  {
+    "name": "openai_responses_completed_not_error",
+    "bodyText": "{\"id\":\"resp_789\",\"object\":\"response\",\"status\":\"completed\"}",
+    "expected": {
+      "isError": false
+    }
+  },
+  {
+    "name": "plain_array_not_error",
+    "bodyText": "[1,2,3]",
+    "expected": {
+      "isError": false
+    }
+  },
+  {
+    "name": "malformed_json_not_error",
+    "bodyText": "{not valid json",
+    "expected": {
+      "isError": false
+    }
+  }
+]

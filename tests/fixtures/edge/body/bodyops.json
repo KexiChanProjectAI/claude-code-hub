@@ -1,0 +1,462 @@
+[
+  {
+    "name": "set_top_level_existing_key_keeps_position",
+    "body": "{\"model\":\"old-model\",\"max_tokens\":100,\"stream\":true}",
+    "ops": [
+      {
+        "op": "set_top_level",
+        "key": "model",
+        "value": "new-model"
+      }
+    ],
+    "expectedBody": "{\"model\":\"new-model\",\"max_tokens\":100,\"stream\":true}",
+    "expectedOpResults": {}
+  },
+  {
+    "name": "set_top_level_new_key_appended",
+    "body": "{\"model\":\"m\",\"stream\":true}",
+    "ops": [
+      {
+        "op": "set_top_level",
+        "key": "max_tokens",
+        "value": 2048
+      }
+    ],
+    "expectedBody": "{\"model\":\"m\",\"stream\":true,\"max_tokens\":2048}",
+    "expectedOpResults": {}
+  },
+  {
+    "name": "delete_top_level_existing",
+    "body": "{\"model\":\"m\",\"max_tokens\":100,\"stream\":true}",
+    "ops": [
+      {
+        "op": "delete_top_level",
+        "key": "max_tokens"
+      }
+    ],
+    "expectedBody": "{\"model\":\"m\",\"stream\":true}",
+    "expectedOpResults": {}
+  },
+  {
+    "name": "delete_top_level_missing_noop",
+    "body": "{\"model\":\"m\"}",
+    "ops": [
+      {
+        "op": "delete_top_level",
+        "key": "max_tokens"
+      }
+    ],
+    "expectedBody": "{\"model\":\"m\"}",
+    "expectedOpResults": {}
+  },
+  {
+    "name": "set_top_level_object_value",
+    "body": "{\"model\":\"m\"}",
+    "ops": [
+      {
+        "op": "set_top_level",
+        "key": "metadata",
+        "value": {
+          "user_id": "u1",
+          "nested": {
+            "a": 1
+          }
+        }
+      }
+    ],
+    "expectedBody": "{\"model\":\"m\",\"metadata\":{\"user_id\":\"u1\",\"nested\":{\"a\":1}}}",
+    "expectedOpResults": {}
+  },
+  {
+    "name": "billing_header_array_single_block",
+    "body": "{\"system\":[{\"type\":\"text\",\"text\":\"x-anthropic-billing-header: cc_version=2.1.36; cc_entrypoint=cli; cch=1;\"}]}",
+    "ops": [
+      {
+        "op": "remove_system_billing_header"
+      }
+    ],
+    "expectedBody": "{\"system\":[]}",
+    "expectedOpResults": {
+      "billingHeader": {
+        "removedCount": 1,
+        "extractedValues": [
+          "x-anthropic-billing-header: cc_version=2.1.36; cc_entrypoint=cli; cch=1;"
+        ]
+      }
+    }
+  },
+  {
+    "name": "billing_header_array_multiple_blocks",
+    "body": "{\"system\":[{\"type\":\"text\",\"text\":\"x-anthropic-billing-header: cc_version=2.1.36;\"},{\"type\":\"text\",\"text\":\"x-anthropic-billing-header: cc_entrypoint=cli;\"}]}",
+    "ops": [
+      {
+        "op": "remove_system_billing_header"
+      }
+    ],
+    "expectedBody": "{\"system\":[]}",
+    "expectedOpResults": {
+      "billingHeader": {
+        "removedCount": 2,
+        "extractedValues": [
+          "x-anthropic-billing-header: cc_version=2.1.36;",
+          "x-anthropic-billing-header: cc_entrypoint=cli;"
+        ]
+      }
+    }
+  },
+  {
+    "name": "billing_header_array_no_match",
+    "body": "{\"system\":[{\"type\":\"text\",\"text\":\"You are a helpful assistant.\"},{\"type\":\"text\",\"text\":\"Follow instructions carefully.\"}]}",
+    "ops": [
+      {
+        "op": "remove_system_billing_header"
+      }
+    ],
+    "expectedBody": "{\"system\":[{\"type\":\"text\",\"text\":\"You are a helpful assistant.\"},{\"type\":\"text\",\"text\":\"Follow instructions carefully.\"}]}",
+    "expectedOpResults": {}
+  },
+  {
+    "name": "billing_header_array_mixed_with_prompts",
+    "body": "{\"system\":[{\"type\":\"text\",\"text\":\"You are a helpful assistant.\"},{\"type\":\"text\",\"text\":\"x-anthropic-billing-header: cc_version=2.1.36; cch=1;\"},{\"type\":\"text\",\"text\":\"Follow instructions carefully.\"}]}",
+    "ops": [
+      {
+        "op": "remove_system_billing_header"
+      }
+    ],
+    "expectedBody": "{\"system\":[{\"type\":\"text\",\"text\":\"You are a helpful assistant.\"},{\"type\":\"text\",\"text\":\"Follow instructions carefully.\"}]}",
+    "expectedOpResults": {
+      "billingHeader": {
+        "removedCount": 1,
+        "extractedValues": [
+          "x-anthropic-billing-header: cc_version=2.1.36; cch=1;"
+        ]
+      }
+    }
+  },
+  {
+    "name": "billing_header_plain_string_match",
+    "body": "{\"system\":\"x-anthropic-billing-header: cc_version=2.1.36;\"}",
+    "ops": [
+      {
+        "op": "remove_system_billing_header"
+      }
+    ],
+    "expectedBody": "{}",
+    "expectedOpResults": {
+      "billingHeader": {
+        "removedCount": 1,
+        "extractedValues": [
+          "x-anthropic-billing-header: cc_version=2.1.36;"
+        ]
+      }
+    }
+  },
+  {
+    "name": "billing_header_plain_string_no_match",
+    "body": "{\"system\":\"You are a helpful assistant.\"}",
+    "ops": [
+      {
+        "op": "remove_system_billing_header"
+      }
+    ],
+    "expectedBody": "{\"system\":\"You are a helpful assistant.\"}",
+    "expectedOpResults": {}
+  },
+  {
+    "name": "billing_header_missing_system",
+    "body": "{\"model\":\"claude-3\"}",
+    "ops": [
+      {
+        "op": "remove_system_billing_header"
+      }
+    ],
+    "expectedBody": "{\"model\":\"claude-3\"}",
+    "expectedOpResults": {}
+  },
+  {
+    "name": "billing_header_null_system",
+    "body": "{\"system\":null}",
+    "ops": [
+      {
+        "op": "remove_system_billing_header"
+      }
+    ],
+    "expectedBody": "{\"system\":null}",
+    "expectedOpResults": {}
+  },
+  {
+    "name": "billing_header_mid_string_not_removed",
+    "body": "{\"system\":[{\"type\":\"text\",\"text\":\"Some preamble text x-anthropic-billing-header: cc_version=2.1.36;\"}]}",
+    "ops": [
+      {
+        "op": "remove_system_billing_header"
+      }
+    ],
+    "expectedBody": "{\"system\":[{\"type\":\"text\",\"text\":\"Some preamble text x-anthropic-billing-header: cc_version=2.1.36;\"}]}",
+    "expectedOpResults": {}
+  },
+  {
+    "name": "billing_header_case_insensitive",
+    "body": "{\"system\":[{\"type\":\"text\",\"text\":\"X-Anthropic-Billing-Header: cc_version=2.1.36;\"}]}",
+    "ops": [
+      {
+        "op": "remove_system_billing_header"
+      }
+    ],
+    "expectedBody": "{\"system\":[]}",
+    "expectedOpResults": {
+      "billingHeader": {
+        "removedCount": 1,
+        "extractedValues": [
+          "X-Anthropic-Billing-Header: cc_version=2.1.36;"
+        ]
+      }
+    }
+  },
+  {
+    "name": "billing_header_various_formats",
+    "body": "{\"system\":[{\"type\":\"text\",\"text\":\"x-anthropic-billing-header:cc_version=2.1.36\"},{\"type\":\"text\",\"text\":\"  x-anthropic-billing-header: cc_version=2.2.0; cc_entrypoint=vscode;\"},{\"type\":\"text\",\"text\":\"x-anthropic-billing-header:  \"}]}",
+    "ops": [
+      {
+        "op": "remove_system_billing_header"
+      }
+    ],
+    "expectedBody": "{\"system\":[]}",
+    "expectedOpResults": {
+      "billingHeader": {
+        "removedCount": 3,
+        "extractedValues": [
+          "x-anthropic-billing-header:cc_version=2.1.36",
+          "x-anthropic-billing-header: cc_version=2.2.0; cc_entrypoint=vscode;",
+          "x-anthropic-billing-header:"
+        ]
+      }
+    }
+  },
+  {
+    "name": "billing_header_non_text_blocks_preserved",
+    "body": "{\"system\":[{\"type\":\"image\",\"source\":{\"type\":\"base64\"}},{\"type\":\"text\",\"text\":\"x-anthropic-billing-header: val\"},{\"type\":\"text\",\"text\":\"Keep this\"}]}",
+    "ops": [
+      {
+        "op": "remove_system_billing_header"
+      }
+    ],
+    "expectedBody": "{\"system\":[{\"type\":\"image\",\"source\":{\"type\":\"base64\"}},{\"type\":\"text\",\"text\":\"Keep this\"}]}",
+    "expectedOpResults": {
+      "billingHeader": {
+        "removedCount": 1,
+        "extractedValues": [
+          "x-anthropic-billing-header: val"
+        ]
+      }
+    }
+  },
+  {
+    "name": "cache_ttl_system_array_ephemeral_1h",
+    "body": "{\"system\":[{\"type\":\"text\",\"text\":\"sys\",\"cache_control\":{\"type\":\"ephemeral\"}}]}",
+    "ops": [
+      {
+        "op": "set_cache_control_ttl",
+        "ttl": "1h"
+      }
+    ],
+    "expectedBody": "{\"system\":[{\"type\":\"text\",\"text\":\"sys\",\"cache_control\":{\"type\":\"ephemeral\",\"ttl\":\"1h\"}}]}",
+    "expectedOpResults": {}
+  },
+  {
+    "name": "cache_ttl_messages_content_ephemeral_5m",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"ctx\",\"cache_control\":{\"type\":\"ephemeral\"}}]}]}",
+    "ops": [
+      {
+        "op": "set_cache_control_ttl",
+        "ttl": "5m"
+      }
+    ],
+    "expectedBody": "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"ctx\",\"cache_control\":{\"type\":\"ephemeral\",\"ttl\":\"5m\"}}]}]}",
+    "expectedOpResults": {}
+  },
+  {
+    "name": "cache_ttl_non_ephemeral_skipped",
+    "body": "{\"system\":[{\"type\":\"text\",\"text\":\"sys\",\"cache_control\":{\"type\":\"persistent\"}}]}",
+    "ops": [
+      {
+        "op": "set_cache_control_ttl",
+        "ttl": "1h"
+      }
+    ],
+    "expectedBody": "{\"system\":[{\"type\":\"text\",\"text\":\"sys\",\"cache_control\":{\"type\":\"persistent\"}}]}",
+    "expectedOpResults": {}
+  },
+  {
+    "name": "cache_ttl_no_cache_control_noop",
+    "body": "{\"system\":[{\"type\":\"text\",\"text\":\"sys\"}],\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
+    "ops": [
+      {
+        "op": "set_cache_control_ttl",
+        "ttl": "1h"
+      }
+    ],
+    "expectedBody": "{\"system\":[{\"type\":\"text\",\"text\":\"sys\"}],\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
+    "expectedOpResults": {}
+  },
+  {
+    "name": "cache_ttl_overwrites_existing_ttl",
+    "body": "{\"system\":[{\"type\":\"text\",\"text\":\"sys\",\"cache_control\":{\"type\":\"ephemeral\",\"ttl\":\"5m\"}}]}",
+    "ops": [
+      {
+        "op": "set_cache_control_ttl",
+        "ttl": "1h"
+      }
+    ],
+    "expectedBody": "{\"system\":[{\"type\":\"text\",\"text\":\"sys\",\"cache_control\":{\"type\":\"ephemeral\",\"ttl\":\"1h\"}}]}",
+    "expectedOpResults": {}
+  },
+  {
+    "name": "thinking_removes_thinking_and_signature_fields",
+    "body": "{\"model\":\"claude-test\",\"messages\":[{\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"t\",\"signature\":\"sig_thinking\"},{\"type\":\"text\",\"text\":\"hello\",\"signature\":\"sig_text_should_remove\"},{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"WebSearch\",\"input\":{\"query\":\"q\"},\"signature\":\"sig_tool_should_remove\"},{\"type\":\"redacted_thinking\",\"data\":\"r\",\"signature\":\"sig_redacted\"}]},{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"hi\"}]}]}",
+    "ops": [
+      {
+        "op": "apply_thinking_signature_rectifier"
+      }
+    ],
+    "expectedBody": "{\"model\":\"claude-test\",\"messages\":[{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"hello\"},{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"WebSearch\",\"input\":{\"query\":\"q\"}}]},{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"hi\"}]}]}",
+    "expectedOpResults": {
+      "thinkingSignature": {
+        "applied": true,
+        "removedThinkingBlocks": 1,
+        "removedRedactedThinkingBlocks": 1,
+        "removedSignatureFields": 2,
+        "removedTopLevelThinking": false
+      }
+    }
+  },
+  {
+    "name": "thinking_no_messages_noop",
+    "body": "{\"model\":\"claude-test\"}",
+    "ops": [
+      {
+        "op": "apply_thinking_signature_rectifier"
+      }
+    ],
+    "expectedBody": "{\"model\":\"claude-test\"}",
+    "expectedOpResults": {
+      "thinkingSignature": {
+        "applied": false,
+        "removedThinkingBlocks": 0,
+        "removedRedactedThinkingBlocks": 0,
+        "removedSignatureFields": 0,
+        "removedTopLevelThinking": false
+      }
+    }
+  },
+  {
+    "name": "thinking_removes_top_level_when_tool_use_prefix_missing",
+    "body": "{\"model\":\"claude-test\",\"thinking\":{\"type\":\"enabled\",\"budget_tokens\":1024},\"messages\":[{\"role\":\"assistant\",\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"WebSearch\",\"input\":{\"query\":\"q\"}}]},{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"toolu_1\",\"content\":\"ok\"}]}]}",
+    "ops": [
+      {
+        "op": "apply_thinking_signature_rectifier"
+      }
+    ],
+    "expectedBody": "{\"model\":\"claude-test\",\"messages\":[{\"role\":\"assistant\",\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"WebSearch\",\"input\":{\"query\":\"q\"}}]},{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"toolu_1\",\"content\":\"ok\"}]}]}",
+    "expectedOpResults": {
+      "thinkingSignature": {
+        "applied": true,
+        "removedThinkingBlocks": 0,
+        "removedRedactedThinkingBlocks": 0,
+        "removedSignatureFields": 0,
+        "removedTopLevelThinking": true
+      }
+    }
+  },
+  {
+    "name": "thinking_missing_signature_field_removes_and_clears_top_level",
+    "body": "{\"model\":\"claude-3-5-sonnet-20241022\",\"thinking\":{\"type\":\"enabled\",\"budget_tokens\":10000},\"messages\":[{\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"Let me analyze this...\"},{\"type\":\"tool_use\",\"id\":\"toolu_01\",\"name\":\"WebSearch\",\"input\":{\"query\":\"test\"}}]},{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"toolu_01\",\"content\":\"search result\"}]}]}",
+    "ops": [
+      {
+        "op": "apply_thinking_signature_rectifier"
+      }
+    ],
+    "expectedBody": "{\"model\":\"claude-3-5-sonnet-20241022\",\"messages\":[{\"role\":\"assistant\",\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu_01\",\"name\":\"WebSearch\",\"input\":{\"query\":\"test\"}}]},{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"toolu_01\",\"content\":\"search result\"}]}]}",
+    "expectedOpResults": {
+      "thinkingSignature": {
+        "applied": true,
+        "removedThinkingBlocks": 1,
+        "removedRedactedThinkingBlocks": 0,
+        "removedSignatureFields": 0,
+        "removedTopLevelThinking": true
+      }
+    }
+  },
+  {
+    "name": "thinking_starts_with_thinking_block_top_level_kept",
+    "body": "{\"model\":\"claude-test\",\"thinking\":{\"type\":\"enabled\",\"budget_tokens\":1024},\"messages\":[{\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"ok\",\"signature\":\"sig\"},{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"WebSearch\",\"input\":{\"query\":\"q\"}}]}]}",
+    "ops": [
+      {
+        "op": "apply_thinking_signature_rectifier"
+      }
+    ],
+    "expectedBody": "{\"model\":\"claude-test\",\"messages\":[{\"role\":\"assistant\",\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"WebSearch\",\"input\":{\"query\":\"q\"}}]}]}",
+    "expectedOpResults": {
+      "thinkingSignature": {
+        "applied": true,
+        "removedThinkingBlocks": 1,
+        "removedRedactedThinkingBlocks": 0,
+        "removedSignatureFields": 0,
+        "removedTopLevelThinking": true
+      }
+    }
+  },
+  {
+    "name": "strip_private_params_nested",
+    "body": "{\"model\":\"m\",\"_debug\":true,\"metadata\":{\"user_id\":\"u1\",\"_trace\":\"x\"},\"messages\":[{\"role\":\"user\",\"content\":\"hi\",\"_extra\":1}]}",
+    "ops": [
+      {
+        "op": "strip_private_params"
+      }
+    ],
+    "expectedBody": "{\"model\":\"m\",\"metadata\":{\"user_id\":\"u1\"},\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
+    "expectedOpResults": {}
+  },
+  {
+    "name": "strip_private_params_arrays",
+    "body": "{\"items\":[{\"a\":1,\"_b\":2},{\"_c\":3,\"d\":4}]}",
+    "ops": [
+      {
+        "op": "strip_private_params"
+      }
+    ],
+    "expectedBody": "{\"items\":[{\"a\":1},{\"d\":4}]}",
+    "expectedOpResults": {}
+  },
+  {
+    "name": "strip_private_params_none_present",
+    "body": "{\"model\":\"m\",\"max_tokens\":10}",
+    "ops": [
+      {
+        "op": "strip_private_params"
+      }
+    ],
+    "expectedBody": "{\"model\":\"m\",\"max_tokens\":10}",
+    "expectedOpResults": {}
+  },
+  {
+    "name": "chain_set_then_strip_then_ttl",
+    "body": "{\"model\":\"old\",\"_junk\":1,\"system\":[{\"type\":\"text\",\"text\":\"sys\",\"cache_control\":{\"type\":\"ephemeral\"}}]}",
+    "ops": [
+      {
+        "op": "set_top_level",
+        "key": "model",
+        "value": "new-model"
+      },
+      {
+        "op": "strip_private_params"
+      },
+      {
+        "op": "set_cache_control_ttl",
+        "ttl": "1h"
+      }
+    ],
+    "expectedBody": "{\"model\":\"new-model\",\"system\":[{\"type\":\"text\",\"text\":\"sys\",\"cache_control\":{\"type\":\"ephemeral\",\"ttl\":\"1h\"}}]}",
+    "expectedOpResults": {}
+  }
+]

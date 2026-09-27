@@ -1,0 +1,67 @@
+[
+  {
+    "name": "null_value",
+    "value": "null",
+    "expected": "null"
+  },
+  {
+    "name": "bool_true",
+    "value": "true",
+    "expected": "true"
+  },
+  {
+    "name": "bool_false",
+    "value": "false",
+    "expected": "false"
+  },
+  {
+    "name": "empty_object",
+    "value": "{}",
+    "expected": "{}"
+  },
+  {
+    "name": "empty_array",
+    "value": "[]",
+    "expected": "[]"
+  },
+  {
+    "name": "simple_object_key_order",
+    "value": "{\"b\":1,\"a\":2,\"c\":3}",
+    "expected": "{\"a\":2,\"b\":1,\"c\":3}"
+  },
+  {
+    "name": "nested_object_and_array",
+    "value": "{\"z\":[1,2,{\"y\":1,\"x\":2}],\"a\":{\"nested\":true}}",
+    "expected": "{\"a\":{\"nested\":true},\"z\":[1,2,{\"x\":2,\"y\":1}]}"
+  },
+  {
+    "name": "string_escapes",
+    "value": "{\"s\":\"quote\\\" backslash\\\\ tab\\tnewline\\ncontrol\\u0001\"}",
+    "expected": "{\"s\":\"quote\\\" backslash\\\\ tab\\tnewline\\ncontrol\\u0001\"}"
+  },
+  {
+    "name": "unicode_and_emoji",
+    "value": "{\"中文\":1,\"emoji\":\"😀\",\"plain\":\"z\"}",
+    "expected": "{\"emoji\":\"😀\",\"plain\":\"z\",\"中文\":1}"
+  },
+  {
+    "name": "utf16_key_ordering_astral_vs_bmp",
+    "value": "{\"￿\":1,\"😀hi\":2,\"a\":3,\"\":4}",
+    "expected": "{\"a\":3,\"😀hi\":2,\"\":4,\"￿\":1}"
+  },
+  {
+    "name": "number_variants",
+    "value": "{\"a\":1,\"b\":0,\"c\":1e+21,\"d\":0.000001,\"e\":1e-7,\"f\":100}",
+    "expected": "{\"a\":1,\"b\":0,\"c\":1e+21,\"d\":0.000001,\"e\":1e-7,\"f\":100}"
+  },
+  {
+    "name": "array_of_mixed",
+    "value": "[1,\"two\",true,null,{\"k\":\"v\"},[1,2]]",
+    "expected": "[1,\"two\",true,null,{\"k\":\"v\"},[1,2]]"
+  },
+  {
+    "name": "big_integer_literal_precision",
+    "value": "{\"big\":12345678901234567000}",
+    "expected": "{\"big\":12345678901234567000}"
+  }
+]
