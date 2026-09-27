@@ -119,6 +119,7 @@ export const DEFAULT_SETTINGS: Pick<
   | "publicStatusAggregationIntervalMinutes"
   | "streamGateMode"
   | "affinityIgnoreClientSessionId"
+  | "edgeExecutionEnabled"
   | "replayCacheTtlMinutes"
   | "discoveryEnabled"
   | "discoveryConcurrency"
@@ -163,6 +164,7 @@ export const DEFAULT_SETTINGS: Pick<
   publicStatusAggregationIntervalMinutes: 5,
   streamGateMode: "enforce",
   affinityIgnoreClientSessionId: true,
+  edgeExecutionEnabled: false,
   replayCacheTtlMinutes: REPLAY_CACHE_TTL_MINUTES_DEFAULT,
   discoveryEnabled: false,
   discoveryConcurrency: 2,
@@ -266,6 +268,7 @@ export async function getCachedSystemSettings(): Promise<SystemSettings> {
         DEFAULT_SETTINGS.publicStatusAggregationIntervalMinutes,
       streamGateMode: getFallbackStreamGateMode(),
       affinityIgnoreClientSessionId: DEFAULT_SETTINGS.affinityIgnoreClientSessionId,
+      edgeExecutionEnabled: DEFAULT_SETTINGS.edgeExecutionEnabled,
       replayEnabled: null,
       replayCacheTtlMinutes: DEFAULT_SETTINGS.replayCacheTtlMinutes,
       cacheEffectivenessEnabled: null,

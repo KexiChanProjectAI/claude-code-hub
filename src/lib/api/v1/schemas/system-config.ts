@@ -255,6 +255,11 @@ export const SystemSettingsSchema = z
       .describe(
         "Whether fingerprintable requests force longest-prefix affinity for provider stickiness, skipping client session id binding."
       ),
+    edgeExecutionEnabled: z
+      .boolean()
+      .describe(
+        "Whether remote edge executors may take over upstream calls for eligible /v1/messages requests. Authentication, rate limiting, routing, retries and billing stay on this service."
+      ),
     replayEnabled: z
       .boolean()
       .nullable()

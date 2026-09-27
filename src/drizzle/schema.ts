@@ -1147,6 +1147,11 @@ export const systemSettings = pgTable('system_settings', {
     .notNull()
     .default(true),
 
+  // Edge 执行器总开关（默认关闭）
+  // 开启后：远端 Go 执行器可经 /api/internal/edge 接管符合条件的 /v1/messages 请求的上游调用，
+  // 鉴权、限流、选路、重试与计费仍由本服务决策；关闭时远端请求一律交回本地代理处理
+  edgeExecutionEnabled: boolean('edge_execution_enabled').notNull().default(false),
+
   // F2 Replay 开关覆写（null = 跟随环境变量 ENABLE_REQUEST_REPLAY）
   replayEnabled: boolean('replay_enabled'),
   // F2 Replay 完成 payload 的可重放窗口(分钟,默认 30)

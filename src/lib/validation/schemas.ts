@@ -1291,6 +1291,8 @@ export const UpdateSystemSettingsSchema = z
       .optional(),
     // 忽略客户端 Session ID（可选）
     affinityIgnoreClientSessionId: z.boolean().optional(),
+    // Edge 执行器总开关（可选）
+    edgeExecutionEnabled: z.boolean().optional(),
     // F2 Replay 响应缓存与复用（可选；null = 跟随环境变量）
     replayEnabled: z.boolean().nullable().optional(),
     // F2 Replay 完成 payload 可重放窗口(分钟)

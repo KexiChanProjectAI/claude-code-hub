@@ -207,6 +207,7 @@ function createFallbackSettings(): SystemSettings {
     ipGeoLookupEnabled: true,
     streamGateMode: "enforce",
     affinityIgnoreClientSessionId: true,
+    edgeExecutionEnabled: false,
     replayEnabled: null,
     replayCacheTtlMinutes: REPLAY_CACHE_TTL_MINUTES_DEFAULT,
     cacheEffectivenessEnabled: null,
@@ -291,6 +292,12 @@ const RECENT_COLUMN_LADDER: ReadonlyArray<{
   // 本层更新失败（仍有列缺失）时记录的告警
   updateWarn: string;
 }> = [
+  {
+    key: "edgeExecutionEnabled",
+    column: systemSettings.edgeExecutionEnabled,
+    selectWarn: "system_settings 缺少 edgeExecutionEnabled，回退到上一代字段集。",
+    updateWarn: "system_settings 缺少 edgeExecutionEnabled，继续降级更新。",
+  },
   {
     key: "upstreamQuotaProbeIntervalMinutes",
     column: systemSettings.upstreamQuotaProbeIntervalMinutes,
@@ -445,6 +452,7 @@ const RECENT_COLUMN_LADDER: ReadonlyArray<{
 // 历史世代字段集（冻结）：passThrough 世代之前的 schema 没有以下五列。
 // 注意：世代字段集相对近代阶梯末层会重新选取更晚引入的列（与历史实现一致）。
 const PASS_THROUGH_ERA_OMIT: readonly string[] = [
+  "edgeExecutionEnabled",
   "upstreamQuotaSchedulingEnabled",
   "upstreamQuotaThresholdPercent",
   "upstreamQuotaProbeIntervalMinutes",
@@ -948,6 +956,11 @@ export async function updateSystemSettings(
     // 忽略客户端 Session ID 开关（如果提供）
     if (payload.affinityIgnoreClientSessionId !== undefined) {
       updates.affinityIgnoreClientSessionId = payload.affinityIgnoreClientSessionId;
+    }
+
+    // Edge 执行器总开关（如果提供）
+    if (payload.edgeExecutionEnabled !== undefined) {
+      updates.edgeExecutionEnabled = payload.edgeExecutionEnabled;
     }
 
     // F2 Replay 开关覆写（如果提供；null = 清除覆写跟随环境变量）

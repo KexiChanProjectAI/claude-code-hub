@@ -116,6 +116,7 @@ interface SystemSettingsFormProps {
     | "fakeStreamingWhitelist"
     | "streamGateMode"
     | "affinityIgnoreClientSessionId"
+    | "edgeExecutionEnabled"
     | "replayEnabled"
     | "replayCacheTtlMinutes"
     | "cacheEffectivenessEnabled"
@@ -250,6 +251,9 @@ export function SystemSettingsForm({
   );
   const [affinityIgnoreClientSessionId, setAffinityIgnoreClientSessionId] = useState(
     initialSettings.affinityIgnoreClientSessionId
+  );
+  const [edgeExecutionEnabled, setEdgeExecutionEnabled] = useState(
+    initialSettings.edgeExecutionEnabled
   );
   // null = 跟随环境变量：未触碰开关时按 null 原样保存，
   // 避免无关字段的保存把覆写写死为布尔值；仅用户切换后才落显式值
@@ -473,6 +477,7 @@ export function SystemSettingsForm({
         fakeStreamingWhitelist: sanitizedFakeStreamingWhitelist,
         streamGateMode,
         affinityIgnoreClientSessionId,
+        edgeExecutionEnabled,
         replayEnabled,
         replayCacheTtlMinutes: Number(replayCacheTtlMinutes),
         cacheEffectivenessEnabled,
@@ -551,6 +556,7 @@ export function SystemSettingsForm({
         );
         setStreamGateMode(result.data.streamGateMode);
         setAffinityIgnoreClientSessionId(result.data.affinityIgnoreClientSessionId);
+        setEdgeExecutionEnabled(result.data.edgeExecutionEnabled);
         setReplayEnabled(result.data.replayEnabled ?? null);
         setReplayCacheTtlMinutes(String(result.data.replayCacheTtlMinutes));
         setCacheEffectivenessEnabled(result.data.cacheEffectivenessEnabled ?? null);
@@ -1361,6 +1367,28 @@ export function SystemSettingsForm({
             aria-label={t("affinityIgnoreClientSessionId")}
             checked={affinityIgnoreClientSessionId}
             onCheckedChange={(checked) => setAffinityIgnoreClientSessionId(checked)}
+            disabled={isPending}
+          />
+        </div>
+
+        {/* Edge executor */}
+        <div className="p-4 rounded-xl bg-white/[0.02] border border-white/5 flex items-center justify-between hover:bg-white/[0.04] transition-colors">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 flex items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-400 shrink-0">
+              <Network className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-foreground">{t("edgeExecutionEnabled")}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {t("edgeExecutionEnabledDesc")}
+              </p>
+            </div>
+          </div>
+          <Switch
+            id="edge-execution-enabled"
+            aria-label={t("edgeExecutionEnabled")}
+            checked={edgeExecutionEnabled}
+            onCheckedChange={(checked) => setEdgeExecutionEnabled(checked)}
             disabled={isPending}
           />
         </div>

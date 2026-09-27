@@ -175,6 +175,8 @@
     },
     "affinityIgnoreClientSessionId": "クライアント Session ID を無視",
     "affinityIgnoreClientSessionIdDesc": "有効にすると、フィンガープリント可能なリクエストは最長プレフィックス親和性によるプロバイダー固定を強制します（クライアント Session ID バインディングをスキップ）。フィンガープリント不可能なリクエストは従来どおりセッション再利用を使用します。デフォルトで有効。",
+    "edgeExecutionEnabled": "Edge エグゼキューター",
+    "edgeExecutionEnabledDesc": "有効にすると、リモートの Edge エグゼキューターが条件を満たす /v1/messages リクエスト（Claude 形式のプロバイダー）の上流呼び出しを担当します。認証、レート制限、ルーティング、リトライ、課金は引き続きこのサービスで決定されます。CCH_EDGE_SHARED_SECRET の設定が必要です。",
     "streamGateMode": "ストリーム内容ゲート",
     "streamGateModeDesc": "通常リクエストの最初の有効なコンテンツフレームゲートを制御します。有効時はエラーフレームや空ストリームでプロバイダーを切り替え、シャドウモードは判定乖離のみを記録し、オフ時はそのまま転送します。シャドウモードとオフ時は Replay owner を含めて最初のバイトを即座に転送し、高並行モードはオフと同じ扱いになります。デフォルトで有効。",
     "streamGateModeOptions": {

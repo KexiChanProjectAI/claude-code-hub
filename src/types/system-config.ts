@@ -161,6 +161,10 @@ export interface SystemSettings {
   // 不可指纹化的请求仍走会话复用
   affinityIgnoreClientSessionId: boolean;
 
+  // Edge 执行器总开关（默认关闭）
+  // 开启后：远端执行器可接管符合条件的请求的上游调用，决策与计费仍由本服务完成
+  edgeExecutionEnabled: boolean;
+
   // F2 Replay（响应缓存与上游连接复用）开关覆写
   // null = 跟随环境变量 ENABLE_REQUEST_REPLAY（默认 true）
   replayEnabled: boolean | null;
@@ -309,6 +313,9 @@ export interface UpdateSystemSettingsInput {
 
   // 忽略客户端 Session ID（可选）
   affinityIgnoreClientSessionId?: boolean;
+
+  // Edge 执行器总开关（可选）
+  edgeExecutionEnabled?: boolean;
 
   // F2 Replay 开关（可选；null = 清除覆写跟随环境变量）
   replayEnabled?: boolean | null;

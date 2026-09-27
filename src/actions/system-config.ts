@@ -117,6 +117,7 @@ export async function saveSystemSettings(formData: {
   fakeStreamingWhitelist?: FakeStreamingWhitelistEntry[];
   streamGateMode?: StreamGateSettingMode;
   affinityIgnoreClientSessionId?: boolean;
+  edgeExecutionEnabled?: boolean;
   replayEnabled?: boolean | null;
   replayCacheTtlMinutes?: number;
   cacheEffectivenessEnabled?: boolean | null;
@@ -212,6 +213,7 @@ export async function saveSystemSettings(formData: {
       fakeStreamingWhitelist: validated.fakeStreamingWhitelist,
       streamGateMode: validated.streamGateMode,
       affinityIgnoreClientSessionId: validated.affinityIgnoreClientSessionId,
+      edgeExecutionEnabled: validated.edgeExecutionEnabled,
       replayEnabled: validated.replayEnabled,
       replayCacheTtlMinutes: validated.replayCacheTtlMinutes,
       cacheEffectivenessEnabled: validated.cacheEffectivenessEnabled,

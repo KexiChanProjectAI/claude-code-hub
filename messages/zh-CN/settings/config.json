@@ -115,6 +115,8 @@
     "cacheEffectivenessEnabledDesc": "模拟最长前缀匹配的缓存命中率(理论 vs 实际),仅用于观测,不影响路由。保存前跟随环境变量 ENABLE_CACHE_EFFECTIVENESS,默认开启。",
     "affinityIgnoreClientSessionId": "忽略客户端 Session ID",
     "affinityIgnoreClientSessionIdDesc": "开启后，可指纹化的请求强制使用最长前缀亲和做供应商粘性（跳过客户端 Session ID 绑定）；不可指纹化的请求仍走会话复用。默认开启。",
+    "edgeExecutionEnabled": "Edge 执行器",
+    "edgeExecutionEnabledDesc": "开启后，远端 Edge 执行器可接管符合条件的 /v1/messages 请求（Claude 格式供应商）的上游调用；鉴权、限流、选路、重试与计费仍由本服务决策。需要配置 CCH_EDGE_SHARED_SECRET。",
     "fakeStreaming": {
       "title": "Fake 流式输出白名单",
       "description": "针对图像 / 视频等长耗时同步生成场景（容易超过 Cloudflare 120 秒无响应体超时），CCH 会先返回 SSE 心跳保活，并在内部串行调用上游供应商，仅在最终拿到非空结果时回写最终响应。命中白名单的模型会启用 fake streaming；列表为空表示完全禁用。",

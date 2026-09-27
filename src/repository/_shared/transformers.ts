@@ -353,6 +353,7 @@ export function toSystemSettings(dbSettings: any): SystemSettings {
         ? dbSettings.streamGateMode
         : "enforce",
     affinityIgnoreClientSessionId: dbSettings?.affinityIgnoreClientSessionId ?? true,
+    edgeExecutionEnabled: dbSettings?.edgeExecutionEnabled ?? false,
     replayEnabled: dbSettings?.replayEnabled ?? null,
     replayCacheTtlMinutes: normalizedReplayCacheTtlMinutes,
     cacheEffectivenessEnabled: dbSettings?.cacheEffectivenessEnabled ?? null,

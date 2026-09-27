@@ -113,6 +113,7 @@ export async function POST(req: Request) {
       enableResponseInputRectifier: validated.enableResponseInputRectifier,
       streamGateMode: validated.streamGateMode,
       affinityIgnoreClientSessionId: validated.affinityIgnoreClientSessionId,
+      edgeExecutionEnabled: validated.edgeExecutionEnabled,
       enableCodexSessionIdCompletion: validated.enableCodexSessionIdCompletion,
       enableClaudeMetadataUserIdInjection: validated.enableClaudeMetadataUserIdInjection,
       enableResponseFixer: validated.enableResponseFixer,

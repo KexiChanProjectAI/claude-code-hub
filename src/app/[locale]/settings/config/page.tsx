@@ -86,6 +86,7 @@ async function SettingsConfigContent({ locale }: { locale: string }) {
             fakeStreamingWhitelist: settings.fakeStreamingWhitelist,
             streamGateMode: settings.streamGateMode,
             affinityIgnoreClientSessionId: settings.affinityIgnoreClientSessionId,
+            edgeExecutionEnabled: settings.edgeExecutionEnabled,
             replayEnabled: settings.replayEnabled,
             replayCacheTtlMinutes: settings.replayCacheTtlMinutes,
             cacheEffectivenessEnabled: settings.cacheEffectivenessEnabled,
