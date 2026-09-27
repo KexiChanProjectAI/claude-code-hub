@@ -771,6 +771,17 @@ export async function register() {
         });
       }
 
+      try {
+        const { startUpstreamQuotaScheduler } = await import(
+          "@/lib/provider-upstream-quota/scheduler"
+        );
+        startUpstreamQuotaScheduler();
+      } catch (error) {
+        logger.warn("[Instrumentation] Failed to start upstream quota scheduler", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+
       const { reconcilePublicStatusSiteTitleAtStartup } = await import(
         "@/lib/public-status/startup-reconciliation"
       );
@@ -947,6 +958,17 @@ export async function register() {
           startEndpointProbeScheduler();
         } catch (error) {
           logger.warn("[Instrumentation] Failed to start endpoint probe scheduler", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+
+        try {
+          const { startUpstreamQuotaScheduler } = await import(
+            "@/lib/provider-upstream-quota/scheduler"
+          );
+          startUpstreamQuotaScheduler();
+        } catch (error) {
+          logger.warn("[Instrumentation] Failed to start upstream quota scheduler", {
             error: error instanceof Error ? error.message : String(error),
           });
         }

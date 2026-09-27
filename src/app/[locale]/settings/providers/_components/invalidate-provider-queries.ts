@@ -9,6 +9,7 @@ export function invalidateProviderQueries(queryClient: QueryClient): Promise<voi
         key === "providers" ||
         key === "providers-health" ||
         key === "providers-statistics" ||
+        key === "providers-upstream-quota" ||
         key === "provider-vendors"
       );
     },

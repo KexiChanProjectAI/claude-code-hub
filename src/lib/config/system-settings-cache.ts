@@ -128,6 +128,9 @@ export const DEFAULT_SETTINGS: Pick<
   | "racingTotalTimeoutMs"
   | "stickyTimeoutCooldownMs"
   | "legacyHedgeMaxInFlight"
+  | "upstreamQuotaSchedulingEnabled"
+  | "upstreamQuotaThresholdPercent"
+  | "upstreamQuotaProbeIntervalMinutes"
 > = {
   enableHttp2: false,
   enableOpenaiResponsesWebsocket: true,
@@ -169,6 +172,9 @@ export const DEFAULT_SETTINGS: Pick<
   racingTotalTimeoutMs: 60_000,
   stickyTimeoutCooldownMs: 300_000,
   legacyHedgeMaxInFlight: 2,
+  upstreamQuotaSchedulingEnabled: false,
+  upstreamQuotaThresholdPercent: 10,
+  upstreamQuotaProbeIntervalMinutes: 10,
 };
 
 /**
@@ -270,6 +276,9 @@ export async function getCachedSystemSettings(): Promise<SystemSettings> {
       stickySlaMs: DEFAULT_SETTINGS.stickySlaMs,
       racingTotalTimeoutMs: DEFAULT_SETTINGS.racingTotalTimeoutMs,
       stickyTimeoutCooldownMs: DEFAULT_SETTINGS.stickyTimeoutCooldownMs,
+      upstreamQuotaSchedulingEnabled: DEFAULT_SETTINGS.upstreamQuotaSchedulingEnabled,
+      upstreamQuotaThresholdPercent: DEFAULT_SETTINGS.upstreamQuotaThresholdPercent,
+      upstreamQuotaProbeIntervalMinutes: DEFAULT_SETTINGS.upstreamQuotaProbeIntervalMinutes,
       quotaDbRefreshIntervalSeconds: 10,
       quotaLeasePercent5h: 0.05,
       quotaLeasePercentDaily: 0.05,

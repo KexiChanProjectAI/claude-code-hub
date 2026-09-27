@@ -10,6 +10,7 @@ import type {
   ProviderType,
   ReasoningEffortOverrideRule,
 } from "@/types/provider";
+import { UPSTREAM_QUOTA_PROBE_TYPES } from "@/types/upstream-quota";
 import { PROVIDER_ALLOWED_MODEL_RULE_INPUT_LIST_SCHEMA } from "./provider-allowed-model-schema";
 import { PROVIDER_MODEL_REDIRECT_RULE_LIST_SCHEMA } from "./provider-model-redirect-schema";
 
@@ -226,6 +227,9 @@ const PATCH_FIELDS: ProviderBatchPatchFieldWithReasoningEffortRules[] = [
   // MCP
   "mcp_passthrough_type",
   "mcp_passthrough_url",
+  // Upstream quota
+  "upstream_quota_probe_type",
+  "upstream_quota_threshold_percent",
 ];
 const PATCH_FIELD_SET = new Set(PATCH_FIELDS);
 
@@ -284,6 +288,9 @@ const CLEARABLE_FIELDS: Record<ProviderBatchPatchFieldWithReasoningEffortRules, 
   // MCP
   mcp_passthrough_type: false,
   mcp_passthrough_url: true,
+  // Upstream quota
+  upstream_quota_probe_type: false,
+  upstream_quota_threshold_percent: true,
 };
 
 function isNumberRecord(value: unknown): value is Record<string, number> {
@@ -439,6 +446,13 @@ function isValidSetValue(
       return value === "inherit" || value === "enabled" || value === "disabled";
     case "mcp_passthrough_type":
       return value === "none" || value === "minimax" || value === "glm" || value === "custom";
+    case "upstream_quota_probe_type":
+      return (
+        typeof value === "string" &&
+        (UPSTREAM_QUOTA_PROBE_TYPES as readonly string[]).includes(value)
+      );
+    case "upstream_quota_threshold_percent":
+      return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 99;
     case "model_redirects":
       return PROVIDER_MODEL_REDIRECT_RULE_LIST_SCHEMA.safeParse(value).success;
     case "allowed_models":
@@ -811,6 +825,19 @@ export function normalizeProviderBatchPatchDraft(
   );
   if (!mcpPassthroughUrl.ok) return mcpPassthroughUrl;
 
+  // Upstream quota
+  const upstreamQuotaProbeType = normalizePatchField(
+    "upstream_quota_probe_type",
+    typedDraft.upstream_quota_probe_type
+  );
+  if (!upstreamQuotaProbeType.ok) return upstreamQuotaProbeType;
+
+  const upstreamQuotaThresholdPercent = normalizePatchField(
+    "upstream_quota_threshold_percent",
+    typedDraft.upstream_quota_threshold_percent
+  );
+  if (!upstreamQuotaThresholdPercent.ok) return upstreamQuotaThresholdPercent;
+
   return {
     ok: true,
     data: {
@@ -868,6 +895,9 @@ export function normalizeProviderBatchPatchDraft(
       // MCP
       mcp_passthrough_type: mcpPassthroughType.data,
       mcp_passthrough_url: mcpPassthroughUrl.data,
+      // Upstream quota
+      upstream_quota_probe_type: upstreamQuotaProbeType.data,
+      upstream_quota_threshold_percent: upstreamQuotaThresholdPercent.data,
     },
   };
 }
@@ -1065,6 +1095,15 @@ function applyPatchField<T>(
         updates.mcp_passthrough_url =
           patch.value as ProviderBatchApplyUpdates["mcp_passthrough_url"];
         return { ok: true, data: undefined };
+      // Upstream quota
+      case "upstream_quota_probe_type":
+        updates.upstream_quota_probe_type =
+          patch.value as ProviderBatchApplyUpdates["upstream_quota_probe_type"];
+        return { ok: true, data: undefined };
+      case "upstream_quota_threshold_percent":
+        updates.upstream_quota_threshold_percent =
+          patch.value as ProviderBatchApplyUpdates["upstream_quota_threshold_percent"];
+        return { ok: true, data: undefined };
       default:
         return createInvalidPatchShapeError(field, "Unsupported patch field");
     }
@@ -1166,6 +1205,10 @@ function applyPatchField<T>(
     case "mcp_passthrough_url":
       updates.mcp_passthrough_url = null;
       return { ok: true, data: undefined };
+    // Upstream quota
+    case "upstream_quota_threshold_percent":
+      updates.upstream_quota_threshold_percent = null;
+      return { ok: true, data: undefined };
     default:
       return createInvalidPatchShapeError(field, "clear mode is not supported for this field");
   }
@@ -1236,6 +1279,9 @@ export function buildProviderBatchApplyUpdates(
     // MCP
     ["mcp_passthrough_type", patch.mcp_passthrough_type],
     ["mcp_passthrough_url", patch.mcp_passthrough_url],
+    // Upstream quota
+    ["upstream_quota_probe_type", patch.upstream_quota_probe_type],
+    ["upstream_quota_threshold_percent", patch.upstream_quota_threshold_percent],
   ];
 
   for (const [field, operation] of operations) {
@@ -1305,7 +1351,10 @@ export function hasProviderBatchPatchChanges(
     patch.request_timeout_non_streaming_ms.mode !== "no_change" ||
     // MCP
     patch.mcp_passthrough_type.mode !== "no_change" ||
-    patch.mcp_passthrough_url.mode !== "no_change"
+    patch.mcp_passthrough_url.mode !== "no_change" ||
+    // Upstream quota
+    patch.upstream_quota_probe_type.mode !== "no_change" ||
+    patch.upstream_quota_threshold_percent.mode !== "no_change"
   );
 }
 

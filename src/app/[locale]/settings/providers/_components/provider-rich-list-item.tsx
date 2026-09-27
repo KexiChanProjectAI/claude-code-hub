@@ -84,6 +84,7 @@ import { invalidateProviderQueries } from "./invalidate-provider-queries";
 import { PriorityEditPopover } from "./priority-edit-popover";
 import { ProviderEndpointHover } from "./provider-endpoint-hover";
 import { ProviderFormDialogContent } from "./provider-form-dialog-content";
+import { UpstreamQuotaBadge } from "./upstream-quota-badge";
 
 interface ProviderRichListItemProps {
   provider: ProviderDisplay;
@@ -593,6 +594,8 @@ function ProviderRichListItemInner({
               {tList("endpointCircuitBroken")}
             </Badge>
           )}
+          {/* Upstream quota badge */}
+          <UpstreamQuotaBadge providerId={provider.id} canRefresh={canEdit} />
           {/* Provider prefix badge */}
           {provider.providerPrefix && (
             <Badge
@@ -809,6 +812,12 @@ function ProviderRichListItemInner({
                 {tList("endpointCircuitBroken")}
               </Badge>
             )}
+            {/* Upstream quota badge */}
+            <UpstreamQuotaBadge
+              providerId={provider.id}
+              canRefresh={canEdit}
+              className="flex-shrink-0"
+            />
             {/* Schedule badge */}
             {provider.activeTimeStart && provider.activeTimeEnd && (
               <Badge variant="outline" className="flex items-center gap-1 flex-shrink-0">

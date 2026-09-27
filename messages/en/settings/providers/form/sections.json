@@ -176,6 +176,38 @@
     "otherLimits": "Other Limits",
     "windowReset": "Window Reset Behavior"
   },
+  "upstreamQuota": {
+    "title": "Upstream Quota",
+    "desc": "Query the provider's Coding Plan quota and stop scheduling new sessions to it when the remaining quota is low. Takes effect when upstream quota scheduling is enabled in system settings.",
+    "probeType": {
+      "label": "Quota source",
+      "desc": "Choose which Coding Plan quota endpoint to query, or turn probing off for this provider.",
+      "autoResolved": "Auto-detected from the provider URL: {type}",
+      "options": {
+        "auto": "Auto-detect from URL",
+        "none": "Disabled",
+        "kimi-coding": "Kimi Coding Plan",
+        "zhipu-coding": "Zhipu GLM Coding Plan",
+        "minimax-coding": "MiniMax Coding Plan",
+        "opencode-go": "OpenCode Go"
+      }
+    },
+    "threshold": {
+      "label": "Minimum remaining quota (%)",
+      "desc": "Overrides the system threshold for this provider. Leave empty to use the system setting.",
+      "placeholder": "System default"
+    },
+    "zhipuOrganization": {
+      "label": "Zhipu organization ID",
+      "desc": "Team plan only. Sent as the bigmodel-organization header.",
+      "placeholder": "org-..."
+    },
+    "zhipuProject": {
+      "label": "Zhipu project ID",
+      "desc": "Team plan only. Sent as the bigmodel-project header.",
+      "placeholder": "proj_..."
+    }
+  },
   "routing": {
     "cacheTtl": {
       "desc": "Force prompt cache TTL; only affects requests with cache_control.",

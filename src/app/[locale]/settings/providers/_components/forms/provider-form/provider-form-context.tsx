@@ -114,6 +114,10 @@ const ACTION_TO_FIELD_PATH: Partial<Record<ProviderFormActionWith5hResetMode["ty
   SET_LIMIT_MONTHLY_USD: "rateLimit.limitMonthlyUsd",
   SET_LIMIT_TOTAL_USD: "rateLimit.limitTotalUsd",
   SET_LIMIT_CONCURRENT_SESSIONS: "rateLimit.limitConcurrentSessions",
+  SET_UPSTREAM_QUOTA_PROBE_TYPE: "rateLimit.upstreamQuotaProbeType",
+  SET_UPSTREAM_QUOTA_THRESHOLD_PERCENT: "rateLimit.upstreamQuotaThresholdPercent",
+  SET_UPSTREAM_QUOTA_ZHIPU_ORGANIZATION: "rateLimit.upstreamQuotaZhipuOrganization",
+  SET_UPSTREAM_QUOTA_ZHIPU_PROJECT: "rateLimit.upstreamQuotaZhipuProject",
   SET_FAILURE_THRESHOLD: "circuitBreaker.failureThreshold",
   SET_OPEN_DURATION_MINUTES: "circuitBreaker.openDurationMinutes",
   SET_HALF_OPEN_SUCCESS_THRESHOLD: "circuitBreaker.halfOpenSuccessThreshold",
@@ -297,6 +301,16 @@ export function createInitialState(
           analysis.rateLimit.limitConcurrentSessions.status === "uniform"
             ? analysis.rateLimit.limitConcurrentSessions.value
             : null,
+        upstreamQuotaProbeType:
+          analysis.rateLimit.upstreamQuotaProbeType.status === "uniform"
+            ? analysis.rateLimit.upstreamQuotaProbeType.value
+            : "auto",
+        upstreamQuotaThresholdPercent:
+          analysis.rateLimit.upstreamQuotaThresholdPercent.status === "uniform"
+            ? analysis.rateLimit.upstreamQuotaThresholdPercent.value
+            : null,
+        upstreamQuotaZhipuOrganization: "",
+        upstreamQuotaZhipuProject: "",
       } as ProviderFormRateLimitWith5hResetMode,
       circuitBreaker: {
         failureThreshold:
@@ -402,6 +416,10 @@ export function createInitialState(
         limitMonthlyUsd: null,
         limitTotalUsd: null,
         limitConcurrentSessions: null,
+        upstreamQuotaProbeType: "auto",
+        upstreamQuotaThresholdPercent: null,
+        upstreamQuotaZhipuOrganization: "",
+        upstreamQuotaZhipuProject: "",
       } as ProviderFormRateLimitWith5hResetMode,
       circuitBreaker: {
         failureThreshold: undefined,
@@ -491,6 +509,11 @@ export function createInitialState(
       limitMonthlyUsd: sourceProvider?.limitMonthlyUsd ?? null,
       limitTotalUsd: sourceProvider?.limitTotalUsd ?? null,
       limitConcurrentSessions: sourceProvider?.limitConcurrentSessions ?? null,
+      upstreamQuotaProbeType: sourceProvider?.upstreamQuotaProbeType ?? "auto",
+      upstreamQuotaThresholdPercent: sourceProvider?.upstreamQuotaThresholdPercent ?? null,
+      upstreamQuotaZhipuOrganization:
+        sourceProvider?.upstreamQuotaProbeOptions?.zhipuOrganization ?? "",
+      upstreamQuotaZhipuProject: sourceProvider?.upstreamQuotaProbeOptions?.zhipuProject ?? "",
     } as ProviderFormRateLimitWith5hResetMode,
     circuitBreaker: {
       failureThreshold: sourceProvider?.circuitBreakerFailureThreshold,
@@ -733,6 +756,26 @@ export function providerFormReducer(
       return {
         ...state,
         rateLimit: { ...state.rateLimit, limitConcurrentSessions: action.payload },
+      };
+    case "SET_UPSTREAM_QUOTA_PROBE_TYPE":
+      return {
+        ...state,
+        rateLimit: { ...state.rateLimit, upstreamQuotaProbeType: action.payload },
+      };
+    case "SET_UPSTREAM_QUOTA_THRESHOLD_PERCENT":
+      return {
+        ...state,
+        rateLimit: { ...state.rateLimit, upstreamQuotaThresholdPercent: action.payload },
+      };
+    case "SET_UPSTREAM_QUOTA_ZHIPU_ORGANIZATION":
+      return {
+        ...state,
+        rateLimit: { ...state.rateLimit, upstreamQuotaZhipuOrganization: action.payload },
+      };
+    case "SET_UPSTREAM_QUOTA_ZHIPU_PROJECT":
+      return {
+        ...state,
+        rateLimit: { ...state.rateLimit, upstreamQuotaZhipuProject: action.payload },
       };
 
     // Circuit breaker

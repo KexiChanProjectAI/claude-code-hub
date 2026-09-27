@@ -8,6 +8,8 @@ const getProviderStatisticsAsyncMock = vi.hoisted(() => vi.fn());
 const getUnmaskedProviderKeyMock = vi.hoisted(() => vi.fn());
 const getProvidersHealthStatusMock = vi.hoisted(() => vi.fn());
 const resetProviderCircuitMock = vi.hoisted(() => vi.fn());
+const getProvidersUpstreamQuotaStatusMock = vi.hoisted(() => vi.fn());
+const refreshProviderUpstreamQuotaMock = vi.hoisted(() => vi.fn());
 const resetProviderTotalUsageMock = vi.hoisted(() => vi.fn());
 const batchResetProviderCircuitsMock = vi.hoisted(() => vi.fn());
 const getProviderLimitUsageMock = vi.hoisted(() => vi.fn());
@@ -42,6 +44,8 @@ vi.mock("@/actions/providers", () => ({
   getUnmaskedProviderKey: getUnmaskedProviderKeyMock,
   getProvidersHealthStatus: getProvidersHealthStatusMock,
   resetProviderCircuit: resetProviderCircuitMock,
+  getProvidersUpstreamQuotaStatus: getProvidersUpstreamQuotaStatusMock,
+  refreshProviderUpstreamQuota: refreshProviderUpstreamQuotaMock,
   resetProviderTotalUsage: resetProviderTotalUsageMock,
   batchResetProviderCircuits: batchResetProviderCircuitsMock,
   getProviderLimitUsage: getProviderLimitUsageMock,
@@ -184,6 +188,29 @@ describe("v1 providers read endpoints", () => {
       2: { circuitState: "open", failureCount: 10 },
     });
     resetProviderCircuitMock.mockResolvedValue({ ok: true });
+    getProvidersUpstreamQuotaStatusMock.mockResolvedValue({
+      1: {
+        providerId: 1,
+        resolvedProbeType: "kimi-coding",
+        snapshot: null,
+        verdict: { status: "unknown", reason: "no_snapshot" },
+      },
+      999: {
+        providerId: 999,
+        resolvedProbeType: "kimi-coding",
+        snapshot: null,
+        verdict: { status: "unknown", reason: "no_snapshot" },
+      },
+    });
+    refreshProviderUpstreamQuotaMock.mockResolvedValue({
+      ok: true,
+      data: {
+        providerId: 1,
+        resolvedProbeType: "kimi-coding",
+        snapshot: null,
+        verdict: { status: "unknown", reason: "no_snapshot" },
+      },
+    });
     resetProviderTotalUsageMock.mockResolvedValue({ ok: true });
     batchResetProviderCircuitsMock.mockResolvedValue({ ok: true, data: { resetCount: 1 } });
     getProviderLimitUsageMock.mockResolvedValue({
@@ -525,6 +552,52 @@ describe("v1 providers read endpoints", () => {
     });
   });
 
+  test("round-trips upstream quota fields through PATCH and GET", async () => {
+    const patched = await callV1Route({
+      method: "PATCH",
+      pathname: "/api/v1/providers/1",
+      headers: { Authorization: "Bearer admin-token" },
+      body: {
+        upstream_quota_probe_type: "zhipu-coding",
+        upstream_quota_threshold_percent: 25,
+        upstream_quota_probe_options: { zhipuOrganization: "org-1", zhipuProject: "proj-1" },
+      },
+    });
+    expect(patched.response.status).toBe(200);
+    expect(editProviderMock).toHaveBeenCalledWith(1, {
+      upstream_quota_probe_type: "zhipu-coding",
+      upstream_quota_threshold_percent: 25,
+      upstream_quota_probe_options: { zhipuOrganization: "org-1", zhipuProject: "proj-1" },
+    });
+
+    const invalid = await callV1Route({
+      method: "PATCH",
+      pathname: "/api/v1/providers/1",
+      headers: { Authorization: "Bearer admin-token" },
+      body: { upstream_quota_threshold_percent: 100 },
+    });
+    expect(invalid.response.status).toBe(400);
+
+    getProvidersMock.mockResolvedValueOnce([
+      provider({
+        upstreamQuotaProbeType: "kimi-coding",
+        upstreamQuotaThresholdPercent: 15,
+        upstreamQuotaProbeOptions: null,
+      }),
+    ]);
+    const detail = await callV1Route({
+      method: "GET",
+      pathname: "/api/v1/providers/1",
+      headers: { Authorization: "Bearer admin-token" },
+    });
+    expect(detail.response.status).toBe(200);
+    expect(detail.json).toMatchObject({
+      upstreamQuotaProbeType: "kimi-coding",
+      upstreamQuotaThresholdPercent: 15,
+      upstreamQuotaProbeOptions: null,
+    });
+  });
+
   test("gets provider detail and hides deprecated provider records", async () => {
     const visible = await callV1Route({
       method: "GET",
@@ -755,6 +828,43 @@ describe("v1 providers read endpoints", () => {
     });
     expect(resetCircuit.response.status).toBe(200);
     expect(resetProviderCircuitMock).toHaveBeenCalledWith(1);
+
+    const upstreamQuota = await callV1Route({
+      method: "GET",
+      pathname: "/api/v1/providers/upstream-quota",
+      headers: { Authorization: "Bearer admin-token" },
+    });
+    expect(upstreamQuota.response.status).toBe(200);
+    expect(Object.keys(upstreamQuota.json as object)).toEqual(["1"]);
+    expect(getProvidersUpstreamQuotaStatusMock).toHaveBeenCalled();
+
+    const refreshQuota = await callV1Route({
+      method: "POST",
+      pathname: "/api/v1/providers/1/upstream-quota:refresh",
+      headers: { Authorization: "Bearer admin-token" },
+    });
+    expect(refreshQuota.response.status).toBe(200);
+    expect(refreshQuota.json).toMatchObject({ providerId: 1, resolvedProbeType: "kimi-coding" });
+    expect(refreshProviderUpstreamQuotaMock).toHaveBeenCalledWith(1);
+
+    refreshProviderUpstreamQuotaMock.mockResolvedValueOnce({
+      ok: false,
+      error: "Upstream quota probing is not available for this provider",
+      errorCode: "UPSTREAM_QUOTA_NOT_SUPPORTED",
+    });
+    const unsupported = await callV1Route({
+      method: "POST",
+      pathname: "/api/v1/providers/1/upstream-quota:refresh",
+      headers: { Authorization: "Bearer admin-token" },
+    });
+    expect(unsupported.response.status).toBeGreaterThanOrEqual(400);
+
+    const missingQuotaProvider = await callV1Route({
+      method: "POST",
+      pathname: "/api/v1/providers/999/upstream-quota:refresh",
+      headers: { Authorization: "Bearer admin-token" },
+    });
+    expect(missingQuotaProvider.response.status).toBe(404);
 
     const resetUsage = await callV1Route({
       method: "POST",

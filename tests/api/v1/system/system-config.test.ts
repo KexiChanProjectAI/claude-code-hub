@@ -130,6 +130,40 @@ describe("v1 system config endpoints", () => {
     });
   });
 
+  test("accepts and validates upstream quota scheduling settings", async () => {
+    const updated = await callV1Route({
+      method: "PUT",
+      pathname: "/api/v1/system/settings",
+      headers: { Authorization: "Bearer admin-token" },
+      body: {
+        upstreamQuotaSchedulingEnabled: true,
+        upstreamQuotaThresholdPercent: 15,
+        upstreamQuotaProbeIntervalMinutes: 5,
+      },
+    });
+    expect(updated.response.status).toBe(200);
+    expect(saveSystemSettingsMock).toHaveBeenCalledWith({
+      upstreamQuotaSchedulingEnabled: true,
+      upstreamQuotaThresholdPercent: 15,
+      upstreamQuotaProbeIntervalMinutes: 5,
+    });
+
+    for (const body of [
+      { upstreamQuotaThresholdPercent: 0 },
+      { upstreamQuotaThresholdPercent: 100 },
+      { upstreamQuotaProbeIntervalMinutes: 0 },
+      { upstreamQuotaProbeIntervalMinutes: 1441 },
+    ]) {
+      const invalid = await callV1Route({
+        method: "PUT",
+        pathname: "/api/v1/system/settings",
+        headers: { Authorization: "Bearer admin-token" },
+        body,
+      });
+      expect(invalid.response.status).toBe(400);
+    }
+  });
+
   test("returns the server timezone as a read endpoint", async () => {
     const got = await callV1Route({
       method: "GET",

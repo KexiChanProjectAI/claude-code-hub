@@ -92,6 +92,9 @@ export async function saveSystemSettings(formData: {
   stickySlaMs?: number;
   racingTotalTimeoutMs?: number;
   stickyTimeoutCooldownMs?: number;
+  upstreamQuotaSchedulingEnabled?: boolean;
+  upstreamQuotaThresholdPercent?: number;
+  upstreamQuotaProbeIntervalMinutes?: number;
   timezone?: string | null;
   enableAutoCleanup?: boolean;
   cleanupRetentionDays?: number;
@@ -183,6 +186,9 @@ export async function saveSystemSettings(formData: {
       stickySlaMs: validated.stickySlaMs,
       racingTotalTimeoutMs: validated.racingTotalTimeoutMs,
       stickyTimeoutCooldownMs: validated.stickyTimeoutCooldownMs,
+      upstreamQuotaSchedulingEnabled: validated.upstreamQuotaSchedulingEnabled,
+      upstreamQuotaThresholdPercent: validated.upstreamQuotaThresholdPercent,
+      upstreamQuotaProbeIntervalMinutes: validated.upstreamQuotaProbeIntervalMinutes,
       timezone: validated.timezone,
       enableAutoCleanup: validated.enableAutoCleanup,
       cleanupRetentionDays: validated.cleanupRetentionDays,

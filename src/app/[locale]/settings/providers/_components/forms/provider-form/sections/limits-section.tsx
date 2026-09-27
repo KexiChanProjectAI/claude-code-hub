@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { MixedValueIndicator } from "../../../batch-edit/mixed-value-indicator";
 import { FieldGroup, SectionCard, SmartInputWrapper } from "../components/section-card";
 import { useProviderForm } from "../provider-form-context";
+import { UpstreamQuotaCard } from "./upstream-quota-card";
 
 // Validation helpers
 function validatePositiveDecimalField(value: string): number | null {
@@ -359,6 +360,9 @@ export function LimitsSection({ subSectionRefs }: LimitsSectionProps) {
           </FieldGroup>
         </div>
       </SectionCard>
+
+      {/* Upstream Quota Scheduling */}
+      <UpstreamQuotaCard />
 
       {/* Circuit Breaker Settings */}
       <div ref={subSectionRefs?.circuitBreaker}>

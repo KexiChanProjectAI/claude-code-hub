@@ -411,6 +411,38 @@
     "otherLimits": "其他限制",
     "windowReset": "窗口重置方式"
   },
+  "upstreamQuota": {
+    "title": "上游额度",
+    "desc": "查询供应商的 Coding Plan 剩余额度，额度不足时不再向其调度新会话。需在系统设置中开启上游额度调度后生效。",
+    "probeType": {
+      "label": "额度来源",
+      "desc": "选择要查询的 Coding Plan 额度接口，或为该供应商关闭探测。",
+      "autoResolved": "根据供应商 URL 自动识别为：{type}",
+      "options": {
+        "auto": "按 URL 自动识别",
+        "none": "关闭",
+        "kimi-coding": "Kimi Coding Plan",
+        "zhipu-coding": "智谱 GLM Coding Plan",
+        "minimax-coding": "MiniMax Coding Plan",
+        "opencode-go": "OpenCode Go"
+      }
+    },
+    "threshold": {
+      "label": "最低剩余额度（%）",
+      "desc": "覆盖系统设置中的阈值。留空则使用系统设置。",
+      "placeholder": "系统默认"
+    },
+    "zhipuOrganization": {
+      "label": "智谱组织 ID",
+      "desc": "仅团队版需要，以 bigmodel-organization 请求头发送。",
+      "placeholder": "org-..."
+    },
+    "zhipuProject": {
+      "label": "智谱项目 ID",
+      "desc": "仅团队版需要，以 bigmodel-project 请求头发送。",
+      "placeholder": "proj_..."
+    }
+  },
   "circuitBreaker": {
     "title": "熔断器配置",
     "summary": "{failureThreshold} 次失败 / {openDuration} 分钟熔断 / {successThreshold} 次成功恢复 / 每个供应商最多 {maxRetryAttempts} 次尝试",

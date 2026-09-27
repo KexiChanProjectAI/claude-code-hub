@@ -15,6 +15,10 @@ import { PROVIDER_MODEL_REDIRECT_RULES_SCHEMA } from "@/lib/provider-model-redir
 import { resolveProviderPatternRegex } from "@/lib/provider-pattern-regex";
 import { normalizeProviderPrefix, PROVIDER_PREFIX_MAX_LENGTH } from "@/lib/provider-prefix";
 import {
+  UPSTREAM_QUOTA_PROBE_INTERVAL_MINUTES_RANGE,
+  UPSTREAM_QUOTA_THRESHOLD_PERCENT_RANGE,
+} from "@/lib/provider-upstream-quota/constants";
+import {
   MAX_PUBLIC_STATUS_RANGE_HOURS,
   PUBLIC_STATUS_INTERVAL_OPTIONS,
 } from "@/lib/public-status/constants";
@@ -30,6 +34,7 @@ import {
   REPLAY_CACHE_TTL_MINUTES_MAX,
   REPLAY_CACHE_TTL_MINUTES_MIN,
 } from "@/lib/validation/replay-settings";
+import { UPSTREAM_QUOTA_PROBE_TYPES } from "@/types/upstream-quota";
 
 export {
   DISCOVERY_SETTINGS_INVALID_ERROR_CODE,
@@ -580,6 +585,23 @@ const PROVIDER_CUSTOM_HEADERS_SCHEMA = z
 /**
  * 服务商创建数据验证schema
  */
+const UPSTREAM_QUOTA_THRESHOLD_PERCENT_SCHEMA = z.coerce
+  .number()
+  .int()
+  .min(1, "Upstream quota threshold must be between 1 and 99")
+  .max(99, "Upstream quota threshold must be between 1 and 99")
+  .nullable()
+  .optional();
+
+const UPSTREAM_QUOTA_PROBE_OPTIONS_SCHEMA = z
+  .object({
+    zhipuOrganization: z.string().trim().max(128).nullable().optional(),
+    zhipuProject: z.string().trim().max(128).nullable().optional(),
+  })
+  .strict()
+  .nullable()
+  .optional();
+
 export const CreateProviderSchema = z
   .object({
     name: z.string().min(1, "服务商名称不能为空").max(64, "服务商名称不能超过64个字符"),
@@ -640,6 +662,10 @@ export const CreateProviderSchema = z
       .url("请输入有效的URL地址")
       .nullable()
       .optional(),
+    // 上游额度调度
+    upstream_quota_probe_type: z.enum(UPSTREAM_QUOTA_PROBE_TYPES).optional().default("auto"),
+    upstream_quota_threshold_percent: UPSTREAM_QUOTA_THRESHOLD_PERCENT_SCHEMA,
+    upstream_quota_probe_options: UPSTREAM_QUOTA_PROBE_OPTIONS_SCHEMA,
     // 金额限流配置
     limit_5h_usd: z.coerce
       .number()
@@ -890,6 +916,10 @@ export const UpdateProviderSchema = z
       .url("请输入有效的URL地址")
       .nullable()
       .optional(),
+    // 上游额度调度
+    upstream_quota_probe_type: z.enum(UPSTREAM_QUOTA_PROBE_TYPES).optional(),
+    upstream_quota_threshold_percent: UPSTREAM_QUOTA_THRESHOLD_PERCENT_SCHEMA,
+    upstream_quota_probe_options: UPSTREAM_QUOTA_PROBE_OPTIONS_SCHEMA,
     // 金额限流配置
     limit_5h_usd: z.coerce
       .number()
@@ -1183,6 +1213,20 @@ export const UpdateSystemSettingsSchema = z
       .int(DISCOVERY_SETTINGS_INVALID_ERROR_CODE)
       .min(DISCOVERY_FIELD_LIMITS.stickyTimeoutCooldownMs[0], DISCOVERY_SETTINGS_INVALID_ERROR_CODE)
       .max(DISCOVERY_FIELD_LIMITS.stickyTimeoutCooldownMs[1], DISCOVERY_SETTINGS_INVALID_ERROR_CODE)
+      .optional(),
+    // 上游额度调度（可选）
+    upstreamQuotaSchedulingEnabled: z.boolean().optional(),
+    upstreamQuotaThresholdPercent: z.coerce
+      .number()
+      .int()
+      .min(UPSTREAM_QUOTA_THRESHOLD_PERCENT_RANGE[0])
+      .max(UPSTREAM_QUOTA_THRESHOLD_PERCENT_RANGE[1])
+      .optional(),
+    upstreamQuotaProbeIntervalMinutes: z.coerce
+      .number()
+      .int()
+      .min(UPSTREAM_QUOTA_PROBE_INTERVAL_MINUTES_RANGE[0])
+      .max(UPSTREAM_QUOTA_PROBE_INTERVAL_MINUTES_RANGE[1])
       .optional(),
     // 启用 OpenAI Responses WebSocket 支持（可选，仅 Codex 类型供应商生效）
     enableOpenaiResponsesWebsocket: z.boolean().optional(),

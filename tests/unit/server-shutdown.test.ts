@@ -260,6 +260,9 @@ describe.sequential("registerOrchestratedShutdown", () => {
     vi.doMock("@/lib/provider-endpoints/probe-scheduler", () => ({
       stopEndpointProbeScheduler: () => {},
     }));
+    vi.doMock("@/lib/provider-upstream-quota/scheduler", () => ({
+      stopUpstreamQuotaScheduler: async () => {},
+    }));
     vi.doMock("@/lib/public-status/scheduler", () => ({
       stopPublicStatusRebuildScheduler: async () => {},
     }));

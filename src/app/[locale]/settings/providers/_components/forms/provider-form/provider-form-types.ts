@@ -19,6 +19,7 @@ import type {
   ProviderType,
   ReasoningEffortOverrideRule,
 } from "@/types/provider";
+import type { UpstreamQuotaProbeType } from "@/types/upstream-quota";
 import type { BatchSettingsAnalysis } from "../../batch-edit/analyze-batch-settings";
 
 // Form mode
@@ -96,6 +97,11 @@ export interface RateLimitState {
   limitMonthlyUsd: number | null;
   limitTotalUsd: number | null;
   limitConcurrentSessions: number | null;
+  // Upstream quota scheduling
+  upstreamQuotaProbeType: UpstreamQuotaProbeType;
+  upstreamQuotaThresholdPercent: number | null;
+  upstreamQuotaZhipuOrganization: string;
+  upstreamQuotaZhipuProject: string;
 }
 
 export interface CircuitBreakerState {
@@ -194,6 +200,10 @@ export type ProviderFormAction =
   | { type: "SET_LIMIT_MONTHLY_USD"; payload: number | null }
   | { type: "SET_LIMIT_TOTAL_USD"; payload: number | null }
   | { type: "SET_LIMIT_CONCURRENT_SESSIONS"; payload: number | null }
+  | { type: "SET_UPSTREAM_QUOTA_PROBE_TYPE"; payload: UpstreamQuotaProbeType }
+  | { type: "SET_UPSTREAM_QUOTA_THRESHOLD_PERCENT"; payload: number | null }
+  | { type: "SET_UPSTREAM_QUOTA_ZHIPU_ORGANIZATION"; payload: string }
+  | { type: "SET_UPSTREAM_QUOTA_ZHIPU_PROJECT"; payload: string }
   // Circuit breaker actions
   | { type: "SET_FAILURE_THRESHOLD"; payload: number | undefined }
   | { type: "SET_OPEN_DURATION_MINUTES"; payload: number | undefined }

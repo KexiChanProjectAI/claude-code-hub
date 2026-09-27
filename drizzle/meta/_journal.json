@@ -904,6 +904,13 @@
       "when": 1790438793913,
       "tag": "0128_clickhouse_sync_marker",
       "breakpoints": true
+    },
+    {
+      "idx": 129,
+      "version": "7",
+      "when": 1790508624502,
+      "tag": "0129_upstream_quota_scheduling",
+      "breakpoints": true
     }
   ]
 }

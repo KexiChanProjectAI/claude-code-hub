@@ -41,6 +41,7 @@ import {
   getEndpointFilterStats,
   getPreferredProviderEndpoints,
 } from "@/lib/provider-endpoints/endpoint-selector";
+import { maybeMarkUpstreamQuotaExhausted } from "@/lib/provider-upstream-quota/verdict";
 import {
   fetchWithDispatcher,
   getGlobalAgentPool,
@@ -2560,6 +2561,10 @@ export class ProxyForwarder {
           // ⭐ 1. 分类错误（供应商错误 vs 系统错误 vs 客户端中断）
           // 使用异步版本确保错误规则已加载
           let errorCategory = await categorizeErrorAsync(lastError);
+          // 上游额度：402 / 429 余额不足 -> 被动标记该供应商额度耗尽（fire-and-forget，不影响重试）
+          if (!session.isProbeRequest?.()) {
+            void maybeMarkUpstreamQuotaExhausted(currentProvider, lastError);
+          }
           const databaseError = findSafeDatabaseError(lastError);
           if (databaseError) {
             errorCategory = ErrorCategory.LOCAL_OVERLOAD;
@@ -5725,6 +5730,9 @@ export class ProxyForwarder {
 
       let errorCategory = await categorizeErrorAsync(error);
       lastErrorCategory = errorCategory;
+      if (!session.isProbeRequest?.()) {
+        void maybeMarkUpstreamQuotaExhausted(attempt.provider, error);
+      }
       // F3a：hedge attempt 供应商侧失败且正是亲和提名者 -> 定向墓碑
       // 与顺序路径同一判定：request-scoped 空完成不写墓碑
       if (
@@ -7724,6 +7732,9 @@ export class ProxyForwarder {
           if (stickyWaveForFallback) stickyWaveForFallback.slots = concurrency;
           lastError = error instanceof Error ? error : new Error(String(error));
           lastErrorCategory = await categorizeErrorAsync(lastError);
+          if (!session.isProbeRequest?.()) {
+            void maybeMarkUpstreamQuotaExhausted(provider, lastError);
+          }
           const errorMessage =
             lastError instanceof ProxyError
               ? lastError.getDetailedErrorMessage()

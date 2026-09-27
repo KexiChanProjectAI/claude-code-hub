@@ -204,6 +204,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/providers/upstream-quota": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get provider upstream quota
+         * @description Returns the latest upstream Coding Plan quota snapshot and scheduling verdict for every visible provider that supports upstream quota probing.
+         */
+        get: operations["getProvidersUpstreamQuota"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/providers/{id}/upstream-quota:refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh provider upstream quota
+         * @description Probes the upstream Coding Plan quota endpoint for one provider immediately and returns the updated status.
+         */
+        post: operations["postProvidersByIdUpstreamQuotaRefresh"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/providers/cache-effectiveness": {
         parameters: {
             query?: never;
@@ -4432,6 +4472,20 @@ export interface operations {
                             mcpPassthroughType: string | null;
                             /** @description MCP passthrough URL. */
                             mcpPassthroughUrl: string | null;
+                            /**
+                             * @description Upstream Coding Plan quota probe type; auto detects it from the provider URL.
+                             * @enum {string}
+                             */
+                            upstreamQuotaProbeType: "auto" | "none" | "kimi-coding" | "zhipu-coding" | "minimax-coding" | "opencode-go";
+                            /** @description Per-provider minimum remaining upstream quota percent, or null for the system value. */
+                            upstreamQuotaThresholdPercent: number | null;
+                            /** @description Upstream quota probe options such as Zhipu team plan organization and project ids. */
+                            upstreamQuotaProbeOptions: {
+                                /** @description Zhipu team plan organization id. */
+                                zhipuOrganization?: string | null;
+                                /** @description Zhipu team plan project id. */
+                                zhipuProject?: string | null;
+                            } | null;
                             /** @description Five-hour cost limit in USD. */
                             limit5hUsd: number | null;
                             /** @description Five-hour reset mode. */
@@ -4773,6 +4827,20 @@ export interface operations {
                      * @description MCP passthrough URL.
                      */
                     mcp_passthrough_url?: string | null;
+                    /**
+                     * @description Upstream Coding Plan quota probe type; auto detects it from the provider URL.
+                     * @enum {string}
+                     */
+                    upstream_quota_probe_type?: "auto" | "none" | "kimi-coding" | "zhipu-coding" | "minimax-coding" | "opencode-go";
+                    /** @description Minimum remaining upstream quota percent for new sessions; null uses the system setting. */
+                    upstream_quota_threshold_percent?: number | null;
+                    /** @description Upstream quota probe options such as Zhipu team plan ids. */
+                    upstream_quota_probe_options?: {
+                        /** @description Zhipu team plan organization id. */
+                        zhipuOrganization?: string | null;
+                        /** @description Zhipu team plan project id. */
+                        zhipuProject?: string | null;
+                    } | null;
                     /** @description Five-hour cost limit in USD. */
                     limit_5h_usd?: number | null;
                     /**
@@ -4939,6 +5007,20 @@ export interface operations {
                         mcpPassthroughType: string | null;
                         /** @description MCP passthrough URL. */
                         mcpPassthroughUrl: string | null;
+                        /**
+                         * @description Upstream Coding Plan quota probe type; auto detects it from the provider URL.
+                         * @enum {string}
+                         */
+                        upstreamQuotaProbeType: "auto" | "none" | "kimi-coding" | "zhipu-coding" | "minimax-coding" | "opencode-go";
+                        /** @description Per-provider minimum remaining upstream quota percent, or null for the system value. */
+                        upstreamQuotaThresholdPercent: number | null;
+                        /** @description Upstream quota probe options such as Zhipu team plan organization and project ids. */
+                        upstreamQuotaProbeOptions: {
+                            /** @description Zhipu team plan organization id. */
+                            zhipuOrganization?: string | null;
+                            /** @description Zhipu team plan project id. */
+                            zhipuProject?: string | null;
+                        } | null;
                         /** @description Five-hour cost limit in USD. */
                         limit5hUsd: number | null;
                         /** @description Five-hour reset mode. */
@@ -5282,6 +5364,20 @@ export interface operations {
                         mcpPassthroughType: string | null;
                         /** @description MCP passthrough URL. */
                         mcpPassthroughUrl: string | null;
+                        /**
+                         * @description Upstream Coding Plan quota probe type; auto detects it from the provider URL.
+                         * @enum {string}
+                         */
+                        upstreamQuotaProbeType: "auto" | "none" | "kimi-coding" | "zhipu-coding" | "minimax-coding" | "opencode-go";
+                        /** @description Per-provider minimum remaining upstream quota percent, or null for the system value. */
+                        upstreamQuotaThresholdPercent: number | null;
+                        /** @description Upstream quota probe options such as Zhipu team plan organization and project ids. */
+                        upstreamQuotaProbeOptions: {
+                            /** @description Zhipu team plan organization id. */
+                            zhipuOrganization?: string | null;
+                            /** @description Zhipu team plan project id. */
+                            zhipuProject?: string | null;
+                        } | null;
                         /** @description Five-hour cost limit in USD. */
                         limit5hUsd: number | null;
                         /** @description Five-hour reset mode. */
@@ -5798,6 +5894,20 @@ export interface operations {
                      * @description MCP passthrough URL.
                      */
                     mcp_passthrough_url?: string | null;
+                    /**
+                     * @description Upstream Coding Plan quota probe type; auto detects it from the provider URL.
+                     * @enum {string}
+                     */
+                    upstream_quota_probe_type?: "auto" | "none" | "kimi-coding" | "zhipu-coding" | "minimax-coding" | "opencode-go";
+                    /** @description Minimum remaining upstream quota percent for new sessions; null uses the system setting. */
+                    upstream_quota_threshold_percent?: number | null;
+                    /** @description Upstream quota probe options such as Zhipu team plan ids. */
+                    upstream_quota_probe_options?: {
+                        /** @description Zhipu team plan organization id. */
+                        zhipuOrganization?: string | null;
+                        /** @description Zhipu team plan project id. */
+                        zhipuProject?: string | null;
+                    } | null;
                     /** @description Five-hour cost limit in USD. */
                     limit_5h_usd?: number | null;
                     /**
@@ -5970,6 +6080,20 @@ export interface operations {
                         mcpPassthroughType: string | null;
                         /** @description MCP passthrough URL. */
                         mcpPassthroughUrl: string | null;
+                        /**
+                         * @description Upstream Coding Plan quota probe type; auto detects it from the provider URL.
+                         * @enum {string}
+                         */
+                        upstreamQuotaProbeType: "auto" | "none" | "kimi-coding" | "zhipu-coding" | "minimax-coding" | "opencode-go";
+                        /** @description Per-provider minimum remaining upstream quota percent, or null for the system value. */
+                        upstreamQuotaThresholdPercent: number | null;
+                        /** @description Upstream quota probe options such as Zhipu team plan organization and project ids. */
+                        upstreamQuotaProbeOptions: {
+                            /** @description Zhipu team plan organization id. */
+                            zhipuOrganization?: string | null;
+                            /** @description Zhipu team plan project id. */
+                            zhipuProject?: string | null;
+                        } | null;
                         /** @description Five-hour cost limit in USD. */
                         limit5hUsd: number | null;
                         /** @description Five-hour reset mode. */
@@ -6427,6 +6551,357 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Provider health. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @description Stable problem type URI or URN. */
+                        type: string;
+                        /** @description Short problem title. */
+                        title: string;
+                        /** @description HTTP status code. */
+                        status: number;
+                        /** @description Human-readable error detail. */
+                        detail: string;
+                        /** @description Request path that produced the problem. */
+                        instance: string;
+                        /** @description Application error code for frontend i18n. */
+                        errorCode: string;
+                        /** @description Optional i18n parameters. */
+                        errorParams?: {
+                            [key: string]: unknown;
+                        };
+                        /** @description Optional request trace identifier. */
+                        traceId?: string;
+                        /** @description Validation failure details. */
+                        invalidParams?: {
+                            /** @description Path to the invalid input field. */
+                            path: (string | number)[];
+                            /** @description Machine-readable validation error code. */
+                            code: string;
+                            /** @description Validation error message. */
+                            message: string;
+                        }[];
+                    };
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @description Stable problem type URI or URN. */
+                        type: string;
+                        /** @description Short problem title. */
+                        title: string;
+                        /** @description HTTP status code. */
+                        status: number;
+                        /** @description Human-readable error detail. */
+                        detail: string;
+                        /** @description Request path that produced the problem. */
+                        instance: string;
+                        /** @description Application error code for frontend i18n. */
+                        errorCode: string;
+                        /** @description Optional i18n parameters. */
+                        errorParams?: {
+                            [key: string]: unknown;
+                        };
+                        /** @description Optional request trace identifier. */
+                        traceId?: string;
+                        /** @description Validation failure details. */
+                        invalidParams?: {
+                            /** @description Path to the invalid input field. */
+                            path: (string | number)[];
+                            /** @description Machine-readable validation error code. */
+                            code: string;
+                            /** @description Validation error message. */
+                            message: string;
+                        }[];
+                    };
+                };
+            };
+            /** @description Admin access required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @description Stable problem type URI or URN. */
+                        type: string;
+                        /** @description Short problem title. */
+                        title: string;
+                        /** @description HTTP status code. */
+                        status: number;
+                        /** @description Human-readable error detail. */
+                        detail: string;
+                        /** @description Request path that produced the problem. */
+                        instance: string;
+                        /** @description Application error code for frontend i18n. */
+                        errorCode: string;
+                        /** @description Optional i18n parameters. */
+                        errorParams?: {
+                            [key: string]: unknown;
+                        };
+                        /** @description Optional request trace identifier. */
+                        traceId?: string;
+                        /** @description Validation failure details. */
+                        invalidParams?: {
+                            /** @description Path to the invalid input field. */
+                            path: (string | number)[];
+                            /** @description Machine-readable validation error code. */
+                            code: string;
+                            /** @description Validation error message. */
+                            message: string;
+                        }[];
+                    };
+                };
+            };
+            /** @description Provider not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @description Stable problem type URI or URN. */
+                        type: string;
+                        /** @description Short problem title. */
+                        title: string;
+                        /** @description HTTP status code. */
+                        status: number;
+                        /** @description Human-readable error detail. */
+                        detail: string;
+                        /** @description Request path that produced the problem. */
+                        instance: string;
+                        /** @description Application error code for frontend i18n. */
+                        errorCode: string;
+                        /** @description Optional i18n parameters. */
+                        errorParams?: {
+                            [key: string]: unknown;
+                        };
+                        /** @description Optional request trace identifier. */
+                        traceId?: string;
+                        /** @description Validation failure details. */
+                        invalidParams?: {
+                            /** @description Path to the invalid input field. */
+                            path: (string | number)[];
+                            /** @description Machine-readable validation error code. */
+                            code: string;
+                            /** @description Validation error message. */
+                            message: string;
+                        }[];
+                    };
+                };
+            };
+        };
+    };
+    getProvidersUpstreamQuota: {
+        parameters: {
+            query?: {
+                /** @description Optional response expansion. Supported value: count. */
+                include?: "count";
+                /** @description Optional user id filter. */
+                userId?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Provider upstream quota status keyed by provider id. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @description Stable problem type URI or URN. */
+                        type: string;
+                        /** @description Short problem title. */
+                        title: string;
+                        /** @description HTTP status code. */
+                        status: number;
+                        /** @description Human-readable error detail. */
+                        detail: string;
+                        /** @description Request path that produced the problem. */
+                        instance: string;
+                        /** @description Application error code for frontend i18n. */
+                        errorCode: string;
+                        /** @description Optional i18n parameters. */
+                        errorParams?: {
+                            [key: string]: unknown;
+                        };
+                        /** @description Optional request trace identifier. */
+                        traceId?: string;
+                        /** @description Validation failure details. */
+                        invalidParams?: {
+                            /** @description Path to the invalid input field. */
+                            path: (string | number)[];
+                            /** @description Machine-readable validation error code. */
+                            code: string;
+                            /** @description Validation error message. */
+                            message: string;
+                        }[];
+                    };
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @description Stable problem type URI or URN. */
+                        type: string;
+                        /** @description Short problem title. */
+                        title: string;
+                        /** @description HTTP status code. */
+                        status: number;
+                        /** @description Human-readable error detail. */
+                        detail: string;
+                        /** @description Request path that produced the problem. */
+                        instance: string;
+                        /** @description Application error code for frontend i18n. */
+                        errorCode: string;
+                        /** @description Optional i18n parameters. */
+                        errorParams?: {
+                            [key: string]: unknown;
+                        };
+                        /** @description Optional request trace identifier. */
+                        traceId?: string;
+                        /** @description Validation failure details. */
+                        invalidParams?: {
+                            /** @description Path to the invalid input field. */
+                            path: (string | number)[];
+                            /** @description Machine-readable validation error code. */
+                            code: string;
+                            /** @description Validation error message. */
+                            message: string;
+                        }[];
+                    };
+                };
+            };
+            /** @description Admin access required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @description Stable problem type URI or URN. */
+                        type: string;
+                        /** @description Short problem title. */
+                        title: string;
+                        /** @description HTTP status code. */
+                        status: number;
+                        /** @description Human-readable error detail. */
+                        detail: string;
+                        /** @description Request path that produced the problem. */
+                        instance: string;
+                        /** @description Application error code for frontend i18n. */
+                        errorCode: string;
+                        /** @description Optional i18n parameters. */
+                        errorParams?: {
+                            [key: string]: unknown;
+                        };
+                        /** @description Optional request trace identifier. */
+                        traceId?: string;
+                        /** @description Validation failure details. */
+                        invalidParams?: {
+                            /** @description Path to the invalid input field. */
+                            path: (string | number)[];
+                            /** @description Machine-readable validation error code. */
+                            code: string;
+                            /** @description Validation error message. */
+                            message: string;
+                        }[];
+                    };
+                };
+            };
+            /** @description Provider not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @description Stable problem type URI or URN. */
+                        type: string;
+                        /** @description Short problem title. */
+                        title: string;
+                        /** @description HTTP status code. */
+                        status: number;
+                        /** @description Human-readable error detail. */
+                        detail: string;
+                        /** @description Request path that produced the problem. */
+                        instance: string;
+                        /** @description Application error code for frontend i18n. */
+                        errorCode: string;
+                        /** @description Optional i18n parameters. */
+                        errorParams?: {
+                            [key: string]: unknown;
+                        };
+                        /** @description Optional request trace identifier. */
+                        traceId?: string;
+                        /** @description Validation failure details. */
+                        invalidParams?: {
+                            /** @description Path to the invalid input field. */
+                            path: (string | number)[];
+                            /** @description Machine-readable validation error code. */
+                            code: string;
+                            /** @description Validation error message. */
+                            message: string;
+                        }[];
+                    };
+                };
+            };
+        };
+    };
+    postProvidersByIdUpstreamQuotaRefresh: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required only when authenticating with the auth-token cookie on mutation requests. */
+                "X-CCH-CSRF"?: string;
+            };
+            path: {
+                /** @description Provider id. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Updated provider upstream quota status. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -12412,6 +12887,12 @@ export interface operations {
                         racingTotalTimeoutMs: number;
                         /** @description Sticky timeout cooldown in milliseconds. */
                         stickyTimeoutCooldownMs: number;
+                        /** @description Whether new sessions skip providers whose upstream Coding Plan remaining quota is below the threshold. */
+                        upstreamQuotaSchedulingEnabled: boolean;
+                        /** @description Minimum upstream remaining quota percent required to receive new sessions. */
+                        upstreamQuotaThresholdPercent: number;
+                        /** @description Upstream quota probe interval in minutes. */
+                        upstreamQuotaProbeIntervalMinutes: number;
                         /** @description Configured system timezone, or null for default. */
                         timezone: string | null;
                         /** @description Whether usage-log cleanup is enabled. */
@@ -12703,6 +13184,12 @@ export interface operations {
                     racingTotalTimeoutMs?: number;
                     /** @description Sticky timeout cooldown in milliseconds. */
                     stickyTimeoutCooldownMs?: number;
+                    /** @description Whether new sessions skip providers whose upstream Coding Plan remaining quota is below the threshold. */
+                    upstreamQuotaSchedulingEnabled?: boolean;
+                    /** @description Minimum upstream remaining quota percent required to receive new sessions. */
+                    upstreamQuotaThresholdPercent?: number;
+                    /** @description Upstream quota probe interval in minutes. */
+                    upstreamQuotaProbeIntervalMinutes?: number;
                     /** @description System timezone, or null to use default. */
                     timezone?: string | null;
                     /** @description Whether usage-log cleanup is enabled. */
@@ -12867,6 +13354,12 @@ export interface operations {
                         racingTotalTimeoutMs: number;
                         /** @description Sticky timeout cooldown in milliseconds. */
                         stickyTimeoutCooldownMs: number;
+                        /** @description Whether new sessions skip providers whose upstream Coding Plan remaining quota is below the threshold. */
+                        upstreamQuotaSchedulingEnabled: boolean;
+                        /** @description Minimum upstream remaining quota percent required to receive new sessions. */
+                        upstreamQuotaThresholdPercent: number;
+                        /** @description Upstream quota probe interval in minutes. */
+                        upstreamQuotaProbeIntervalMinutes: number;
                         /** @description Configured system timezone, or null for default. */
                         timezone: string | null;
                         /** @description Whether usage-log cleanup is enabled. */

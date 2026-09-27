@@ -11,6 +11,7 @@ import {
   Filter,
   Gauge,
   Globe,
+  Hourglass,
   MapPin,
   Network,
   Pencil,
@@ -42,6 +43,12 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { saveSystemSettings } from "@/lib/api-client/v1/actions/system-config";
+import {
+  UPSTREAM_QUOTA_DEFAULT_PROBE_INTERVAL_MINUTES,
+  UPSTREAM_QUOTA_DEFAULT_THRESHOLD_PERCENT,
+  UPSTREAM_QUOTA_PROBE_INTERVAL_MINUTES_RANGE,
+  UPSTREAM_QUOTA_THRESHOLD_PERCENT_RANGE,
+} from "@/lib/provider-upstream-quota/constants";
 import type { CurrencyCode } from "@/lib/utils";
 import { CURRENCY_CONFIG } from "@/lib/utils";
 import { COMMON_TIMEZONES, getTimezoneLabel } from "@/lib/utils/timezone-shared";
@@ -89,6 +96,9 @@ interface SystemSettingsFormProps {
     | "stickySlaMs"
     | "racingTotalTimeoutMs"
     | "stickyTimeoutCooldownMs"
+    | "upstreamQuotaSchedulingEnabled"
+    | "upstreamQuotaThresholdPercent"
+    | "upstreamQuotaProbeIntervalMinutes"
     | "timezone"
     | "verboseProviderError"
     | "passThroughUpstreamErrorMessage"
@@ -185,6 +195,18 @@ export function SystemSettingsForm({
   const [stickyTimeoutCooldownMs, setStickyTimeoutCooldownMs] = useState<DiscoveryNumberValue>(
     initialSettings.stickyTimeoutCooldownMs
   );
+  const [upstreamQuotaSchedulingEnabled, setUpstreamQuotaSchedulingEnabled] = useState(
+    initialSettings.upstreamQuotaSchedulingEnabled ?? false
+  );
+  const [upstreamQuotaThresholdPercent, setUpstreamQuotaThresholdPercent] =
+    useState<DiscoveryNumberValue>(
+      initialSettings.upstreamQuotaThresholdPercent ?? UPSTREAM_QUOTA_DEFAULT_THRESHOLD_PERCENT
+    );
+  const [upstreamQuotaProbeIntervalMinutes, setUpstreamQuotaProbeIntervalMinutes] =
+    useState<DiscoveryNumberValue>(
+      initialSettings.upstreamQuotaProbeIntervalMinutes ??
+        UPSTREAM_QUOTA_DEFAULT_PROBE_INTERVAL_MINUTES
+    );
   const [timezone, setTimezone] = useState<string | null>(initialSettings.timezone);
   const [verboseProviderError, setVerboseProviderError] = useState(
     initialSettings.verboseProviderError
@@ -310,6 +332,20 @@ export function SystemSettingsForm({
       return;
     }
 
+    const upstreamQuotaThresholdValue = Number(upstreamQuotaThresholdPercent);
+    const upstreamQuotaIntervalValue = Number(upstreamQuotaProbeIntervalMinutes);
+    if (
+      !Number.isSafeInteger(upstreamQuotaThresholdValue) ||
+      upstreamQuotaThresholdValue < UPSTREAM_QUOTA_THRESHOLD_PERCENT_RANGE[0] ||
+      upstreamQuotaThresholdValue > UPSTREAM_QUOTA_THRESHOLD_PERCENT_RANGE[1] ||
+      !Number.isSafeInteger(upstreamQuotaIntervalValue) ||
+      upstreamQuotaIntervalValue < UPSTREAM_QUOTA_PROBE_INTERVAL_MINUTES_RANGE[0] ||
+      upstreamQuotaIntervalValue > UPSTREAM_QUOTA_PROBE_INTERVAL_MINUTES_RANGE[1]
+    ) {
+      toast.error(t("upstreamQuotaSettingsInvalid"));
+      return;
+    }
+
     const discoveryConfig = {
       discoveryConcurrency: Number(discoveryConcurrency),
       maxDiscoveryRounds: Number(maxDiscoveryRounds),
@@ -420,6 +456,9 @@ export function SystemSettingsForm({
         legacyHedgeMaxInFlight: legacyHedgeMaxInFlightValue,
         discoveryEnabled,
         ...(discoveryEnabled ? discoveryConfig : {}),
+        upstreamQuotaSchedulingEnabled,
+        upstreamQuotaThresholdPercent: upstreamQuotaThresholdValue,
+        upstreamQuotaProbeIntervalMinutes: upstreamQuotaIntervalValue,
         timezone,
         verboseProviderError,
         passThroughUpstreamErrorMessage,
@@ -483,6 +522,14 @@ export function SystemSettingsForm({
         setStickySlaMs(result.data.stickySlaMs);
         setRacingTotalTimeoutMs(result.data.racingTotalTimeoutMs);
         setStickyTimeoutCooldownMs(result.data.stickyTimeoutCooldownMs);
+        setUpstreamQuotaSchedulingEnabled(result.data.upstreamQuotaSchedulingEnabled ?? false);
+        setUpstreamQuotaThresholdPercent(
+          result.data.upstreamQuotaThresholdPercent ?? UPSTREAM_QUOTA_DEFAULT_THRESHOLD_PERCENT
+        );
+        setUpstreamQuotaProbeIntervalMinutes(
+          result.data.upstreamQuotaProbeIntervalMinutes ??
+            UPSTREAM_QUOTA_DEFAULT_PROBE_INTERVAL_MINUTES
+        );
         setTimezone(result.data.timezone);
         setVerboseProviderError(result.data.verboseProviderError);
         setPassThroughUpstreamErrorMessage(result.data.passThroughUpstreamErrorMessage);
@@ -909,6 +956,73 @@ export function SystemSettingsForm({
               </div>
               <p className="text-xs text-muted-foreground">{t("discoveryWindowDesc")}</p>
             </>
+          ) : null}
+        </div>
+
+        {/* Upstream Quota Scheduling */}
+        <div className="p-4 rounded-xl bg-white/[0.02] border border-white/5 space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="w-8 h-8 flex items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400 shrink-0">
+                <Hourglass className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">
+                  {t("upstreamQuotaSchedulingEnabled")}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {t("upstreamQuotaSchedulingEnabledDesc")}
+                </p>
+              </div>
+            </div>
+            <Switch
+              id="upstream-quota-scheduling-enabled"
+              aria-label={t("upstreamQuotaSchedulingEnabled")}
+              checked={upstreamQuotaSchedulingEnabled}
+              onCheckedChange={setUpstreamQuotaSchedulingEnabled}
+              disabled={isPending}
+            />
+          </div>
+          {upstreamQuotaSchedulingEnabled ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {(
+                [
+                  [
+                    "upstreamQuotaThresholdPercent",
+                    upstreamQuotaThresholdPercent,
+                    setUpstreamQuotaThresholdPercent,
+                    ...UPSTREAM_QUOTA_THRESHOLD_PERCENT_RANGE,
+                  ],
+                  [
+                    "upstreamQuotaProbeIntervalMinutes",
+                    upstreamQuotaProbeIntervalMinutes,
+                    setUpstreamQuotaProbeIntervalMinutes,
+                    ...UPSTREAM_QUOTA_PROBE_INTERVAL_MINUTES_RANGE,
+                  ],
+                ] as const
+              ).map(([key, value, setter, min, max]) => (
+                <div key={key} className="space-y-1.5">
+                  <Label htmlFor={`upstream-quota-${key}`} className="text-xs">
+                    {t(key)}
+                  </Label>
+                  <Input
+                    id={`upstream-quota-${key}`}
+                    type="number"
+                    min={min}
+                    max={max}
+                    step={1}
+                    required
+                    value={value}
+                    onChange={(event) =>
+                      setter(event.target.value === "" ? "" : Number(event.target.value))
+                    }
+                    disabled={isPending}
+                    className={inputClassName}
+                  />
+                  <p className="text-[11px] text-muted-foreground">{t(`${key}Desc`)}</p>
+                </div>
+              ))}
+            </div>
           ) : null}
         </div>
 

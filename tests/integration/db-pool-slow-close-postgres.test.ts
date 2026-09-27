@@ -9,6 +9,7 @@ const run = describe.skipIf(!HAS_DB);
 const CLEANUP_BOUNDARY_MODULES = [
   "@/lib/cache/session-cache",
   "@/lib/provider-endpoints/probe-scheduler",
+  "@/lib/provider-upstream-quota/scheduler",
   "@/lib/public-status/scheduler",
   "@/lib/provider-endpoints/probe-log-cleanup",
   "@/lib/async-task-manager",
@@ -112,6 +113,9 @@ run.sequential("PostgreSQL slow pool close integration", () => {
       vi.doMock("@/lib/cache/session-cache", () => ({ stopCacheCleanup: vi.fn() }));
       vi.doMock("@/lib/provider-endpoints/probe-scheduler", () => ({
         stopEndpointProbeScheduler: vi.fn(),
+      }));
+      vi.doMock("@/lib/provider-upstream-quota/scheduler", () => ({
+        stopUpstreamQuotaScheduler: async () => {},
       }));
       vi.doMock("@/lib/public-status/scheduler", () => ({
         stopPublicStatusRebuildScheduler: vi.fn(async () => {}),

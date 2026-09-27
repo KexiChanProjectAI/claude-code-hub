@@ -1,4 +1,8 @@
 import { z } from "@hono/zod-openapi";
+import {
+  UPSTREAM_QUOTA_PROBE_INTERVAL_MINUTES_RANGE,
+  UPSTREAM_QUOTA_THRESHOLD_PERCENT_RANGE,
+} from "@/lib/provider-upstream-quota/constants";
 import { CURRENCY_CONFIG } from "@/lib/utils/currency";
 import {
   DISCOVERY_FIELD_LIMITS,
@@ -151,6 +155,23 @@ export const SystemSettingsSchema = z
       .min(DISCOVERY_FIELD_LIMITS.stickyTimeoutCooldownMs[0], DISCOVERY_SETTINGS_INVALID_ERROR_CODE)
       .max(DISCOVERY_FIELD_LIMITS.stickyTimeoutCooldownMs[1], DISCOVERY_SETTINGS_INVALID_ERROR_CODE)
       .describe("Sticky timeout cooldown in milliseconds."),
+    upstreamQuotaSchedulingEnabled: z
+      .boolean()
+      .describe(
+        "Whether new sessions skip providers whose upstream Coding Plan remaining quota is below the threshold."
+      ),
+    upstreamQuotaThresholdPercent: z
+      .number()
+      .int()
+      .min(UPSTREAM_QUOTA_THRESHOLD_PERCENT_RANGE[0])
+      .max(UPSTREAM_QUOTA_THRESHOLD_PERCENT_RANGE[1])
+      .describe("Minimum upstream remaining quota percent required to receive new sessions."),
+    upstreamQuotaProbeIntervalMinutes: z
+      .number()
+      .int()
+      .min(UPSTREAM_QUOTA_PROBE_INTERVAL_MINUTES_RANGE[0])
+      .max(UPSTREAM_QUOTA_PROBE_INTERVAL_MINUTES_RANGE[1])
+      .describe("Upstream quota probe interval in minutes."),
     timezone: TimeZoneSchema.nullable().describe(
       "Configured system timezone, or null for default."
     ),

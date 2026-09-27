@@ -88,13 +88,16 @@
     "health_check_failed": "Health Check Failed",
     "endpoint_circuit_open": "Endpoint Circuit Open",
     "endpoint_disabled": "Endpoint Disabled",
-    "client_restriction": "Client Restriction"
+    "client_restriction": "Client Restriction",
+    "quota_low": "Upstream Quota Low",
+    "quota_exhausted": "Upstream Quota Exhausted"
   },
   "filterDetails": {
     "vendor_type_circuit_open": "Vendor-type temporarily circuit-broken",
     "circuit_open": "Circuit breaker open",
     "circuit_half_open": "Circuit breaker half-open",
     "rate_limited": "Rate limited",
+    "upstream_balance_exhausted": "Upstream balance exhausted",
     "provider_client_restriction": "Provider skipped due to client restriction",
     "session_reuse_client_restriction": "Session reuse rejected: client restriction",
     "blocklist_hit": "Blocked by pattern: {pattern}",

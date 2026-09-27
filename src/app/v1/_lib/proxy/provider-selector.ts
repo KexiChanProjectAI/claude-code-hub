@@ -5,6 +5,8 @@ import { getEnvConfig } from "@/lib/config/env.schema";
 import { PROVIDER_GROUP } from "@/lib/constants/provider.constants";
 import { logger } from "@/lib/logger";
 import { matchesProviderPrefix, stripProviderPrefix } from "@/lib/provider-prefix";
+import { describeUpstreamQuotaVerdict } from "@/lib/provider-upstream-quota/evaluate";
+import { checkProviderUpstreamQuota } from "@/lib/provider-upstream-quota/verdict";
 import { RateLimitService } from "@/lib/rate-limit";
 import { buildPublicSessionIdentity, buildScopeTag } from "@/lib/request-identity";
 import { SessionManager } from "@/lib/session-manager";
@@ -559,9 +561,12 @@ export class ProxyProviderResolver {
           (p) => p.reason === "model_not_allowed" || p.reason === "prefix_mismatch"
         );
         const clientRestricted = filteredProviders.filter((p) => p.reason === "client_restriction");
+        const quotaLimited = filteredProviders.filter(
+          (p) => p.reason === "quota_low" || p.reason === "quota_exhausted"
+        );
 
         // 计算可用供应商数量（排除禁用和模型不支持的）
-        const unavailableCount = rateLimited.length + circuitOpen.length;
+        const unavailableCount = rateLimited.length + circuitOpen.length + quotaLimited.length;
         const totalEnabled =
           filteredProviders.length -
           disabled.length -
@@ -569,8 +574,18 @@ export class ProxyProviderResolver {
           clientRestricted.length;
 
         if (
+          quotaLimited.length > 0 &&
+          rateLimited.length === 0 &&
+          circuitOpen.length === 0 &&
+          unavailableCount === totalEnabled
+        ) {
+          // 全部因为上游额度不足
+          message = `All providers upstream quota low or exhausted (${quotaLimited.length} providers)`;
+          errorType = "upstream_quota_exhausted";
+        } else if (
           rateLimited.length > 0 &&
           circuitOpen.length === 0 &&
+          quotaLimited.length === 0 &&
           unavailableCount === totalEnabled
         ) {
           // 全部因为限流
@@ -579,14 +594,25 @@ export class ProxyProviderResolver {
         } else if (
           circuitOpen.length > 0 &&
           rateLimited.length === 0 &&
+          quotaLimited.length === 0 &&
           unavailableCount === totalEnabled
         ) {
           // 全部因为熔断
           message = `All providers circuit breaker open (${circuitOpen.length} providers)`;
           errorType = "circuit_breaker_open";
-        } else if (rateLimited.length > 0 && circuitOpen.length > 0) {
+        } else if (
+          [rateLimited.length, circuitOpen.length, quotaLimited.length].filter((n) => n > 0)
+            .length > 1
+        ) {
           // 混合原因
-          message = `All providers unavailable (${rateLimited.length} rate limited, ${circuitOpen.length} circuit open)`;
+          const parts = [
+            `${rateLimited.length} rate limited`,
+            `${circuitOpen.length} circuit open`,
+          ];
+          if (quotaLimited.length > 0) {
+            parts.push(`${quotaLimited.length} upstream quota low`);
+          }
+          message = `All providers unavailable (${parts.join(", ")})`;
           errorType = "mixed_unavailable";
         }
       }
@@ -842,6 +868,11 @@ export class ProxyProviderResolver {
     // 亲和提名同样不得绕过金额限额（5h/日/周/月 + 总额），与 findReusable 一致
     const spendVerdict = await ProxyProviderResolver.checkProviderSpendLimits(provider);
     if (!spendVerdict.allowed) return null;
+
+    // 上游额度：耗尽一律拒绝；低于阈值时仅拒绝首轮请求（新会话），续聊保持亲和
+    const quotaVerdict = await checkProviderUpstreamQuota(provider);
+    if (quotaVerdict.status === "exhausted") return null;
+    if (quotaVerdict.status === "low" && session.getMessagesLength() <= 1) return null;
 
     return provider;
   }
@@ -1219,6 +1250,17 @@ export class ProxyProviderResolver {
       return null;
     }
 
+    // 上游额度：低于阈值仍允许既有会话继续，仅在彻底耗尽时拒绝复用
+    const quotaVerdict = await checkProviderUpstreamQuota(provider);
+    if (quotaVerdict.status === "exhausted") {
+      logger.debug("ProviderSelector: Session provider upstream quota exhausted, reject reuse", {
+        sessionId: session.sessionId,
+        providerId: provider.id,
+        reason: quotaVerdict.reason,
+      });
+      return null;
+    }
+
     logger.info("ProviderSelector: Reusing provider", {
       providerName: provider.name,
       providerId: provider.id,
@@ -1488,12 +1530,26 @@ export class ProxyProviderResolver {
           details: state === "open" ? "circuit_open" : "circuit_half_open",
         });
       } else {
-        context.filteredProviders?.push({
-          id: p.id,
-          name: p.name,
-          reason: "rate_limited",
-          details: "rate_limited",
-        });
+        const spendVerdict = await ProxyProviderResolver.checkProviderSpendLimits(p);
+        const quotaVerdict = spendVerdict.allowed ? await checkProviderUpstreamQuota(p) : null;
+        if (
+          quotaVerdict &&
+          (quotaVerdict.status === "low" || quotaVerdict.status === "exhausted")
+        ) {
+          context.filteredProviders?.push({
+            id: p.id,
+            name: p.name,
+            reason: quotaVerdict.status === "exhausted" ? "quota_exhausted" : "quota_low",
+            details: describeUpstreamQuotaVerdict(quotaVerdict),
+          });
+        } else {
+          context.filteredProviders?.push({
+            id: p.id,
+            name: p.name,
+            reason: "rate_limited",
+            details: "rate_limited",
+          });
+        }
       }
     }
 
@@ -1603,6 +1659,18 @@ export class ProxyProviderResolver {
               reason: spendVerdict.reason,
             }
           );
+          return null;
+        }
+
+        // 2. 上游额度（Coding Plan 剩余百分比 / 余额不足被动识别）：新会话不调度到低额度供应商
+        const quotaVerdict = await checkProviderUpstreamQuota(p);
+        if (quotaVerdict.status === "low" || quotaVerdict.status === "exhausted") {
+          logger.debug("ProviderSelector: Provider upstream quota below threshold", {
+            providerId: p.id,
+            status: quotaVerdict.status,
+            reason: quotaVerdict.reason,
+            remainingPercent: quotaVerdict.remainingPercent,
+          });
           return null;
         }
 

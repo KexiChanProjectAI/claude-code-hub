@@ -249,6 +249,16 @@ vi.doMock("@/lib/api-client/v1/actions/providers", async () => {
         ? mockedGetAvailableModelCatalog
         : getAvailableModelCatalog,
     getAvailableModelsByProviderType: getAvailableModelsByProviderType,
+    getProvidersUpstreamQuotaStatus:
+      getModuleExport<typeof providers.getProvidersUpstreamQuotaStatus>(
+        providers,
+        "getProvidersUpstreamQuotaStatus"
+      ) ?? vi.fn(async () => ({})),
+    refreshProviderUpstreamQuota:
+      getModuleExport<typeof providers.refreshProviderUpstreamQuota>(
+        providers,
+        "refreshProviderUpstreamQuota"
+      ) ?? vi.fn(async () => ({ ok: false, error: "not mocked" })),
   };
 });
 

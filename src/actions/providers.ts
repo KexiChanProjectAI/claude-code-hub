@@ -52,6 +52,11 @@ import {
   type TestSubStatus,
 } from "@/lib/provider-testing";
 import { getPresetsForProvider } from "@/lib/provider-testing/presets";
+import { clearUpstreamQuotaState } from "@/lib/provider-upstream-quota/state";
+import {
+  buildProviderUpstreamQuotaStatusMap,
+  refreshProviderUpstreamQuotaNow,
+} from "@/lib/provider-upstream-quota/status";
 import {
   createProxyAgentForProvider,
   fetchWithDispatcher,
@@ -124,6 +129,12 @@ import type {
   ProviderType,
   ReasoningEffortOverrideRule,
 } from "@/types/provider";
+import type {
+  ProviderUpstreamQuotaStatus,
+  ProviderUpstreamQuotaStatusMap,
+  UpstreamQuotaProbeOptions,
+  UpstreamQuotaProbeType,
+} from "@/types/upstream-quota";
 import type { ActionResult } from "./types";
 
 type AutoSortResult = {
@@ -361,6 +372,9 @@ export async function getProviders(): Promise<ProviderDisplay[]> {
         blockedClients: provider.blockedClients,
         mcpPassthroughType: provider.mcpPassthroughType,
         mcpPassthroughUrl: provider.mcpPassthroughUrl,
+        upstreamQuotaProbeType: provider.upstreamQuotaProbeType,
+        upstreamQuotaThresholdPercent: provider.upstreamQuotaThresholdPercent,
+        upstreamQuotaProbeOptions: provider.upstreamQuotaProbeOptions,
         limit5hUsd: provider.limit5hUsd,
         limit5hResetMode: provider.limit5hResetMode,
         limitDailyUsd: provider.limitDailyUsd,
@@ -597,6 +611,9 @@ export async function addProvider(data: {
   provider_prefix?: string | null;
   mcp_passthrough_type?: "none" | "minimax" | "glm" | "custom";
   mcp_passthrough_url?: string | null;
+  upstream_quota_probe_type?: UpstreamQuotaProbeType;
+  upstream_quota_threshold_percent?: number | null;
+  upstream_quota_probe_options?: UpstreamQuotaProbeOptions | null;
   tpm: number | null;
   rpm: number | null;
   rpd: number | null;
@@ -827,6 +844,9 @@ export async function editProvider(
     provider_prefix?: string | null;
     mcp_passthrough_type?: "none" | "minimax" | "glm" | "custom";
     mcp_passthrough_url?: string | null;
+    upstream_quota_probe_type?: UpstreamQuotaProbeType;
+    upstream_quota_threshold_percent?: number | null;
+    upstream_quota_probe_options?: UpstreamQuotaProbeOptions | null;
     tpm?: number | null;
     rpm?: number | null;
     rpd?: number | null;
@@ -947,6 +967,26 @@ export async function editProvider(
       await SessionManager.terminateStickySessionsForProviders([providerId], "editProvider");
     }
 
+    // 上游额度快照与凭证/地址/探测配置绑定：任一变化即丢弃旧快照，等待重新探测
+    if (
+      (payload.key !== undefined && payload.key !== currentProvider.key) ||
+      (payload.url !== undefined && payload.url !== currentProvider.url) ||
+      (payload.upstream_quota_probe_type !== undefined &&
+        payload.upstream_quota_probe_type !== currentProvider.upstreamQuotaProbeType) ||
+      (payload.upstream_quota_probe_options !== undefined &&
+        JSON.stringify(payload.upstream_quota_probe_options ?? null) !==
+          JSON.stringify(currentProvider.upstreamQuotaProbeOptions ?? null))
+    ) {
+      try {
+        await clearUpstreamQuotaState(providerId);
+      } catch (error) {
+        logger.warn("editProvider:upstream_quota_state_clear_failed", {
+          providerId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
     if (
       payload.limit_5h_reset_mode !== undefined &&
       payload.limit_5h_reset_mode !== currentProvider.limit5hResetMode
@@ -1065,6 +1105,14 @@ export async function removeProvider(
     // 清除内存缓存（无论 Redis 是否成功都要执行）
     clearConfigCache(providerId);
     await clearProviderState(providerId);
+    try {
+      await clearUpstreamQuotaState(providerId);
+    } catch (error) {
+      logger.warn("removeProvider:upstream_quota_state_clear_failed", {
+        providerId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
 
     // 删除 Redis 缓存（非关键路径，失败时记录警告）
     try {
@@ -1322,6 +1370,46 @@ export async function resetProviderCircuit(providerId: number): Promise<ActionRe
 }
 
 /**
+ * 获取所有供应商的上游额度状态（Coding Plan 5h/周窗口快照 + 调度裁决）
+ */
+export async function getProvidersUpstreamQuotaStatus(): Promise<ProviderUpstreamQuotaStatusMap> {
+  try {
+    const session = await getSession();
+    if (session?.user.role !== "admin") {
+      return {};
+    }
+    const providers = await findAllProvidersFresh();
+    return await buildProviderUpstreamQuotaStatusMap(providers);
+  } catch (error) {
+    logger.error("获取上游额度状态失败:", error);
+    return {};
+  }
+}
+
+/**
+ * 立即探测单个供应商的上游额度（忽略探测间隔）
+ */
+export async function refreshProviderUpstreamQuota(
+  providerId: number
+): Promise<ActionResult<ProviderUpstreamQuotaStatus>> {
+  try {
+    const session = await getSession();
+    if (session?.user.role !== "admin") {
+      return { ok: false, error: "无权限执行此操作" };
+    }
+    const result = await refreshProviderUpstreamQuotaNow(providerId);
+    if (!result.ok) {
+      return { ok: false, error: result.error, errorCode: result.errorCode };
+    }
+    return { ok: true, data: result.status };
+  } catch (error) {
+    logger.error("刷新上游额度失败:", error);
+    const message = error instanceof Error ? error.message : "刷新上游额度失败";
+    return { ok: false, error: message };
+  }
+}
+
+/**
  * 手动重置供应商“总用量”（用于总消费上限 limit_total_usd）
  *
  * 说明：
@@ -1562,6 +1650,9 @@ const SINGLE_EDIT_PREIMAGE_FIELD_TO_PROVIDER_KEY: Record<
   favicon_url: "faviconUrl",
   mcp_passthrough_type: "mcpPassthroughType",
   mcp_passthrough_url: "mcpPassthroughUrl",
+  upstream_quota_probe_type: "upstreamQuotaProbeType",
+  upstream_quota_threshold_percent: "upstreamQuotaThresholdPercent",
+  upstream_quota_probe_options: "upstreamQuotaProbeOptions",
   tpm: "tpm",
   rpm: "rpm",
   rpd: "rpd",
@@ -1857,6 +1948,12 @@ function mapApplyUpdatesToRepositoryFormat(
   if (applyUpdates.mcp_passthrough_url !== undefined) {
     result.mcpPassthroughUrl = applyUpdates.mcp_passthrough_url;
   }
+  if (applyUpdates.upstream_quota_probe_type !== undefined) {
+    result.upstreamQuotaProbeType = applyUpdates.upstream_quota_probe_type;
+  }
+  if (applyUpdates.upstream_quota_threshold_percent !== undefined) {
+    result.upstreamQuotaThresholdPercent = applyUpdates.upstream_quota_threshold_percent;
+  }
   return result;
 }
 
@@ -1913,6 +2010,8 @@ const PATCH_FIELD_TO_PROVIDER_KEY: Record<
   request_timeout_non_streaming_ms: "requestTimeoutNonStreamingMs",
   mcp_passthrough_type: "mcpPassthroughType",
   mcp_passthrough_url: "mcpPassthroughUrl",
+  upstream_quota_probe_type: "upstreamQuotaProbeType",
+  upstream_quota_threshold_percent: "upstreamQuotaThresholdPercent",
 };
 
 const PATCH_FIELD_CLEAR_VALUE: Partial<

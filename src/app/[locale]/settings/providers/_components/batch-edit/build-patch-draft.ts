@@ -268,6 +268,18 @@ export function buildPatchDraftFromFormState(
       draft.limit_concurrent_sessions = { set: state.rateLimit.limitConcurrentSessions };
     }
   }
+  if (dirtyFields.has("rateLimit.upstreamQuotaProbeType")) {
+    draft.upstream_quota_probe_type = { set: state.rateLimit.upstreamQuotaProbeType };
+  }
+  if (dirtyFields.has("rateLimit.upstreamQuotaThresholdPercent")) {
+    if (state.rateLimit.upstreamQuotaThresholdPercent === null) {
+      draft.upstream_quota_threshold_percent = { clear: true };
+    } else {
+      draft.upstream_quota_threshold_percent = {
+        set: state.rateLimit.upstreamQuotaThresholdPercent,
+      };
+    }
+  }
 
   // Circuit breaker fields (minutes -> ms conversion for open duration)
   if (dirtyFields.has("circuitBreaker.failureThreshold")) {

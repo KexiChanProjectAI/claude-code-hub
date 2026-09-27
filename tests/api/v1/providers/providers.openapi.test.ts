@@ -15,6 +15,8 @@ describe("v1 providers OpenAPI", () => {
     expect(doc.paths).toHaveProperty("/api/v1/providers/{id}/key:reveal");
     expect(doc.paths).toHaveProperty("/api/v1/providers/health");
     expect(doc.paths).toHaveProperty("/api/v1/providers/{id}/circuit:reset");
+    expect(doc.paths).toHaveProperty("/api/v1/providers/upstream-quota");
+    expect(doc.paths).toHaveProperty("/api/v1/providers/{id}/upstream-quota:refresh");
     expect(doc.paths).toHaveProperty("/api/v1/providers/{id}/usage:reset");
     expect(doc.paths).toHaveProperty("/api/v1/providers/circuits:batchReset");
     expect(doc.paths).toHaveProperty("/api/v1/providers/{id}/limit-usage");

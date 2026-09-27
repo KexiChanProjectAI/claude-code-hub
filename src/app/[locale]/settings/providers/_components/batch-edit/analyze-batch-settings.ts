@@ -18,6 +18,7 @@ import type {
   ProviderModelRedirectRule,
   ReasoningEffortOverrideRule,
 } from "@/types/provider";
+import type { UpstreamQuotaProbeType } from "@/types/upstream-quota";
 import { deepEquals } from "./deep-equals";
 
 // 字段分析结果
@@ -67,6 +68,8 @@ export interface BatchSettingsAnalysis {
     limitMonthlyUsd: FieldAnalysisResult<number | null>;
     limitTotalUsd: FieldAnalysisResult<number | null>;
     limitConcurrentSessions: FieldAnalysisResult<number | null>;
+    upstreamQuotaProbeType: FieldAnalysisResult<UpstreamQuotaProbeType>;
+    upstreamQuotaThresholdPercent: FieldAnalysisResult<number | null>;
   };
   circuitBreaker: {
     failureThreshold: FieldAnalysisResult<number | undefined>;
@@ -198,6 +201,11 @@ export function analyzeBatchProviderSettings(providers: ProviderDisplay[]): Batc
       limitMonthlyUsd: analyzeField(providers, (p) => p.limitMonthlyUsd ?? null),
       limitTotalUsd: analyzeField(providers, (p) => p.limitTotalUsd ?? null),
       limitConcurrentSessions: analyzeField(providers, (p) => p.limitConcurrentSessions ?? null),
+      upstreamQuotaProbeType: analyzeField(providers, (p) => p.upstreamQuotaProbeType ?? "auto"),
+      upstreamQuotaThresholdPercent: analyzeField(
+        providers,
+        (p) => p.upstreamQuotaThresholdPercent ?? null
+      ),
     },
     circuitBreaker: {
       failureThreshold: analyzeField(providers, (p) => p.circuitBreakerFailureThreshold),

@@ -236,6 +236,9 @@ export async function createProvider(
     activeTimeEnd: providerData.active_time_end ?? null,
     mcpPassthroughType: providerData.mcp_passthrough_type ?? "none",
     mcpPassthroughUrl: providerData.mcp_passthrough_url ?? null,
+    upstreamQuotaProbeType: providerData.upstream_quota_probe_type ?? "auto",
+    upstreamQuotaThresholdPercent: providerData.upstream_quota_threshold_percent ?? null,
+    upstreamQuotaProbeOptions: providerData.upstream_quota_probe_options ?? null,
     limit5hUsd: providerData.limit_5h_usd != null ? providerData.limit_5h_usd.toString() : null,
     limit5hResetMode: providerData.limit_5h_reset_mode ?? "rolling",
     limitDailyUsd:
@@ -328,6 +331,9 @@ export async function createProvider(
         activeTimeEnd: providers.activeTimeEnd,
         mcpPassthroughType: providers.mcpPassthroughType,
         mcpPassthroughUrl: providers.mcpPassthroughUrl,
+        upstreamQuotaProbeType: providers.upstreamQuotaProbeType,
+        upstreamQuotaThresholdPercent: providers.upstreamQuotaThresholdPercent,
+        upstreamQuotaProbeOptions: providers.upstreamQuotaProbeOptions,
         limit5hUsd: providers.limit5hUsd,
         limit5hResetMode: providers.limit5hResetMode,
         limitDailyUsd: providers.limitDailyUsd,
@@ -420,6 +426,9 @@ export async function findProviderList(
       activeTimeEnd: providers.activeTimeEnd,
       mcpPassthroughType: providers.mcpPassthroughType,
       mcpPassthroughUrl: providers.mcpPassthroughUrl,
+      upstreamQuotaProbeType: providers.upstreamQuotaProbeType,
+      upstreamQuotaThresholdPercent: providers.upstreamQuotaThresholdPercent,
+      upstreamQuotaProbeOptions: providers.upstreamQuotaProbeOptions,
       limit5hUsd: providers.limit5hUsd,
       limit5hResetMode: providers.limit5hResetMode,
       limitDailyUsd: providers.limitDailyUsd,
@@ -512,6 +521,9 @@ export async function findAllProvidersFresh(): Promise<ProviderWithReasoningEffo
       activeTimeEnd: providers.activeTimeEnd,
       mcpPassthroughType: providers.mcpPassthroughType,
       mcpPassthroughUrl: providers.mcpPassthroughUrl,
+      upstreamQuotaProbeType: providers.upstreamQuotaProbeType,
+      upstreamQuotaThresholdPercent: providers.upstreamQuotaThresholdPercent,
+      upstreamQuotaProbeOptions: providers.upstreamQuotaProbeOptions,
       limit5hUsd: providers.limit5hUsd,
       limit5hResetMode: providers.limit5hResetMode,
       limitDailyUsd: providers.limitDailyUsd,
@@ -610,6 +622,9 @@ export async function findProviderById(
       activeTimeEnd: providers.activeTimeEnd,
       mcpPassthroughType: providers.mcpPassthroughType,
       mcpPassthroughUrl: providers.mcpPassthroughUrl,
+      upstreamQuotaProbeType: providers.upstreamQuotaProbeType,
+      upstreamQuotaThresholdPercent: providers.upstreamQuotaThresholdPercent,
+      upstreamQuotaProbeOptions: providers.upstreamQuotaProbeOptions,
       limit5hUsd: providers.limit5hUsd,
       limit5hResetMode: providers.limit5hResetMode,
       limitDailyUsd: providers.limitDailyUsd,
@@ -709,6 +724,12 @@ export async function updateProvider(
     dbData.mcpPassthroughType = providerData.mcp_passthrough_type;
   if (providerData.mcp_passthrough_url !== undefined)
     dbData.mcpPassthroughUrl = providerData.mcp_passthrough_url;
+  if (providerData.upstream_quota_probe_type !== undefined)
+    dbData.upstreamQuotaProbeType = providerData.upstream_quota_probe_type;
+  if (providerData.upstream_quota_threshold_percent !== undefined)
+    dbData.upstreamQuotaThresholdPercent = providerData.upstream_quota_threshold_percent;
+  if (providerData.upstream_quota_probe_options !== undefined)
+    dbData.upstreamQuotaProbeOptions = providerData.upstream_quota_probe_options;
   if (providerData.limit_5h_usd !== undefined)
     dbData.limit5hUsd =
       providerData.limit_5h_usd != null ? providerData.limit_5h_usd.toString() : null;
@@ -871,6 +892,9 @@ export async function updateProvider(
         activeTimeEnd: providers.activeTimeEnd,
         mcpPassthroughType: providers.mcpPassthroughType,
         mcpPassthroughUrl: providers.mcpPassthroughUrl,
+        upstreamQuotaProbeType: providers.upstreamQuotaProbeType,
+        upstreamQuotaThresholdPercent: providers.upstreamQuotaThresholdPercent,
+        upstreamQuotaProbeOptions: providers.upstreamQuotaProbeOptions,
         limit5hUsd: providers.limit5hUsd,
         limit5hResetMode: providers.limit5hResetMode,
         limitDailyUsd: providers.limitDailyUsd,
@@ -1171,6 +1195,9 @@ export interface BatchProviderUpdates {
   // MCP
   mcpPassthroughType?: string;
   mcpPassthroughUrl?: string | null;
+  // Upstream quota
+  upstreamQuotaProbeType?: string;
+  upstreamQuotaThresholdPercent?: number | null;
 }
 
 type ProviderBatchUpdatedRow = {
@@ -1422,6 +1449,13 @@ export async function updateProvidersBatch(
   }
   if (updates.mcpPassthroughUrl !== undefined) {
     setClauses.mcpPassthroughUrl = updates.mcpPassthroughUrl;
+  }
+  // Upstream quota
+  if (updates.upstreamQuotaProbeType !== undefined) {
+    setClauses.upstreamQuotaProbeType = updates.upstreamQuotaProbeType;
+  }
+  if (updates.upstreamQuotaThresholdPercent !== undefined) {
+    setClauses.upstreamQuotaThresholdPercent = updates.upstreamQuotaThresholdPercent;
   }
 
   if (Object.keys(setClauses).length === 1) {

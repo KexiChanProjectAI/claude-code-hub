@@ -200,6 +200,9 @@ function createFallbackSettings(): SystemSettings {
     stickySlaMs: 20_000,
     racingTotalTimeoutMs: 60_000,
     stickyTimeoutCooldownMs: 300_000,
+    upstreamQuotaSchedulingEnabled: false,
+    upstreamQuotaThresholdPercent: 10,
+    upstreamQuotaProbeIntervalMinutes: 10,
     ipExtractionConfig: null,
     ipGeoLookupEnabled: true,
     streamGateMode: "enforce",
@@ -268,6 +271,9 @@ const BASE_SETTINGS_COLUMNS: SettingsSelection = {
   stickySlaMs: systemSettings.stickySlaMs,
   racingTotalTimeoutMs: systemSettings.racingTotalTimeoutMs,
   stickyTimeoutCooldownMs: systemSettings.stickyTimeoutCooldownMs,
+  upstreamQuotaSchedulingEnabled: systemSettings.upstreamQuotaSchedulingEnabled,
+  upstreamQuotaThresholdPercent: systemSettings.upstreamQuotaThresholdPercent,
+  upstreamQuotaProbeIntervalMinutes: systemSettings.upstreamQuotaProbeIntervalMinutes,
   createdAt: systemSettings.createdAt,
   updatedAt: systemSettings.updatedAt,
   passThroughUpstreamErrorMessage: systemSettings.passThroughUpstreamErrorMessage,
@@ -285,6 +291,24 @@ const RECENT_COLUMN_LADDER: ReadonlyArray<{
   // 本层更新失败（仍有列缺失）时记录的告警
   updateWarn: string;
 }> = [
+  {
+    key: "upstreamQuotaProbeIntervalMinutes",
+    column: systemSettings.upstreamQuotaProbeIntervalMinutes,
+    selectWarn: "system_settings 缺少 upstreamQuotaProbeIntervalMinutes,回退到上一代字段集。",
+    updateWarn: "system_settings 缺少 upstreamQuotaProbeIntervalMinutes,继续降级更新。",
+  },
+  {
+    key: "upstreamQuotaThresholdPercent",
+    column: systemSettings.upstreamQuotaThresholdPercent,
+    selectWarn: "system_settings 缺少 upstreamQuotaThresholdPercent,回退到上一代字段集。",
+    updateWarn: "system_settings 缺少 upstreamQuotaThresholdPercent,继续降级更新。",
+  },
+  {
+    key: "upstreamQuotaSchedulingEnabled",
+    column: systemSettings.upstreamQuotaSchedulingEnabled,
+    selectWarn: "system_settings 缺少 upstreamQuotaSchedulingEnabled,回退到上一代字段集。",
+    updateWarn: "system_settings 缺少 upstreamQuotaSchedulingEnabled,继续降级更新。",
+  },
   {
     key: "legacyHedgeMaxInFlight",
     column: systemSettings.legacyHedgeMaxInFlight,
@@ -421,6 +445,9 @@ const RECENT_COLUMN_LADDER: ReadonlyArray<{
 // 历史世代字段集（冻结）：passThrough 世代之前的 schema 没有以下五列。
 // 注意：世代字段集相对近代阶梯末层会重新选取更晚引入的列（与历史实现一致）。
 const PASS_THROUGH_ERA_OMIT: readonly string[] = [
+  "upstreamQuotaSchedulingEnabled",
+  "upstreamQuotaThresholdPercent",
+  "upstreamQuotaProbeIntervalMinutes",
   "legacyHedgeMaxInFlight",
   "billHedgeLosers",
   "billNonSuccessfulRequests",
@@ -747,6 +774,17 @@ export async function updateSystemSettings(
     }
     if (payload.stickyTimeoutCooldownMs !== undefined) {
       updates.stickyTimeoutCooldownMs = payload.stickyTimeoutCooldownMs;
+    }
+
+    // 上游额度调度
+    if (payload.upstreamQuotaSchedulingEnabled !== undefined) {
+      updates.upstreamQuotaSchedulingEnabled = payload.upstreamQuotaSchedulingEnabled;
+    }
+    if (payload.upstreamQuotaThresholdPercent !== undefined) {
+      updates.upstreamQuotaThresholdPercent = payload.upstreamQuotaThresholdPercent;
+    }
+    if (payload.upstreamQuotaProbeIntervalMinutes !== undefined) {
+      updates.upstreamQuotaProbeIntervalMinutes = payload.upstreamQuotaProbeIntervalMinutes;
     }
 
     // 系统时区配置字段（如果提供）

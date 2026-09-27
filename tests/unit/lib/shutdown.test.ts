@@ -77,6 +77,9 @@ describe.sequential("lifecycle/shutdown", () => {
     vi.doMock("@/lib/provider-endpoints/probe-scheduler", () => ({
       stopEndpointProbeScheduler: stopProbe,
     }));
+    vi.doMock("@/lib/provider-upstream-quota/scheduler", () => ({
+      stopUpstreamQuotaScheduler: async () => {},
+    }));
     vi.doMock("@/lib/public-status/scheduler", () => ({
       stopPublicStatusRebuildScheduler: stopPublicStatus,
     }));
@@ -135,6 +138,9 @@ describe.sequential("lifecycle/shutdown", () => {
     vi.doMock("@/lib/provider-endpoints/probe-scheduler", () => ({
       stopEndpointProbeScheduler: () => schedulerStopped,
     }));
+    vi.doMock("@/lib/provider-upstream-quota/scheduler", () => ({
+      stopUpstreamQuotaScheduler: async () => {},
+    }));
     vi.doMock("@/lib/public-status/scheduler", () => ({
       stopPublicStatusRebuildScheduler: async () => {},
     }));
@@ -179,6 +185,9 @@ describe.sequential("lifecycle/shutdown", () => {
     vi.doMock("@/lib/provider-endpoints/probe-scheduler", () => ({
       stopEndpointProbeScheduler: () => {},
     }));
+    vi.doMock("@/lib/provider-upstream-quota/scheduler", () => ({
+      stopUpstreamQuotaScheduler: async () => {},
+    }));
     vi.doMock("@/lib/public-status/scheduler", () => ({
       stopPublicStatusRebuildScheduler: async () => {},
     }));
@@ -213,6 +222,9 @@ describe.sequential("lifecycle/shutdown", () => {
     vi.doMock("@/lib/cache/session-cache", () => ({ stopCacheCleanup: () => {} }));
     vi.doMock("@/lib/provider-endpoints/probe-scheduler", () => ({
       stopEndpointProbeScheduler: () => {},
+    }));
+    vi.doMock("@/lib/provider-upstream-quota/scheduler", () => ({
+      stopUpstreamQuotaScheduler: async () => {},
     }));
     vi.doMock("@/lib/public-status/scheduler", () => ({
       stopPublicStatusRebuildScheduler: async () => {},
@@ -300,6 +312,9 @@ describe.sequential("lifecycle/shutdown", () => {
     vi.doMock("@/lib/provider-endpoints/probe-scheduler", () => ({
       stopEndpointProbeScheduler: async () => {},
     }));
+    vi.doMock("@/lib/provider-upstream-quota/scheduler", () => ({
+      stopUpstreamQuotaScheduler: async () => {},
+    }));
     vi.doMock("@/lib/public-status/scheduler", () => ({
       stopPublicStatusRebuildScheduler: async () => {},
     }));
@@ -344,6 +359,9 @@ describe.sequential("lifecycle/shutdown", () => {
     vi.doMock("@/lib/cache/session-cache", () => ({ stopCacheCleanup: () => {} }));
     vi.doMock("@/lib/provider-endpoints/probe-scheduler", () => ({
       stopEndpointProbeScheduler: () => {},
+    }));
+    vi.doMock("@/lib/provider-upstream-quota/scheduler", () => ({
+      stopUpstreamQuotaScheduler: async () => {},
     }));
     vi.doMock("@/lib/public-status/scheduler", () => ({
       stopPublicStatusRebuildScheduler: async () => {},

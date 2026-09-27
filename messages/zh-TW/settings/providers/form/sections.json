@@ -176,6 +176,38 @@
     "otherLimits": "其他限制",
     "windowReset": "視窗重設方式"
   },
+  "upstreamQuota": {
+    "title": "上游額度",
+    "desc": "查詢供應商的 Coding Plan 剩餘額度，額度不足時不再向其調度新會話。需在系統設定中開啟上游額度調度後生效。",
+    "probeType": {
+      "label": "額度來源",
+      "desc": "選擇要查詢的 Coding Plan 額度介面，或為該供應商關閉探測。",
+      "autoResolved": "依供應商 URL 自動識別為：{type}",
+      "options": {
+        "auto": "依 URL 自動識別",
+        "none": "關閉",
+        "kimi-coding": "Kimi Coding Plan",
+        "zhipu-coding": "智譜 GLM Coding Plan",
+        "minimax-coding": "MiniMax Coding Plan",
+        "opencode-go": "OpenCode Go"
+      }
+    },
+    "threshold": {
+      "label": "最低剩餘額度（%）",
+      "desc": "覆寫系統設定中的閾值。留空則使用系統設定。",
+      "placeholder": "系統預設"
+    },
+    "zhipuOrganization": {
+      "label": "智譜組織 ID",
+      "desc": "僅團隊版需要，以 bigmodel-organization 請求標頭傳送。",
+      "placeholder": "org-..."
+    },
+    "zhipuProject": {
+      "label": "智譜專案 ID",
+      "desc": "僅團隊版需要，以 bigmodel-project 請求標頭傳送。",
+      "placeholder": "proj_..."
+    }
+  },
   "routing": {
     "cacheTtl": {
       "desc": "強制設定 prompt cache TTL；僅影響包含 cache_control 的請求。",

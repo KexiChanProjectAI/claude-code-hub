@@ -176,6 +176,38 @@
     "otherLimits": "その他の制限",
     "windowReset": "ウィンドウのリセット方式"
   },
+  "upstreamQuota": {
+    "title": "上流クォータ",
+    "desc": "Provider の Coding Plan 残りクォータを取得し、残りが少ない場合は新しいセッションを割り当てません。システム設定で上流クォータによるスケジューリングを有効にすると反映されます。",
+    "probeType": {
+      "label": "クォータ取得元",
+      "desc": "取得する Coding Plan クォータのエンドポイントを選択するか、この Provider の取得を無効にします。",
+      "autoResolved": "Provider の URL から自動判定：{type}",
+      "options": {
+        "auto": "URL から自動判定",
+        "none": "無効",
+        "kimi-coding": "Kimi Coding Plan",
+        "zhipu-coding": "Zhipu GLM Coding Plan",
+        "minimax-coding": "MiniMax Coding Plan",
+        "opencode-go": "OpenCode Go"
+      }
+    },
+    "threshold": {
+      "label": "最小残りクォータ（%）",
+      "desc": "この Provider についてシステムのしきい値を上書きします。空欄の場合はシステム設定を使用します。",
+      "placeholder": "システム既定"
+    },
+    "zhipuOrganization": {
+      "label": "Zhipu 組織 ID",
+      "desc": "チームプランのみ。bigmodel-organization ヘッダーとして送信します。",
+      "placeholder": "org-..."
+    },
+    "zhipuProject": {
+      "label": "Zhipu プロジェクト ID",
+      "desc": "チームプランのみ。bigmodel-project ヘッダーとして送信します。",
+      "placeholder": "proj_..."
+    }
+  },
   "routing": {
     "cacheTtl": {
       "desc": "プロンプトキャッシュのTTLを強制設定。cache_controlを含むリクエストにのみ適用されます。",

@@ -180,6 +180,11 @@ export interface SystemSettings {
   racingTotalTimeoutMs: number;
   stickyTimeoutCooldownMs: number;
 
+  /** Upstream quota scheduling (Coding Plan remaining-percent gate for new sessions). */
+  upstreamQuotaSchedulingEnabled: boolean;
+  upstreamQuotaThresholdPercent: number;
+  upstreamQuotaProbeIntervalMinutes: number;
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -214,6 +219,10 @@ export interface UpdateSystemSettingsInput {
   stickySlaMs?: number;
   racingTotalTimeoutMs?: number;
   stickyTimeoutCooldownMs?: number;
+
+  upstreamQuotaSchedulingEnabled?: boolean;
+  upstreamQuotaThresholdPercent?: number;
+  upstreamQuotaProbeIntervalMinutes?: number;
 
   // 系统时区配置（可选）
   timezone?: string | null;

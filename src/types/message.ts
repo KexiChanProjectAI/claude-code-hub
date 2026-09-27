@@ -197,7 +197,9 @@ export interface ProviderChainItem {
         | "prefix_mismatch" // 请求模型未携带供应商前缀
         | "schedule_inactive" // 供应商不在调度时间窗口内
         | "disabled"
-        | "client_restriction"; // Provider filtered due to client restriction
+        | "client_restriction" // Provider filtered due to client restriction
+        | "quota_low" // 上游 Coding Plan 剩余额度低于阈值（仅拦截新会话）
+        | "quota_exhausted"; // 上游额度耗尽或余额不足
       details?: string; // 额外信息（如费用：$15.2/$15）
       clientRestrictionContext?: {
         matchType: "blocklist_hit" | "allowlist_miss";

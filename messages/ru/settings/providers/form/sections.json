@@ -176,6 +176,38 @@
     "otherLimits": "Другие ограничения",
     "windowReset": "Поведение сброса окон"
   },
+  "upstreamQuota": {
+    "title": "Квота провайдера",
+    "desc": "Запрашивает остаток квоты Coding Plan у провайдера и перестаёт направлять к нему новые сессии, когда остаток мал. Работает, если в системных настройках включено планирование по квоте провайдера.",
+    "probeType": {
+      "label": "Источник квоты",
+      "desc": "Выберите, какой эндпоинт квоты Coding Plan опрашивать, или отключите проверку для этого провайдера.",
+      "autoResolved": "Определено автоматически по URL провайдера: {type}",
+      "options": {
+        "auto": "Определять по URL",
+        "none": "Отключено",
+        "kimi-coding": "Kimi Coding Plan",
+        "zhipu-coding": "Zhipu GLM Coding Plan",
+        "minimax-coding": "MiniMax Coding Plan",
+        "opencode-go": "OpenCode Go"
+      }
+    },
+    "threshold": {
+      "label": "Минимальный остаток квоты (%)",
+      "desc": "Переопределяет системный порог для этого провайдера. Оставьте пустым, чтобы использовать системную настройку.",
+      "placeholder": "Системное значение"
+    },
+    "zhipuOrganization": {
+      "label": "ID организации Zhipu",
+      "desc": "Только для командного плана. Передаётся в заголовке bigmodel-organization.",
+      "placeholder": "org-..."
+    },
+    "zhipuProject": {
+      "label": "ID проекта Zhipu",
+      "desc": "Только для командного плана. Передаётся в заголовке bigmodel-project.",
+      "placeholder": "proj_..."
+    }
+  },
   "routing": {
     "cacheTtl": {
       "desc": "Принудительно задать TTL кэша промптов; влияет только на запросы с cache_control.",

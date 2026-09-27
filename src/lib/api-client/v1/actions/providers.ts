@@ -5,6 +5,10 @@ import type {
   ProviderHealthStatus,
   ProviderStatisticsMap,
 } from "@/types/provider";
+import type {
+  ProviderUpstreamQuotaStatus,
+  ProviderUpstreamQuotaStatusMap,
+} from "@/types/upstream-quota";
 import {
   apiDeleteWithHeaders,
   apiGet,
@@ -29,6 +33,10 @@ export type {
   ProviderHealthStatus,
   ProviderStatisticsMap,
 } from "@/types/provider";
+export type {
+  ProviderUpstreamQuotaStatus,
+  ProviderUpstreamQuotaStatusMap,
+} from "@/types/upstream-quota";
 
 const dashboardCompatOptions = {
   headers: {
@@ -107,6 +115,24 @@ export function autoSortProviderPriority(args: unknown) {
 // 否则 consumer 会拿到 `{ ok, data }` 而非熔断状态 map，所有熔断指示器永远不显示。
 export function getProvidersHealthStatus(): Promise<ProviderHealthStatus> {
   return apiGet<ProviderHealthStatus>("/api/v1/providers/health", dashboardCompatOptions);
+}
+
+// Same as health: React Query consumes the raw map, so this is not wrapped in toActionResult.
+export function getProvidersUpstreamQuotaStatus(): Promise<ProviderUpstreamQuotaStatusMap> {
+  return apiGet<ProviderUpstreamQuotaStatusMap>(
+    "/api/v1/providers/upstream-quota",
+    dashboardCompatOptions
+  );
+}
+
+export function refreshProviderUpstreamQuota(providerId: number) {
+  return toActionResult(
+    apiPost<ProviderUpstreamQuotaStatus>(
+      `/api/v1/providers/${providerId}/upstream-quota:refresh`,
+      undefined,
+      dashboardCompatOptions
+    )
+  );
 }
 
 export function resetProviderCircuit(providerId: number) {

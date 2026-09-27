@@ -45,12 +45,14 @@ import {
   getProviderLimitBatch,
   getProviderModelSuggestions,
   getProvidersHealth,
+  getProvidersUpstreamQuota,
   getProviderTestPresets,
   listProviderCacheEffectiveness,
   listProviderGroups,
   listProviders,
   previewBatchPatch,
   reclusterProviderVendors,
+  refreshProviderUpstreamQuota,
   resetProviderCircuit,
   resetProviderCircuitsBatch,
   resetProviderUsage,
@@ -295,6 +297,52 @@ providersRouter.openapi(
     },
   }),
   getProvidersHealth as never
+);
+
+providersRouter.openapi(
+  createRoute({
+    method: "get",
+    path: "/providers/upstream-quota",
+    middleware: requireAuth("admin"),
+    tags: ["Providers"],
+    summary: "Get provider upstream quota",
+    description:
+      "Returns the latest upstream Coding Plan quota snapshot and scheduling verdict for every visible provider that supports upstream quota probing.",
+    "x-required-access": "admin",
+    security,
+    request: { query: ProviderGroupsQuerySchema },
+    responses: {
+      200: {
+        description: "Provider upstream quota status keyed by provider id.",
+        content: { "application/json": { schema: ProviderGenericResponseSchema } },
+      },
+      ...problemResponses,
+    },
+  }),
+  getProvidersUpstreamQuota as never
+);
+
+providersRouter.openapi(
+  createRoute({
+    method: "post",
+    path: "/providers/{id}/upstream-quota:refresh",
+    middleware: requireAuth("admin"),
+    tags: ["Providers"],
+    summary: "Refresh provider upstream quota",
+    description:
+      "Probes the upstream Coding Plan quota endpoint for one provider immediately and returns the updated status.",
+    "x-required-access": "admin",
+    security,
+    request: { params: ProviderIdParamSchema },
+    responses: {
+      200: {
+        description: "Updated provider upstream quota status.",
+        content: { "application/json": { schema: ProviderGenericResponseSchema } },
+      },
+      ...problemResponses,
+    },
+  }),
+  refreshProviderUpstreamQuota as never
 );
 
 providersRouter.openapi(

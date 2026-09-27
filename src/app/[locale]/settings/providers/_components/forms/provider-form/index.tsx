@@ -33,6 +33,7 @@ import {
 import { applyOpenCodeGoSessionHeader, shouldPromptOpenCodeGoAdapter } from "@/lib/opencode-go";
 import { PROVIDER_BATCH_PATCH_ERROR_CODES } from "@/lib/provider-batch-patch-error-codes";
 import { normalizeProviderPrefix } from "@/lib/provider-prefix";
+import { buildUpstreamQuotaProbeOptions } from "@/lib/provider-upstream-quota/options";
 import { isValidUrl } from "@/lib/utils/validation";
 import type { ProviderDisplay, ProviderEndpoint, ProviderType } from "@/types/provider";
 import { invalidateProviderQueries } from "../../invalidate-provider-queries";
@@ -399,6 +400,12 @@ function ProviderFormContent({
           limit_monthly_usd: state.rateLimit.limitMonthlyUsd,
           limit_total_usd: state.rateLimit.limitTotalUsd,
           limit_concurrent_sessions: state.rateLimit.limitConcurrentSessions ?? undefined,
+          upstream_quota_probe_type: state.rateLimit.upstreamQuotaProbeType,
+          upstream_quota_threshold_percent: state.rateLimit.upstreamQuotaThresholdPercent,
+          upstream_quota_probe_options: buildUpstreamQuotaProbeOptions(
+            state.rateLimit.upstreamQuotaZhipuOrganization,
+            state.rateLimit.upstreamQuotaZhipuProject
+          ),
           circuit_breaker_failure_threshold: state.circuitBreaker.failureThreshold,
           circuit_breaker_open_duration: openDurationMs,
           circuit_breaker_half_open_success_threshold:
@@ -613,7 +620,9 @@ function ProviderFormContent({
       state.rateLimit.limitWeeklyUsd ||
       state.rateLimit.limitMonthlyUsd ||
       state.rateLimit.limitTotalUsd ||
-      state.rateLimit.limitConcurrentSessions
+      state.rateLimit.limitConcurrentSessions ||
+      state.rateLimit.upstreamQuotaProbeType !== "auto" ||
+      state.rateLimit.upstreamQuotaThresholdPercent !== null
     ) {
       status.limits = "configured";
     }

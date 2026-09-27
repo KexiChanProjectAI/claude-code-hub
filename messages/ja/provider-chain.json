@@ -88,13 +88,16 @@
     "health_check_failed": "ヘルスチェック失敗",
     "endpoint_circuit_open": "エンドポイントサーキットオープン",
     "endpoint_disabled": "エンドポイント無効",
-    "client_restriction": "クライアント制限"
+    "client_restriction": "クライアント制限",
+    "quota_low": "上流クォータ残少",
+    "quota_exhausted": "上流クォータ切れ"
   },
   "filterDetails": {
     "vendor_type_circuit_open": "ベンダータイプ一時サーキットブレイク",
     "circuit_open": "サーキットブレーカーオープン",
     "circuit_half_open": "サーキットブレーカーハーフオープン",
     "rate_limited": "レート制限",
+    "upstream_balance_exhausted": "上流の残高不足",
     "provider_client_restriction": "クライアント制限によりプロバイダーをスキップ",
     "session_reuse_client_restriction": "Session reuse rejected: client restriction",
     "blocklist_hit": "Blocked by pattern: {pattern}",

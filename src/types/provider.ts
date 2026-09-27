@@ -1,6 +1,7 @@
 // 供应商类型枚举
 
 import type { CacheTtlPreference } from "./cache";
+import type { UpstreamQuotaProbeOptions, UpstreamQuotaProbeType } from "./upstream-quota";
 
 export type ProviderType =
   | "claude"
@@ -171,7 +172,10 @@ export type ProviderBatchPatchField =
   | "request_timeout_non_streaming_ms"
   // MCP
   | "mcp_passthrough_type"
-  | "mcp_passthrough_url";
+  | "mcp_passthrough_url"
+  // Upstream quota
+  | "upstream_quota_probe_type"
+  | "upstream_quota_threshold_percent";
 
 export interface ProviderBatchPatchDraft {
   // Basic / existing
@@ -228,6 +232,9 @@ export interface ProviderBatchPatchDraft {
   // MCP
   mcp_passthrough_type?: ProviderPatchDraftInput<McpPassthroughType>;
   mcp_passthrough_url?: ProviderPatchDraftInput<string>;
+  // Upstream quota
+  upstream_quota_probe_type?: ProviderPatchDraftInput<UpstreamQuotaProbeType>;
+  upstream_quota_threshold_percent?: ProviderPatchDraftInput<number>;
 }
 
 export interface ProviderBatchPatch {
@@ -285,6 +292,9 @@ export interface ProviderBatchPatch {
   // MCP
   mcp_passthrough_type: ProviderPatchOperation<McpPassthroughType>;
   mcp_passthrough_url: ProviderPatchOperation<string>;
+  // Upstream quota
+  upstream_quota_probe_type: ProviderPatchOperation<UpstreamQuotaProbeType>;
+  upstream_quota_threshold_percent: ProviderPatchOperation<number>;
 }
 
 export interface ProviderBatchApplyUpdates {
@@ -342,6 +352,9 @@ export interface ProviderBatchApplyUpdates {
   // MCP
   mcp_passthrough_type?: McpPassthroughType;
   mcp_passthrough_url?: string | null;
+  // Upstream quota
+  upstream_quota_probe_type?: UpstreamQuotaProbeType;
+  upstream_quota_threshold_percent?: number | null;
 }
 
 // Gemini (generateContent API) parameter overrides
@@ -409,6 +422,11 @@ export interface Provider {
   // 如果未配置，则自动从 provider.url 提取基础域名
   // 例如：https://api.minimaxi.com/anthropic -> https://api.minimaxi.com
   mcpPassthroughUrl: string | null;
+
+  // 上游额度调度：探测类型（auto = 按 URL 自动识别）、剩余百分比阈值覆盖、探测参数
+  upstreamQuotaProbeType: UpstreamQuotaProbeType;
+  upstreamQuotaThresholdPercent: number | null;
+  upstreamQuotaProbeOptions: UpstreamQuotaProbeOptions | null;
 
   // 金额限流配置
   limit5hUsd: number | null;
@@ -525,6 +543,10 @@ export interface ProviderDisplay {
   mcpPassthroughType: McpPassthroughType;
   // MCP 透传 URL
   mcpPassthroughUrl: string | null;
+  // 上游额度调度
+  upstreamQuotaProbeType: UpstreamQuotaProbeType;
+  upstreamQuotaThresholdPercent: number | null;
+  upstreamQuotaProbeOptions: UpstreamQuotaProbeOptions | null;
   // 金额限流配置
   limit5hUsd: number | null;
   limit5hResetMode: "fixed" | "rolling";
@@ -644,6 +666,9 @@ export interface CreateProviderData {
   blocked_clients?: string[] | null;
   mcp_passthrough_type?: McpPassthroughType;
   mcp_passthrough_url?: string | null;
+  upstream_quota_probe_type?: UpstreamQuotaProbeType;
+  upstream_quota_threshold_percent?: number | null;
+  upstream_quota_probe_options?: UpstreamQuotaProbeOptions | null;
 
   // 金额限流配置
   limit_5h_usd?: number | null;
@@ -732,6 +757,9 @@ export interface UpdateProviderData {
   blocked_clients?: string[] | null;
   mcp_passthrough_type?: McpPassthroughType;
   mcp_passthrough_url?: string | null;
+  upstream_quota_probe_type?: UpstreamQuotaProbeType;
+  upstream_quota_threshold_percent?: number | null;
+  upstream_quota_probe_options?: UpstreamQuotaProbeOptions | null;
 
   // 金额限流配置
   limit_5h_usd?: number | null;

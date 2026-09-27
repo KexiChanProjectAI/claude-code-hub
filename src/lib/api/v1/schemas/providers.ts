@@ -9,10 +9,12 @@ import {
   hasProviderReasoningEffortOverrideRulesField,
   validateProviderReasoningEffortOverrideMutation,
 } from "@/lib/provider-patch-contract";
+import { UPSTREAM_QUOTA_THRESHOLD_PERCENT_RANGE } from "@/lib/provider-upstream-quota/constants";
 import {
   REASONING_EFFORT_OVERRIDE_RULE_LIST_SCHEMA,
   REASONING_EFFORT_OVERRIDE_RULES_SCHEMA,
 } from "@/lib/validation/schemas";
+import { UPSTREAM_QUOTA_PROBE_TYPES } from "@/types/upstream-quota";
 import { ProviderTypeSchema } from "./_common";
 
 export const HIDDEN_PROVIDER_TYPES = new Set(HIDDEN_PROVIDER_TYPE_VALUES);
@@ -106,6 +108,25 @@ export const ProviderIdParamSchema = z.object({
   id: z.coerce.number().int().positive().describe("Provider id."),
 });
 
+const UpstreamQuotaProbeOptionsSchema = z
+  .object({
+    zhipuOrganization: z
+      .string()
+      .trim()
+      .max(128)
+      .nullable()
+      .optional()
+      .describe("Zhipu team plan organization id."),
+    zhipuProject: z
+      .string()
+      .trim()
+      .max(128)
+      .nullable()
+      .optional()
+      .describe("Zhipu team plan project id."),
+  })
+  .strict();
+
 export const ProviderSummarySchema = z
   .object({
     id: z.number().int().positive().describe("Provider id."),
@@ -138,6 +159,19 @@ export const ProviderSummarySchema = z
     blockedClients: z.array(z.string()).describe("Blocked client patterns."),
     mcpPassthroughType: z.string().nullable().describe("MCP passthrough type."),
     mcpPassthroughUrl: NullableStringSchema.describe("MCP passthrough URL."),
+    upstreamQuotaProbeType: z
+      .enum(UPSTREAM_QUOTA_PROBE_TYPES)
+      .describe("Upstream Coding Plan quota probe type; auto detects it from the provider URL."),
+    upstreamQuotaThresholdPercent: z
+      .number()
+      .int()
+      .nullable()
+      .describe(
+        "Per-provider minimum remaining upstream quota percent, or null for the system value."
+      ),
+    upstreamQuotaProbeOptions: UpstreamQuotaProbeOptionsSchema.nullable().describe(
+      "Upstream quota probe options such as Zhipu team plan organization and project ids."
+    ),
     limit5hUsd: z.number().nullable().describe("Five-hour cost limit in USD."),
     limit5hResetMode: z.string().describe("Five-hour reset mode."),
     limitDailyUsd: z.number().nullable().describe("Daily cost limit in USD."),
@@ -508,6 +542,23 @@ const ProviderCreateObjectSchema = z
       .nullable()
       .optional()
       .describe("MCP passthrough URL."),
+    upstream_quota_probe_type: z
+      .enum(UPSTREAM_QUOTA_PROBE_TYPES)
+      .optional()
+      .describe("Upstream Coding Plan quota probe type; auto detects it from the provider URL."),
+    upstream_quota_threshold_percent: z
+      .number()
+      .int()
+      .min(UPSTREAM_QUOTA_THRESHOLD_PERCENT_RANGE[0])
+      .max(UPSTREAM_QUOTA_THRESHOLD_PERCENT_RANGE[1])
+      .nullable()
+      .optional()
+      .describe(
+        "Minimum remaining upstream quota percent for new sessions; null uses the system setting."
+      ),
+    upstream_quota_probe_options: UpstreamQuotaProbeOptionsSchema.nullable()
+      .optional()
+      .describe("Upstream quota probe options such as Zhipu team plan ids."),
     limit_5h_usd: z.number().min(0).nullable().optional().describe("Five-hour cost limit in USD."),
     limit_5h_reset_mode: z.enum(["fixed", "rolling"]).optional().describe("Five-hour reset mode."),
     limit_daily_usd: z.number().min(0).nullable().optional().describe("Daily cost limit in USD."),

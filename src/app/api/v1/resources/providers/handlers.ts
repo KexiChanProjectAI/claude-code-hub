@@ -283,6 +283,44 @@ export async function getProvidersHealth(c: Context): Promise<Response> {
   );
 }
 
+export async function getProvidersUpstreamQuota(c: Context): Promise<Response> {
+  const providerActions = await import("@/actions/providers");
+  const result = await callAction(
+    c,
+    providerActions.getProvidersUpstreamQuotaStatus,
+    [],
+    c.get("auth")
+  );
+  if (!result.ok) return actionError(c, result);
+
+  const visibleProviders = await loadVisibleProviders(c);
+  if (visibleProviders instanceof Response) return visibleProviders;
+  const visibleIds = new Set(visibleProviders.map((provider) => String(provider.id)));
+  return jsonResponse(
+    Object.fromEntries(
+      Object.entries(result.data as Record<string, unknown>).filter(([id]) => visibleIds.has(id))
+    ),
+    { headers: withNoStoreHeaders() }
+  );
+}
+
+export async function refreshProviderUpstreamQuota(c: Context): Promise<Response> {
+  const id = parseProviderIdWithSuffix(c, "upstream-quota:refresh");
+  if (id instanceof Response) return id;
+  const existing = await findVisibleProvider(c, id);
+  if (existing instanceof Response) return existing;
+  if (!existing) return providerNotFound(c);
+  const providerActions = await import("@/actions/providers");
+  const result = await callAction(
+    c,
+    providerActions.refreshProviderUpstreamQuota,
+    [id] as never[],
+    c.get("auth")
+  );
+  if (!result.ok) return actionError(c, result);
+  return jsonResponse(result.data, { headers: withNoStoreHeaders() });
+}
+
 export async function resetProviderCircuit(c: Context): Promise<Response> {
   const id = parseProviderIdWithSuffix(c, "circuit:reset");
   if (id instanceof Response) return id;
@@ -774,6 +812,9 @@ function sanitizeProvider(
     blockedClients: provider.blockedClients,
     mcpPassthroughType: provider.mcpPassthroughType,
     mcpPassthroughUrl: redactUrlCredentials(provider.mcpPassthroughUrl),
+    upstreamQuotaProbeType: provider.upstreamQuotaProbeType ?? "auto",
+    upstreamQuotaThresholdPercent: provider.upstreamQuotaThresholdPercent ?? null,
+    upstreamQuotaProbeOptions: provider.upstreamQuotaProbeOptions ?? null,
     limit5hUsd: provider.limit5hUsd,
     limit5hResetMode: provider.limit5hResetMode,
     limitDailyUsd: provider.limitDailyUsd,

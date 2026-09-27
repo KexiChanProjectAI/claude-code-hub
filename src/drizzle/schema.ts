@@ -28,6 +28,13 @@ import type { FilterOperation } from "@/lib/request-filter-types";
 import type { IpExtractionConfig } from "@/types/ip-extraction";
 import type { AuditCategory } from "@/types/audit-log";
 import type { RoutingTraceV1 } from "@/types/routing-trace";
+import type {
+  UpstreamQuotaConcreteProbeType,
+  UpstreamQuotaPauseReason,
+  UpstreamQuotaProbeOptions,
+  UpstreamQuotaProbeType,
+  UpstreamQuotaWindow,
+} from "@/types/upstream-quota";
 import { REPLAY_CACHE_TTL_MINUTES_DEFAULT } from "@/lib/validation/replay-settings";
 
 // Enums
@@ -271,6 +278,17 @@ export const providers = pgTable('providers', {
   // 如果未配置，则自动从 provider.url 提取基础域名
   // 例如：https://api.minimaxi.com/anthropic -> https://api.minimaxi.com
   mcpPassthroughUrl: varchar('mcp_passthrough_url', { length: 512 }),
+
+  // 上游额度调度（Coding Plan 5h/周窗口）
+  // - 'auto' (默认): 按 URL 域名自动识别；'none': 不探测
+  upstreamQuotaProbeType: varchar('upstream_quota_probe_type', { length: 20 })
+    .notNull()
+    .default('auto')
+    .$type<UpstreamQuotaProbeType>(),
+  // 剩余额度百分比阈值覆盖（null = 使用系统设置）
+  upstreamQuotaThresholdPercent: integer('upstream_quota_threshold_percent'),
+  // 探测附加参数（如智谱团队版 organization / project）
+  upstreamQuotaProbeOptions: jsonb('upstream_quota_probe_options').$type<UpstreamQuotaProbeOptions | null>(),
 
   // 金额限流配置
   limit5hUsd: numeric('limit_5h_usd', { precision: 10, scale: 2 }),
@@ -545,6 +563,24 @@ export const providerEndpointProbeLogs = pgTable('provider_endpoint_probe_logs',
   ),
   providerEndpointProbeLogsCreatedAtIdx: index('idx_provider_endpoint_probe_logs_created_at').on(table.createdAt),
 }));
+
+// Provider upstream quota snapshots - 上游 Coding Plan 额度快照（调度器与被动识别写入）
+export const providerUpstreamQuotaSnapshots = pgTable('provider_upstream_quota_snapshots', {
+  providerId: integer('provider_id')
+    .primaryKey()
+    .references(() => providers.id, { onDelete: 'cascade' }),
+  probeType: varchar('probe_type', { length: 20 }).$type<UpstreamQuotaConcreteProbeType | null>(),
+  windows: jsonb('windows').$type<UpstreamQuotaWindow[]>().notNull().default([]),
+  planLevel: varchar('plan_level', { length: 128 }),
+  credentialValid: boolean('credential_valid').notNull().default(true),
+  lastError: text('last_error'),
+  lastErrorStatus: integer('last_error_status'),
+  fetchedAt: timestamp('fetched_at', { withTimezone: true }),
+  probedAt: timestamp('probed_at', { withTimezone: true }).notNull(),
+  reactivePauseUntil: timestamp('reactive_pause_until', { withTimezone: true }),
+  reactivePauseReason: varchar('reactive_pause_reason', { length: 32 }).$type<UpstreamQuotaPauseReason | null>(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
 
 // Message Request table
 export const messageRequest = pgTable('message_request', {
@@ -958,6 +994,11 @@ export const systemSettings = pgTable('system_settings', {
   stickySlaMs: integer('sticky_sla_ms').notNull().default(20000),
   racingTotalTimeoutMs: integer('racing_total_timeout_ms').notNull().default(60000),
   stickyTimeoutCooldownMs: integer('sticky_timeout_cooldown_ms').notNull().default(300000),
+
+  // 上游额度调度：剩余额度低于阈值的供应商不再接收新会话
+  upstreamQuotaSchedulingEnabled: boolean('upstream_quota_scheduling_enabled').notNull().default(false),
+  upstreamQuotaThresholdPercent: integer('upstream_quota_threshold_percent').notNull().default(10),
+  upstreamQuotaProbeIntervalMinutes: integer('upstream_quota_probe_interval_minutes').notNull().default(10),
 
   // 系统时区配置 (IANA timezone identifier)
   // 用于统一后端时间边界计算和前端日期/时间显示
