@@ -19,11 +19,17 @@ export type HeaderPairs = z.infer<typeof HeaderPairsSchema>;
 export const EDGE_TOP_LEVEL_KEYS = [
   "model",
   "stream",
+  "stream_options",
   "max_tokens",
   "thinking",
   "output_config",
   "reasoning_effort",
   "reasoning",
+  "text",
+  "service_tier",
+  "parallel_tool_calls",
+  "prompt_cache_key",
+  "previous_response_id",
   "metadata",
 ] as const;
 export type EdgeTopLevelKey = (typeof EDGE_TOP_LEVEL_KEYS)[number];
@@ -35,6 +41,12 @@ export const EDGE_MUTABLE_TOP_LEVEL_KEYS = [
   "thinking",
   "output_config",
   "reasoning_effort",
+  "reasoning",
+  "text",
+  "service_tier",
+  "parallel_tool_calls",
+  "prompt_cache_key",
+  "stream_options",
   "metadata",
 ] as const;
 export type EdgeMutableTopLevelKey = (typeof EDGE_MUTABLE_TOP_LEVEL_KEYS)[number];
@@ -51,6 +63,10 @@ export const FingerprintChainSchema = z.object({
   tail: z.array(FingerprintBoundarySchema).max(64),
 });
 
+/** edge 可执行的客户端格式（与 detectFormatByEndpoint 结果一致） */
+export const EDGE_CLIENT_FORMATS = ["claude", "response", "openai"] as const;
+export type EdgeClientFormat = (typeof EDGE_CLIENT_FORMATS)[number];
+
 export const RequestDigestSchema = z.object({
   schemaVersion: z.literal(EDGE_SCHEMA_VERSION),
   edgeId: z.string().min(1).max(128),
@@ -59,13 +75,39 @@ export const RequestDigestSchema = z.object({
   method: z.string().min(1).max(16),
   /** 原始请求路径（含 query），如 /v1/messages?beta=true */
   path: z.string().min(1).max(8192),
+  /** 由规范化后的路径决定的客户端格式 */
+  format: z.enum(EDGE_CLIENT_FORMATS),
   headers: HeaderPairsSchema,
   clientIp: z.string().max(256).nullable(),
   bodyBytes: z.number().int().min(0),
   bodyParseError: z.string().max(1024).nullable(),
   /** 请求体中实际存在的顶层字段原值（缺失的键不出现，区分 absent 与 null） */
   topLevel: z.partialRecord(z.enum(EDGE_TOP_LEVEL_KEYS), z.unknown()),
-  messagesCount: z.number().int().min(0),
+  /**
+   * messages / input 为数组时的长度，否则为 null（合成请求体据此放置等长占位数组）。
+   * response 格式按 Response Input Rectifier 规范化后的请求体计算。
+   */
+  messagesCount: z.number().int().min(0).nullable(),
+  inputCount: z.number().int().min(0).nullable(),
+  /** rectifyResponseInput 在请求体副本上的结果（仅 response 格式；其他格式为 null） */
+  responseInputRectify: z
+    .object({
+      action: z.enum([
+        "string_to_array",
+        "object_to_array",
+        "empty_string_to_empty_array",
+        "passthrough",
+      ]),
+      originalType: z.enum(["string", "object", "array", "other"]),
+    })
+    .nullable(),
+  /** isRemoteCompactionV2Request 结果（此类请求走 raw passthrough，必须交回本地） */
+  isRemoteCompactionV2: z.boolean(),
+  /** Codex 会话补全指纹用的首轮消息文本哈希（extractInitialMessageTextHash） */
+  codexInitialTextHash: z
+    .string()
+    .regex(/^[0-9a-f]{16}$/)
+    .nullable(),
   systemKind: z.enum(["absent", "string", "array", "other"]),
   hasPrivateParams: z.boolean(),
   isProbe: z.boolean(),
@@ -89,6 +131,7 @@ export const BodyOpSchema = z.discriminatedUnion("op", [
   z.object({ op: z.literal("set_cache_control_ttl"), ttl: z.enum(["5m", "1h"]) }),
   z.object({ op: z.literal("apply_thinking_signature_rectifier") }),
   z.object({ op: z.literal("strip_private_params") }),
+  z.object({ op: z.literal("normalize_response_input") }),
 ]);
 export type BodyOp = z.infer<typeof BodyOpSchema>;
 
@@ -101,8 +144,15 @@ export const ExecutionStepSchema = z.object({
     id: z.number().int(),
     name: z.string(),
     priority: z.number(),
-    type: z.enum(["claude", "claude-auth"]),
+    type: z.enum(["claude", "claude-auth", "codex", "openai-compatible"]),
   }),
+  /** 客户端格式：决定远端的门控协议族、紧凑 SSE 捕获与计量规则 */
+  clientFormat: z.enum(EDGE_CLIENT_FORMATS),
+  /**
+   * codex 流式请求的 2xx 非 SSE / 非 HTML / 非 JSON 响应仍按流处理（与
+   * shouldForceCodexResponsesStreamHandling 一致），此时不经过响应修复器。
+   */
+  forceStreamHandling: z.boolean(),
   endpoint: z.object({ id: z.number().int().nullable(), url: z.string() }),
   method: z.string(),
   url: z.string(),
@@ -140,9 +190,13 @@ export const ExecutionStepSchema = z.object({
     maxJsonDepth: z.number().int().min(1),
     maxFixSize: z.number().int().min(1),
   }),
+  /**
+   * legacy hedge 竞速参数（null 表示串行模式）。thresholdMs 为本 attempt 的首字节竞速阈值，
+   * 0 表示不触发 hedge_threshold；到期且未提交时远端调用 next(hedge_threshold)。
+   */
   hedge: z
     .object({
-      thresholdMs: z.number().int().min(1),
+      thresholdMs: z.number().int().min(0),
       maxInFlight: z.number().int().min(1),
       billLosers: z.boolean(),
       loserDrainMs: z.number().int().min(1),
@@ -245,6 +299,21 @@ export const NextEventSchema = z.discriminatedUnion("type", [
     firstByteSeen: z.boolean(),
     timing: AttemptTimingSchema,
     opResults: OpResultsSchema.optional(),
+    /**
+     * 竞速模式下客户端在提交前断开：其余在途 attempt 的派发与计时（用于逐个做
+     * client_abort_no_first_byte 健康归因）。
+     */
+    peers: z
+      .array(
+        z.object({
+          stepId: z.string(),
+          dispatched: z.boolean(),
+          firstByteSeen: z.boolean(),
+          healthElapsedMs: z.number().min(0),
+        })
+      )
+      .max(16)
+      .optional(),
   }),
   z.object({ type: z.literal("hedge_threshold") }),
   z.object({

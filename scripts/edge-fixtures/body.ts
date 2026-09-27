@@ -314,6 +314,196 @@ addDigest(
 addDigest("messages_hash_no_extractable_content", JSON.stringify({ messages: [{ role: "user", content: 42 }] }));
 addDigest("messages_hash_empty_messages", JSON.stringify({ messages: [] }));
 
+// ===================================================================
+// response format (/v1/responses): responseInputRectify, messagesCount/
+// inputCount, codexInitialTextHash, fingerprint (extractResponses)
+// ===================================================================
+
+function responseBody(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    model: "gpt-5-codex",
+    instructions: "You are a coding assistant.",
+    tools: [
+      {
+        type: "function",
+        name: "get_weather",
+        description: "Get the current weather",
+        parameters: { type: "object", properties: { city: { type: "string" } } },
+      },
+    ],
+    ...overrides,
+  };
+}
+
+addDigest(
+  "response_input_string",
+  JSON.stringify(responseBody({ input: "hello world" })),
+  { path: "/v1/responses" }
+);
+addDigest(
+  "response_input_empty_string",
+  JSON.stringify(responseBody({ input: "" })),
+  { path: "/v1/responses" }
+);
+addDigest(
+  "response_input_object_message",
+  JSON.stringify(
+    responseBody({ input: { role: "user", content: [{ type: "input_text", text: "hi there" }] } })
+  ),
+  { path: "/v1/responses" }
+);
+addDigest(
+  "response_input_object_tool_output",
+  JSON.stringify(
+    responseBody({ input: { type: "function_call_output", call_id: "call_1", output: "42" } })
+  ),
+  { path: "/v1/responses" }
+);
+addDigest(
+  "response_input_object_unrecognized_passthrough",
+  JSON.stringify(responseBody({ input: { foo: "bar" } })),
+  { path: "/v1/responses" }
+);
+addDigest(
+  "response_input_null_passthrough",
+  JSON.stringify(responseBody({ input: null })),
+  { path: "/v1/responses" }
+);
+addDigest(
+  "response_input_array_full_conversation",
+  JSON.stringify(
+    responseBody({
+      input: [
+        { type: "message", role: "user", content: [{ type: "input_text", text: "what's the weather in NYC?" }] },
+        { type: "function_call", call_id: "call_1", name: "get_weather", arguments: '{"city":"NYC"}' },
+        { type: "function_call_output", call_id: "call_1", output: "sunny, 72F" },
+        {
+          type: "reasoning",
+          summary: [{ type: "summary_text", text: "Checking the weather tool result." }],
+        },
+        { type: "message", role: "assistant", content: [{ type: "output_text", text: "It's sunny, 72F." }] },
+      ],
+    })
+  ),
+  { path: "/v1/responses" }
+);
+addDigest(
+  "response_input_array_reasoning_falls_back_to_content",
+  JSON.stringify(
+    responseBody({
+      input: [{ type: "reasoning", content: [{ type: "reasoning_text", text: "fallback text" }] }],
+    })
+  ),
+  { path: "/v1/responses" }
+);
+addDigest(
+  "response_input_array_unknown_item_type",
+  JSON.stringify(responseBody({ input: [{ type: "item_reference", id: "ref_1" }] })),
+  { path: "/v1/responses" }
+);
+addDigest(
+  "response_codex_initial_text_hash",
+  JSON.stringify(
+    responseBody({
+      input: [
+        { type: "message", role: "user", content: [{ type: "input_text", text: "first turn text" }] },
+        { type: "message", role: "assistant", content: [{ type: "output_text", text: "reply" }] },
+      ],
+    })
+  ),
+  { path: "/v1/responses" }
+);
+
+// --- remote compaction v2 ---
+addDigest(
+  "remote_compaction_v2_array_item",
+  JSON.stringify(responseBody({ input: [{ type: "compaction_trigger", session_id: "s1" }] })),
+  { path: "/v1/responses" }
+);
+addDigest(
+  "remote_compaction_v2_single_object_shorthand",
+  JSON.stringify(responseBody({ input: { type: "compaction_trigger", session_id: "s1" } })),
+  { path: "/v1/responses" }
+);
+addDigest(
+  "remote_compaction_v2_not_triggered",
+  JSON.stringify(responseBody({ input: [{ type: "message", role: "user", content: "hi" }] })),
+  { path: "/v1/responses" }
+);
+addDigest(
+  "remote_compaction_v2_wrong_path_not_triggered",
+  JSON.stringify({ messages: [U1] }),
+  { path: "/v1/messages" }
+);
+
+// ===================================================================
+// openai format (/v1/chat/completions): fingerprint (extractOpenAIChat)
+// ===================================================================
+
+addDigest(
+  "openai_chat_system_user_assistant_tool",
+  JSON.stringify({
+    model: "gpt-4o",
+    messages: [
+      { role: "system", content: "You are a helpful assistant." },
+      { role: "user", content: "What's the weather in NYC?" },
+      {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          { id: "call_abc", type: "function", function: { name: "get_weather", arguments: '{"city":"NYC"}' } },
+        ],
+      },
+      { role: "tool", tool_call_id: "call_abc", content: "sunny, 72F" },
+      { role: "assistant", content: "It's sunny and 72F in NYC." },
+    ],
+    tools: [
+      {
+        type: "function",
+        function: {
+          name: "get_weather",
+          description: "Get the current weather",
+          parameters: { type: "object", properties: { city: { type: "string" } } },
+        },
+      },
+    ],
+    stream_options: { include_usage: true },
+  }),
+  { path: "/v1/chat/completions" }
+);
+addDigest(
+  "openai_chat_developer_leading_message",
+  JSON.stringify({
+    model: "gpt-4o",
+    messages: [
+      { role: "developer", content: "Follow house style." },
+      { role: "user", content: "hi" },
+    ],
+  }),
+  { path: "/v1/chat/completions" }
+);
+addDigest(
+  "openai_chat_multimodal_content_array",
+  JSON.stringify({
+    model: "gpt-4o",
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "describe this" },
+          { type: "image_url", image_url: { url: "https://a.example/x.png" } },
+        ],
+      },
+    ],
+  }),
+  { path: "/v1/chat/completions" }
+);
+addDigest(
+  "openai_chat_probe_like",
+  JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: "foo" }] }),
+  { path: "/v1/chat/completions" }
+);
+
 await writeJSON("digest.json", digestCases);
 
 // ===================================================================
@@ -663,6 +853,77 @@ addBodyOps(
     { op: "set_top_level", key: "model", value: "new-model" },
     { op: "strip_private_params" },
     { op: "set_cache_control_ttl", ttl: "1h" },
+  ]
+);
+
+// --- normalize_response_input (response-input-rectifier.test.ts) ---
+addBodyOps("normalize_response_input_string", JSON.stringify({ input: "hello" }), [
+  { op: "normalize_response_input" },
+]);
+addBodyOps("normalize_response_input_empty_string", JSON.stringify({ input: "" }), [
+  { op: "normalize_response_input" },
+]);
+addBodyOps(
+  "normalize_response_input_object",
+  JSON.stringify({ input: { role: "user", content: [{ type: "input_text", text: "hi" }] } }),
+  [{ op: "normalize_response_input" }]
+);
+addBodyOps(
+  "normalize_response_input_object_unrecognized_passthrough",
+  JSON.stringify({ input: { foo: "bar" } }),
+  [{ op: "normalize_response_input" }]
+);
+addBodyOps(
+  "normalize_response_input_array_passthrough",
+  JSON.stringify({ input: [{ type: "message", role: "user", content: [] }] }),
+  [{ op: "normalize_response_input" }]
+);
+addBodyOps("normalize_response_input_absent_noop", JSON.stringify({ model: "gpt-5-codex" }), [
+  { op: "normalize_response_input" },
+]);
+addBodyOps("normalize_response_input_null_passthrough", JSON.stringify({ input: null }), [
+  { op: "normalize_response_input" },
+]);
+
+// --- normalize_response_input combined with set_top_level on responses-only keys ---
+addBodyOps(
+  "normalize_response_input_with_set_top_level_reasoning",
+  JSON.stringify({ input: "hi", reasoning: { effort: "low" } }),
+  [
+    { op: "set_top_level", key: "reasoning", value: { effort: "high" } },
+    { op: "normalize_response_input" },
+  ]
+);
+addBodyOps(
+  "normalize_response_input_with_set_top_level_text",
+  JSON.stringify({ input: "hi" }),
+  [
+    { op: "set_top_level", key: "text", value: { format: { type: "text" } } },
+    { op: "normalize_response_input" },
+  ]
+);
+addBodyOps(
+  "normalize_response_input_with_set_top_level_parallel_tool_calls",
+  JSON.stringify({ input: { role: "user", content: [{ type: "input_text", text: "hi" }] } }),
+  [
+    { op: "set_top_level", key: "parallel_tool_calls", value: false },
+    { op: "normalize_response_input" },
+  ]
+);
+addBodyOps(
+  "normalize_response_input_with_set_top_level_service_tier",
+  JSON.stringify({ input: "" }),
+  [
+    { op: "set_top_level", key: "service_tier", value: "priority" },
+    { op: "normalize_response_input" },
+  ]
+);
+addBodyOps(
+  "normalize_response_input_with_set_top_level_stream_options",
+  JSON.stringify({ input: [{ type: "message", role: "user", content: [] }] }),
+  [
+    { op: "set_top_level", key: "stream_options", value: { include_usage: true } },
+    { op: "normalize_response_input" },
   ]
 );
 

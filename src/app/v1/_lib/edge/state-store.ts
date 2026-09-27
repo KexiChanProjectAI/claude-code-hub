@@ -15,6 +15,8 @@ import {
   decompressPayload,
 } from "@/lib/compression/payload-codec";
 import { getRedisClient } from "@/lib/redis/client";
+import type { ProviderChainItem } from "@/types/message";
+import type { Provider } from "@/types/provider";
 import type { ReactiveRectifierRetryState } from "../proxy/forwarder";
 import type { EdgeSessionSnapshot } from "../proxy/session";
 import type { AttemptFailure, ExecutionStep } from "./contract";
@@ -69,6 +71,49 @@ export interface EdgeLastFailure {
   failure: AttemptFailure;
 }
 
+/** 竞速参与者（对应本地 StreamingHedgeAttempt 的可持久化部分） */
+export interface EdgeHedgeParticipant {
+  sequence: number;
+  providerId: number;
+  /** 参与者发起时的供应商快照（原会话在胜者提交后会切换供应商） */
+  provider: Provider;
+  endpointId: number | null;
+  baseUrl: string;
+  endpointUrl: string;
+  attemptId: string;
+  /** 当前在途 step（整流重试会换新的 step） */
+  stepId: string;
+  requestAttemptCount: number;
+  applyProviderOverrides: boolean;
+  reactiveRectifierRetryState: ReactiveRectifierRetryState;
+  status: "inflight" | "failed" | "winner" | "loser";
+  thresholdTriggered: boolean;
+  saturationRecorded: boolean;
+  /** 首个参与者复用原会话；其余参与者持有影子会话快照与独立的请求体状态 */
+  useOriginalSession: boolean;
+  shadow: EdgeSessionSnapshot | null;
+  body: EdgeBodyState | null;
+  billAsLoser: boolean;
+  /** 本参与者最近一次上报的失败（签名整流不适用时据此重新进入决策表） */
+  lastFailure?: AttemptFailure;
+  /** 本地 getAttemptModelRedirect 的缓存值（undefined 表示尚未读取） */
+  modelRedirect?: ProviderChainItem["modelRedirect"] | null;
+  startedAtMs: number;
+}
+
+/** 可序列化的错误描述：跨调用重建竞速的 lastError */
+export type EdgeErrorDescriptor =
+  | { kind: "failure"; providerId: number; failure: AttemptFailure }
+  | {
+      kind: "proxy";
+      message: string;
+      statusCode: number;
+      providerId?: number;
+      providerName?: string;
+    }
+  | { kind: "all_unavailable"; inner: EdgeErrorDescriptor | null }
+  | { kind: "client_abort" };
+
 export interface EdgeHedgeState {
   launchedProviderIds: number[];
   launchedProviderCount: number;
@@ -76,6 +121,11 @@ export interface EdgeHedgeState {
   maxInFlight: number;
   billLosers: boolean;
   initialProviderId: number;
+  participants: EdgeHedgeParticipant[];
+  lastError: EdgeErrorDescriptor | null;
+  lastErrorCategory: number | null;
+  /** DiscoveryRequestMetrics 的可持久化计数（routing trace summary） */
+  metrics: { attempts: number; active: number; maxActive: number; providerMs: number };
 }
 
 export interface EdgeRequestState {

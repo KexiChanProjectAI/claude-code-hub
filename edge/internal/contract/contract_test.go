@@ -36,6 +36,9 @@ func goSamples() map[string]any {
 				OpResults: &OpResults{BillingHeader: &BillingHeaderResult{RemovedCount: 1, ExtractedValues: []string{"x"}}}},
 		}
 	}
+	samples["next_failure_client_abort_peers"] = NextRequest{RequestID: 1, EdgeToken: "tttttttttttttttttttttttttttttttt", StepID: "1:h1:1",
+		Event: NextEvent{Type: "failure", Failure: &AttemptFailure{Kind: "client_abort"}, Dispatched: true, Timing: timing,
+			Peers: []PeerTiming{{StepID: "1:h2:1", Dispatched: true, HealthElapsedMs: 40}}}}
 	samples["next_hedge_threshold"] = NextRequest{RequestID: 1, EdgeToken: "tttttttttttttttttttttttttttttttt", StepID: "1:1:1",
 		Event: NextEvent{Type: "hedge_threshold", OpResults: &OpResults{}}}
 	samples["next_rectifier_not_applicable"] = NextRequest{RequestID: 1, EdgeToken: "tttttttttttttttttttttttttttttttt", StepID: "1:1:2",
@@ -123,7 +126,7 @@ func TestTSSamplesDecodeStrictly(t *testing.T) {
 	}
 	for name, raw := range samples {
 		switch {
-		case name == "digest":
+		case len(name) >= 6 && name[:6] == "digest":
 			var digest RequestDigest
 			strictDecode(t, raw, &digest)
 		case len(name) >= 6 && name[:6] == "decide":

@@ -66,6 +66,11 @@ func (e *execution) run(first *contract.ExecutionStep) {
 	defer stopHeartbeat()
 	go e.heartbeatLoop(heartbeatCtx, first.Reporting.HeartbeatIntervalMs)
 
+	if first.Hedge != nil {
+		e.runHedge(first)
+		return
+	}
+
 	step := first
 	for step != nil {
 		if step.DelayMs > 0 && !sleepCtx(e.r.Context(), time.Duration(step.DelayMs)*time.Millisecond) {
@@ -255,37 +260,36 @@ func nonEmptyOpResults(results contract.OpResults) *contract.OpResults {
 	return &results
 }
 
-func (e *execution) attempt(step *contract.ExecutionStep) attemptResult {
-	timers := &attemptTimers{}
+// attemptRun owns the per-attempt context and timers of one upstream attempt.
+type attemptRun struct {
+	step      *contract.ExecutionStep
+	timers    *attemptTimers
+	ctx       context.Context
+	cancel    context.CancelCauseFunc
+	committed atomic.Bool
+	opResults *contract.OpResults
 
-	transformed, opResultsValue, err := bodyops.Apply(e.body, step.BodyOps)
-	if err != nil {
-		return attemptResult{event: e.failureEvent(contract.AttemptFailure{Kind: "invalid_step", Message: err.Error()}, timers, nil)}
+	firstByteTimer *time.Timer
+	cleanups       []func()
+}
+
+// newAttemptRun detaches the attempt from the client context: the upstream request
+// must survive a client disconnect after commit (usage is still drained for
+// billing). With watchClient the client cancels the attempt only before commit;
+// hedge attempts leave client handling to the hedge loop.
+func (e *execution) newAttemptRun(step *contract.ExecutionStep, watchClient bool) *attemptRun {
+	ctx, cancel := context.WithCancelCause(context.WithoutCancel(e.r.Context()))
+	run := &attemptRun{step: step, timers: &attemptTimers{}, ctx: ctx, cancel: cancel}
+	if watchClient {
+		stop := context.AfterFunc(e.r.Context(), func() {
+			if !run.committed.Load() {
+				cancel(errClientAborted)
+			}
+		})
+		run.cleanups = append(run.cleanups, func() { stop() })
 	}
-	opResults := nonEmptyOpResults(opResultsValue)
-	if hasSignatureRectifier(step.BodyOps) && opResultsValue.ThinkingSignature != nil &&
-		!opResultsValue.ThinkingSignature.Applied {
-		return attemptResult{event: &contract.NextEvent{Type: "rectifier_not_applicable", OpResults: opResults}}
-	}
-	requestBody := transformed.Marshal()
-
-	// The upstream request must survive a client disconnect after commit (usage is
-	// still drained for billing), so it is detached from the client context and only
-	// cancelled by the client before commit.
-	attemptCtx, cancel := context.WithCancelCause(context.WithoutCancel(e.r.Context()))
-	defer cancel(nil)
-	var committed atomic.Bool
-	stopClientWatch := context.AfterFunc(e.r.Context(), func() {
-		if !committed.Load() {
-			cancel(errClientAborted)
-		}
-	})
-	defer stopClientWatch()
-	markCommitted := func() { committed.Store(true) }
-
-	var firstByteTimer *time.Timer
 	if step.IsStreaming && step.Timeouts.FirstByteMs > 0 {
-		firstByteTimer = time.AfterFunc(time.Duration(step.Timeouts.FirstByteMs)*time.Millisecond, func() {
+		run.firstByteTimer = time.AfterFunc(time.Duration(step.Timeouts.FirstByteMs)*time.Millisecond, func() {
 			cancel(errFirstByteTimeout)
 		})
 	}
@@ -293,23 +297,68 @@ func (e *execution) attempt(step *contract.ExecutionStep) attemptResult {
 		totalTimer := time.AfterFunc(time.Duration(step.Timeouts.NonStreamTotalMs)*time.Millisecond, func() {
 			cancel(errTotalTimeout)
 		})
-		defer totalTimer.Stop()
+		run.cleanups = append(run.cleanups, func() { totalTimer.Stop() })
 	}
-	stopFirstByteTimer := func() {
-		if firstByteTimer != nil {
-			firstByteTimer.Stop()
-		}
-	}
-	defer stopFirstByteTimer()
+	return run
+}
 
-	result, err := e.h.upstream.Do(attemptCtx, step, requestBody, timers.markDispatched)
+func (run *attemptRun) stopFirstByteTimer() {
+	if run.firstByteTimer != nil {
+		run.firstByteTimer.Stop()
+	}
+}
+
+func (run *attemptRun) markCommitted() { run.committed.Store(true) }
+
+func (run *attemptRun) close() {
+	run.stopFirstByteTimer()
+	for _, cleanup := range run.cleanups {
+		cleanup()
+	}
+	run.cancel(nil)
+}
+
+// attempt runs one serial attempt to its end (commit or pre-commit failure).
+func (e *execution) attempt(step *contract.ExecutionStep) attemptResult {
+	run := e.newAttemptRun(step, true)
+	defer run.close()
+	prepared, result := e.prepare(run, false)
+	if prepared == nil {
+		return result
+	}
+	return e.commitStream(run, prepared, nil)
+}
+
+// prepare runs an attempt up to (but excluding) the commit point. It returns a
+// prepared stream ready to commit, or the attempt result when the attempt failed
+// before commit (or, for serial non-stream responses, already committed). In
+// hedge mode every 2xx response takes the stream path, like the local hedge
+// runner which reads the first chunk / runs the gate regardless of content type.
+func (e *execution) prepare(run *attemptRun, hedge bool) (*preparedStream, attemptResult) {
+	step := run.step
+	timers := run.timers
+
+	transformed, opResultsValue, err := bodyops.Apply(e.body, step.BodyOps)
 	if err != nil {
-		return attemptResult{event: e.failureEvent(e.classifyAttemptError(attemptCtx, err, false), timers, opResults)}
+		return nil, attemptResult{event: e.failureEvent(contract.AttemptFailure{Kind: "invalid_step", Message: err.Error()}, timers, nil)}
+	}
+	opResults := nonEmptyOpResults(opResultsValue)
+	run.opResults = opResults
+	if hasSignatureRectifier(step.BodyOps) && opResultsValue.ThinkingSignature != nil &&
+		!opResultsValue.ThinkingSignature.Applied {
+		return nil, attemptResult{event: &contract.NextEvent{Type: "rectifier_not_applicable", OpResults: opResults}}
+	}
+	requestBody := transformed.Marshal()
+
+	result, err := e.h.upstream.Do(run.ctx, step, requestBody, timers.markDispatched)
+	if err != nil {
+		return nil, attemptResult{event: e.failureEvent(e.classifyAttemptError(run.ctx, err, false), timers, opResults)}
 	}
 	resp := result.Response
+	release := true
 	defer func() {
-		// Owned by the stream relay after commit; otherwise release it here.
-		if resp.Body != nil {
+		// Owned by the prepared stream / committed response; otherwise release it here.
+		if release && resp.Body != nil {
 			_ = resp.Body.Close()
 		}
 	}()
@@ -317,7 +366,7 @@ func (e *execution) attempt(step *contract.ExecutionStep) attemptResult {
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		bodyText, truncated := readErrorBody(resp.Body, step.Reporting.MaxErrorBodyBytes)
 		timers.markFirstByte()
-		return attemptResult{event: e.failureEvent(contract.AttemptFailure{
+		return nil, attemptResult{event: e.failureEvent(contract.AttemptFailure{
 			Kind:          "upstream_status",
 			Status:        resp.StatusCode,
 			StatusText:    http.StatusText(resp.StatusCode),
@@ -327,11 +376,40 @@ func (e *execution) attempt(step *contract.ExecutionStep) attemptResult {
 		}, timers, opResults)}
 	}
 
-	contentType := strings.ToLower(resp.Header.Get("Content-Type"))
-	if strings.Contains(contentType, "text/event-stream") {
-		return e.handleStream(attemptCtx, step, resp, timers, stopFirstByteTimer, markCommitted, opResults)
+	forced := forceStreamHandling(step, resp)
+	if hedge || forced || isEventStream(resp) {
+		prepared, failed := e.prepareStream(run, resp, forced)
+		if prepared != nil {
+			release = false
+		}
+		return prepared, failed
 	}
-	return e.handleNonStream(attemptCtx, step, resp, timers, markCommitted, opResults)
+	return nil, e.handleNonStream(run.ctx, step, resp, timers, run.markCommitted, opResults)
+}
+
+func isEventStream(resp *http.Response) bool {
+	return strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/event-stream")
+}
+
+// forceStreamHandling mirrors shouldForceCodexResponsesStreamHandling: a codex
+// streaming request whose 2xx body is neither SSE, HTML nor JSON is still
+// relayed as a stream.
+func forceStreamHandling(step *contract.ExecutionStep, resp *http.Response) bool {
+	if !step.ForceStreamHandling || resp.Body == nil || resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return false
+	}
+	contentType := resp.Header.Get("Content-Type")
+	mediaType := strings.ToLower(strings.TrimSpace(strings.SplitN(contentType, ";", 2)[0]))
+	switch mediaType {
+	case "text/event-stream", "text/html", "application/xhtml+xml":
+		return false
+	}
+	return !isJSONMediaType(mediaType)
+}
+
+// isJSONMediaType mirrors isJsonResponseContentType.
+func isJSONMediaType(mediaType string) bool {
+	return mediaType == "application/json" || strings.HasSuffix(mediaType, "+json")
 }
 
 func readErrorBody(body io.Reader, limit int) (string, bool) {
@@ -420,6 +498,13 @@ func (e *execution) handleNonStream(ctx context.Context, step *contract.Executio
 		if audit.Hit {
 			fixerAudit = &audit
 		}
+		// ResponseFixer.processNonStream ends with normalizeResponseOutput (Responses only).
+		if clientFormat(step) == contract.FormatResponse &&
+			isJSONMediaType(strings.ToLower(strings.TrimSpace(strings.SplitN(resp.Header.Get("Content-Type"), ";", 2)[0]))) {
+			if normalized, changed := fixer.NormalizeResponseOutput(clientBody); changed {
+				clientBody = normalized
+			}
+		}
 	}
 
 	markCommitted()
@@ -428,8 +513,9 @@ func (e *execution) handleNonStream(ctx context.Context, step *contract.Executio
 	e.addForwarded(int64(written))
 
 	dispatched, firstByte := timers.snapshot()
+	// The local response handler settles on the fixed body it relays to the client.
 	storedLimit := step.Reporting.MaxNonStreamBodyBytes
-	storedText := string(data)
+	storedText := string(clientBody)
 	storedTruncated := false
 	if storedLimit > 0 && len(storedText) > storedLimit {
 		storedText = storedText[:storedLimit]
@@ -469,6 +555,7 @@ func fixerConfig(step *contract.ExecutionStep) fixer.Config {
 		FixEncoding:      step.Fixer.FixEncoding,
 		MaxJSONDepth:     step.Fixer.MaxJSONDepth,
 		MaxFixSize:       step.Fixer.MaxFixSize,
+		Format:           clientFormat(step),
 	}
 }
 

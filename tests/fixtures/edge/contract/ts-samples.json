@@ -6,6 +6,7 @@
     "receivedAtMs": 1700000000000,
     "method": "POST",
     "path": "/v1/messages?beta=true",
+    "format": "claude",
     "headers": [
       [
         "content-type",
@@ -25,6 +26,10 @@
       "max_tokens": 1024
     },
     "messagesCount": 1,
+    "inputCount": null,
+    "responseInputRectify": null,
+    "isRemoteCompactionV2": false,
+    "codexInitialTextHash": null,
     "systemKind": "array",
     "hasPrivateParams": true,
     "isProbe": false,
@@ -45,6 +50,253 @@
       ]
     }
   },
+  "digest_responses": {
+    "schemaVersion": 1,
+    "edgeId": "edge-1",
+    "edgeRequestId": "req-2",
+    "receivedAtMs": 1700000000000,
+    "method": "POST",
+    "path": "/v1/responses",
+    "format": "response",
+    "headers": [
+      [
+        "user-agent",
+        "codex_cli_rs/0.50.0"
+      ]
+    ],
+    "clientIp": null,
+    "bodyBytes": 80,
+    "bodyParseError": null,
+    "topLevel": {
+      "model": "gpt-5-codex",
+      "stream": true,
+      "reasoning": {
+        "effort": "high"
+      }
+    },
+    "messagesCount": null,
+    "inputCount": 1,
+    "responseInputRectify": {
+      "action": "string_to_array",
+      "originalType": "string"
+    },
+    "isRemoteCompactionV2": false,
+    "codexInitialTextHash": "2cf24dba5fb0a30e",
+    "systemKind": "absent",
+    "hasPrivateParams": false,
+    "isProbe": false,
+    "isWarmup": false,
+    "messagesHash": "e3b0c44298fc1c14",
+    "fingerprint": {
+      "sys": {
+        "depth": 0,
+        "fp": "ffe679bb831c95b67dc17819c63c5090",
+        "prefixBytes": 1
+      },
+      "tail": [
+        {
+          "depth": 1,
+          "fp": "917e84f1aae1c98c646f1736b8ff79ba",
+          "prefixBytes": 53
+        }
+      ]
+    }
+  },
+  "decide_execute_hedge": {
+    "action": "execute",
+    "requestId": 8,
+    "edgeToken": "tttttttttttttttttttttttttttttttttttttttttttttttt",
+    "step": {
+      "stepId": "8:h1:1",
+      "attemptNumber": 1,
+      "totalProvidersAttempted": 1,
+      "attemptKind": "normal",
+      "provider": {
+        "id": 11,
+        "name": "p9",
+        "priority": 1,
+        "type": "codex"
+      },
+      "clientFormat": "response",
+      "forceStreamHandling": true,
+      "endpoint": {
+        "id": null,
+        "url": "https://api.openai.example.com/v1"
+      },
+      "method": "POST",
+      "url": "https://api.openai.example.com/v1/responses",
+      "headers": [
+        [
+          "accept-encoding",
+          "identity"
+        ],
+        [
+          "authorization",
+          "Bearer sk-up"
+        ],
+        [
+          "content-type",
+          "application/json"
+        ],
+        [
+          "host",
+          "api.openai.example.com"
+        ],
+        [
+          "user-agent",
+          "codex_cli_rs/0.50.0"
+        ]
+      ],
+      "bodyOps": [
+        {
+          "op": "normalize_response_input"
+        }
+      ],
+      "delayMs": 0,
+      "isStreaming": true,
+      "timeouts": {
+        "connectMs": 30000,
+        "firstByteMs": 30000,
+        "nonStreamTotalMs": 0,
+        "idleMs": 60000,
+        "headersMs": 600000,
+        "bodyMs": 600000
+      },
+      "transport": {
+        "proxyUrl": null,
+        "proxyFallbackToDirect": false,
+        "http2": false
+      },
+      "gate": {
+        "mode": "enforce",
+        "highConcurrency": false,
+        "idleMs": 60000,
+        "eventCap": 64,
+        "byteCap": 10485760,
+        "captureCommitMarker": true
+      },
+      "fixer": {
+        "enabled": true,
+        "fixTruncatedJson": true,
+        "fixSseFormat": true,
+        "fixEncoding": true,
+        "maxJsonDepth": 200,
+        "maxFixSize": 1048576
+      },
+      "hedge": {
+        "thresholdMs": 30000,
+        "maxInFlight": 2,
+        "billLosers": true,
+        "loserDrainMs": 120000
+      },
+      "reporting": {
+        "maxCompactBytes": 262144,
+        "maxHeadBytes": 1048576,
+        "maxNonStreamBodyBytes": 8388608,
+        "maxErrorBodyBytes": 65536,
+        "heartbeatIntervalMs": 15000
+      },
+      "clientAbortDrainMs": 60000
+    }
+  },
+  "next_launch": {
+    "action": "launch",
+    "step": {
+      "stepId": "8:h2:1",
+      "attemptNumber": 1,
+      "totalProvidersAttempted": 1,
+      "attemptKind": "hedge",
+      "provider": {
+        "id": 11,
+        "name": "p9",
+        "priority": 1,
+        "type": "codex"
+      },
+      "clientFormat": "response",
+      "forceStreamHandling": true,
+      "endpoint": {
+        "id": null,
+        "url": "https://api.openai.example.com/v1"
+      },
+      "method": "POST",
+      "url": "https://api.openai.example.com/v1/responses",
+      "headers": [
+        [
+          "accept-encoding",
+          "identity"
+        ],
+        [
+          "authorization",
+          "Bearer sk-up"
+        ],
+        [
+          "content-type",
+          "application/json"
+        ],
+        [
+          "host",
+          "api.openai.example.com"
+        ],
+        [
+          "user-agent",
+          "codex_cli_rs/0.50.0"
+        ]
+      ],
+      "bodyOps": [
+        {
+          "op": "normalize_response_input"
+        }
+      ],
+      "delayMs": 0,
+      "isStreaming": true,
+      "timeouts": {
+        "connectMs": 30000,
+        "firstByteMs": 30000,
+        "nonStreamTotalMs": 0,
+        "idleMs": 60000,
+        "headersMs": 600000,
+        "bodyMs": 600000
+      },
+      "transport": {
+        "proxyUrl": null,
+        "proxyFallbackToDirect": false,
+        "http2": false
+      },
+      "gate": {
+        "mode": "enforce",
+        "highConcurrency": false,
+        "idleMs": 60000,
+        "eventCap": 64,
+        "byteCap": 10485760,
+        "captureCommitMarker": true
+      },
+      "fixer": {
+        "enabled": true,
+        "fixTruncatedJson": true,
+        "fixSseFormat": true,
+        "fixEncoding": true,
+        "maxJsonDepth": 200,
+        "maxFixSize": 1048576
+      },
+      "hedge": {
+        "thresholdMs": 30000,
+        "maxInFlight": 2,
+        "billLosers": true,
+        "loserDrainMs": 120000
+      },
+      "reporting": {
+        "maxCompactBytes": 262144,
+        "maxHeadBytes": 1048576,
+        "maxNonStreamBodyBytes": 8388608,
+        "maxErrorBodyBytes": 65536,
+        "heartbeatIntervalMs": 15000
+      },
+      "clientAbortDrainMs": 60000
+    }
+  },
+  "next_wait": {
+    "action": "wait"
+  },
   "decide_execute": {
     "action": "execute",
     "requestId": 7,
@@ -60,6 +312,8 @@
         "priority": 1,
         "type": "claude"
       },
+      "clientFormat": "claude",
+      "forceStreamHandling": false,
       "endpoint": {
         "id": 3,
         "url": "https://api.example.com/"
@@ -68,32 +322,32 @@
       "url": "https://api.example.com/v1/messages?beta=true",
       "headers": [
         [
-          "content-type",
-          "application/json"
-        ],
-        [
-          "user-agent",
-          "claude-cli/2.1.90"
-        ],
-        [
-          "host",
-          "api.example.com"
-        ],
-        [
           "accept-encoding",
           "identity"
+        ],
+        [
+          "anthropic-beta",
+          "extended-cache-ttl-2025-04-11, prompt-caching-2024-07-31"
         ],
         [
           "authorization",
           "Bearer sk-up"
         ],
         [
-          "x-api-key",
-          "sk-up"
+          "content-type",
+          "application/json"
         ],
         [
-          "anthropic-beta",
-          "extended-cache-ttl-2025-04-11, prompt-caching-2024-07-31"
+          "host",
+          "api.example.com"
+        ],
+        [
+          "user-agent",
+          "claude-cli/2.1.90"
+        ],
+        [
+          "x-api-key",
+          "sk-up"
         ]
       ],
       "bodyOps": [
@@ -187,6 +441,8 @@
         "priority": 1,
         "type": "claude"
       },
+      "clientFormat": "claude",
+      "forceStreamHandling": false,
       "endpoint": {
         "id": 3,
         "url": "https://api.example.com/"
@@ -195,32 +451,32 @@
       "url": "https://api.example.com/v1/messages?beta=true",
       "headers": [
         [
-          "content-type",
-          "application/json"
-        ],
-        [
-          "user-agent",
-          "claude-cli/2.1.90"
-        ],
-        [
-          "host",
-          "api.example.com"
-        ],
-        [
           "accept-encoding",
           "identity"
+        ],
+        [
+          "anthropic-beta",
+          "extended-cache-ttl-2025-04-11, prompt-caching-2024-07-31"
         ],
         [
           "authorization",
           "Bearer sk-up"
         ],
         [
-          "x-api-key",
-          "sk-up"
+          "content-type",
+          "application/json"
         ],
         [
-          "anthropic-beta",
-          "extended-cache-ttl-2025-04-11, prompt-caching-2024-07-31"
+          "host",
+          "api.example.com"
+        ],
+        [
+          "user-agent",
+          "claude-cli/2.1.90"
+        ],
+        [
+          "x-api-key",
+          "sk-up"
         ]
       ],
       "bodyOps": [

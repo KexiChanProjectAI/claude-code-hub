@@ -6,11 +6,16 @@
  * - createEdgeSessionFromDigest：由摘要构建 edge 会话（合成体 + 预计算提示）。
  */
 import { SessionManager } from "@/lib/session-manager";
+import { extractInitialMessageTextHash } from "../codex/session-completer";
 import { computeFingerprintChain, MAX_AFFINITY_WINDOW } from "../proxy/affinity/fingerprint";
+import { detectFormatByEndpoint } from "../proxy/format-mapper";
+import { isRemoteCompactionV2Request } from "../proxy/remote-compaction";
+import { rectifyResponseInput } from "../proxy/response-input-rectifier";
 import { ProxySession } from "../proxy/session";
 import {
   EDGE_SCHEMA_VERSION,
   EDGE_TOP_LEVEL_KEYS,
+  type EdgeClientFormat,
   type HeaderPairs,
   type RequestDigest,
 } from "./contract";
@@ -50,13 +55,23 @@ export function buildRequestDigest(params: {
   body: Record<string, unknown>;
   bodyBytes: number;
 }): RequestDigest {
-  const { body } = params;
+  const format = resolveEdgeClientFormat(params.path);
+  // Response Input Rectifier 在守卫链之前运行：内容相关的摘要按规范化后的请求体计算
+  const body = structuredClone(params.body);
+  const responseInputRectify =
+    format === "response"
+      ? (() => {
+          const result = rectifyResponseInput(body);
+          return { action: result.action, originalType: result.originalType };
+        })()
+      : null;
+
   const topLevel: RequestDigest["topLevel"] = {};
   for (const key of EDGE_TOP_LEVEL_KEYS) {
     if (Object.hasOwn(body, key)) topLevel[key] = body[key];
   }
 
-  // 探测/预热判定直接复用会话上的实现，以完整请求体计算
+  // 探测/预热判定与消息读取直接复用会话上的实现，以完整请求体计算
   const probe = ProxySession.fromEdgeDigest({
     receivedAtMs: params.receivedAtMs,
     method: params.method,
@@ -74,19 +89,33 @@ export function buildRequestDigest(params: {
     receivedAtMs: params.receivedAtMs,
     method: params.method,
     path: params.path,
+    format,
     headers: params.headers,
     clientIp: params.clientIp,
     bodyBytes: params.bodyBytes,
     bodyParseError: null,
     topLevel,
-    messagesCount: Array.isArray(body.messages) ? body.messages.length : 0,
+    messagesCount: Array.isArray(body.messages) ? body.messages.length : null,
+    inputCount: Array.isArray(body.input) ? body.input.length : null,
+    responseInputRectify,
+    isRemoteCompactionV2: isRemoteCompactionV2Request(
+      new URL(params.path, "http://edge.local").pathname,
+      params.body
+    ),
+    codexInitialTextHash: Array.isArray(body.input) ? extractInitialMessageTextHash(body) : null,
     systemKind: resolveSystemKind(body.system),
     hasPrivateParams: hasPrivateKeys(body),
     isProbe: probe.isProbeRequest(),
     isWarmup: probe.isWarmupRequest(),
-    messagesHash: SessionManager.calculateMessagesHash(body.messages),
-    fingerprint: computeFingerprintChain(body, "claude", MAX_AFFINITY_WINDOW),
+    messagesHash: SessionManager.calculateMessagesHash(probe.getMessages()),
+    fingerprint: computeFingerprintChain(body, format, MAX_AFFINITY_WINDOW),
   };
+}
+
+/** 与 detectFormatByEndpoint 一致；edge 不支持的路径按 claude 处理（资格判定会交回本地） */
+export function resolveEdgeClientFormat(path: string): EdgeClientFormat {
+  const format = detectFormatByEndpoint(new URL(path, "http://edge.local").pathname);
+  return format === "response" || format === "openai" ? format : "claude";
 }
 
 /**
@@ -94,7 +123,12 @@ export function buildRequestDigest(params: {
  */
 export function buildSyntheticMessage(digest: RequestDigest): Record<string, unknown> {
   const message: Record<string, unknown> = structuredClone(digest.topLevel);
-  message.messages = Array.from({ length: digest.messagesCount }, () => ({}));
+  if (digest.messagesCount !== null) {
+    message.messages = Array.from({ length: digest.messagesCount }, () => ({}));
+  }
+  if (digest.inputCount !== null) {
+    message.input = Array.from({ length: digest.inputCount }, () => ({}));
+  }
   return message;
 }
 
@@ -110,6 +144,7 @@ export function createEdgeSessionFromDigest(digest: RequestDigest): ProxySession
       fingerprint: digest.fingerprint,
       isProbe: digest.isProbe,
       isWarmup: digest.isWarmup,
+      codexInitialTextHash: digest.codexInitialTextHash,
     },
   });
 }

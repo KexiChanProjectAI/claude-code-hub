@@ -35,6 +35,7 @@ import { trackObservedSessionForRequest } from "../proxy-handler";
 import type { DecideResponse, FailResponse, RequestDigest } from "./contract";
 import {
   type EdgeRuntime,
+  type EdgeStepOutcome,
   enterProvider,
   planNextSerialStep,
   releaseEdgeConcurrency,
@@ -42,6 +43,7 @@ import {
 import { createEdgeSessionFromDigest } from "./digest";
 import { evaluateProviderEligibility, evaluateRequestEligibility } from "./eligibility";
 import { responseToFailPayload } from "./error-shaping";
+import { flushHedgeSessions, initHedgeState, startHedge } from "./hedge-coordinator";
 import {
   type EdgeRequestState,
   generateEdgeToken,
@@ -73,7 +75,8 @@ async function hasBodyFilters(session: ProxySession, phase: "global" | "provider
  */
 async function runEdgeGuards(
   session: ProxySession,
-  settings: SystemSettings
+  settings: SystemSettings,
+  digest: RequestDigest
 ): Promise<Response | EdgeDelegate | null> {
   const authResponse = await ProxyAuthenticator.ensure(session);
   if (authResponse) return authResponse;
@@ -94,13 +97,9 @@ async function runEdgeGuards(
   const provider = session.provider;
   if (!provider) return new EdgeDelegate("no_provider");
   await ProxyProviderRequestFilter.ensure(session);
-  if (wouldUseLegacyHedge(session)) {
-    // legacy hedge 竞速尚未在 edge 侧实现：交回本地，保持与本地完全一致的竞速语义
-    ProxyForwarder.releaseProviderSessionRef(session, provider.id);
-    return new EdgeDelegate("hedge_pending");
-  }
   const providerEligibility = evaluateProviderEligibility({
     provider,
+    format: digest.format,
     requestedModel: session.request.model ?? "",
     settings,
     providerBodyFiltersConfigured:
@@ -171,9 +170,23 @@ async function decideOnce(digest: RequestDigest, edgeId: string): Promise<Decide
 
   resolveSystemSettingsForSession(session, settings);
 
+  // Response Input Rectifier：本地在守卫链之前原地规范化 input。摘要已按规范化后的正文计算，
+  // 这里只补记审计，并把规范化作为首个内容型 op 交给远端重放。
+  const inputRectify = digest.responseInputRectify;
+  const inputRectified = !!inputRectify && inputRectify.action !== "passthrough";
+  if (inputRectify && inputRectified) {
+    session.addSpecialSetting({
+      type: "response_input_rectifier",
+      scope: "request",
+      hit: true,
+      action: inputRectify.action,
+      originalType: inputRectify.originalType,
+    });
+  }
+
   let guardResult: Response | EdgeDelegate | null;
   try {
-    guardResult = await runEdgeGuards(session, settings);
+    guardResult = await runEdgeGuards(session, settings, digest);
   } catch (error) {
     const response = await ProxyErrorHandler.handle(session, error as Error);
     return { action: "fail", response: await responseToFailPayload(response) };
@@ -220,8 +233,9 @@ async function decideOnce(digest: RequestDigest, edgeId: string): Promise<Decide
     (session.isStreamingHedgeDisabled() && !session.isSessionBindingAllowed()) ||
     !endpointPolicy.allowRetry ||
     !endpointPolicy.allowProviderSwitch;
+  const useStreamingHedge = wouldUseLegacyHedge(session);
   session.initializeRoutingTrace({
-    mode: singleUpstream ? "single_upstream" : "legacy_serial",
+    mode: singleUpstream ? "single_upstream" : useStreamingHedge ? "legacy_hedge" : "legacy_serial",
     discoveryEnabled: settings.discoveryEnabled === true,
     eligible: false,
     bypassReason: digest.topLevel.stream === true ? "disabled" : "non_streaming",
@@ -243,7 +257,7 @@ async function decideOnce(digest: RequestDigest, edgeId: string): Promise<Decide
     body: {
       originalTopLevel: structuredClone(digest.topLevel) as Record<string, unknown>,
       hasPrivateParams: digest.hasPrivateParams,
-      contentOps: [],
+      contentOps: inputRectified ? [{ op: "normalize_response_input" }] : [],
     },
     attempts: [],
     totalProvidersAttempted: 0,
@@ -257,10 +271,19 @@ async function decideOnce(digest: RequestDigest, edgeId: string): Promise<Decide
   };
   const rt: EdgeRuntime = { state, session, settings };
 
-  let outcome: Awaited<ReturnType<typeof planNextSerialStep>>;
+  let outcome: EdgeStepOutcome;
   try {
-    await enterProvider(rt, provider);
-    outcome = await planNextSerialStep(rt);
+    if (useStreamingHedge) {
+      initHedgeState(state, {
+        initialProvider: provider,
+        maxInFlight: settings.legacyHedgeMaxInFlight,
+        billLosers: settings.billHedgeLosers === true,
+      });
+      outcome = await startHedge(rt, provider);
+    } else {
+      await enterProvider(rt, provider);
+      outcome = await planNextSerialStep(rt);
+    }
   } catch (error) {
     logger.error("[EdgeDecide] Failed to plan the first execution step", {
       requestId: state.requestId,
@@ -275,6 +298,7 @@ async function decideOnce(digest: RequestDigest, edgeId: string): Promise<Decide
     return { action: "fail", response: outcome.response };
   }
 
+  flushHedgeSessions(rt);
   state.session = session.toEdgeSnapshot();
   await saveEdgeState(state, env.CCH_EDGE_STATE_TTL_SECONDS);
   await scheduleEdgeDeadline(state.requestId, Date.now() + 3 * state.heartbeatIntervalMs);

@@ -6,11 +6,12 @@ import (
 )
 
 type streamFixtureCfg struct {
-	FixEncoding      bool `json:"fixEncoding"`
-	FixSseFormat     bool `json:"fixSseFormat"`
-	FixTruncatedJSON bool `json:"fixTruncatedJson"`
-	MaxJSONDepth     int  `json:"maxJsonDepth"`
-	MaxFixSize       int  `json:"maxFixSize"`
+	FixEncoding      bool   `json:"fixEncoding"`
+	FixSseFormat     bool   `json:"fixSseFormat"`
+	FixTruncatedJSON bool   `json:"fixTruncatedJson"`
+	MaxJSONDepth     int    `json:"maxJsonDepth"`
+	MaxFixSize       int    `json:"maxFixSize"`
+	Format           string `json:"format"`
 }
 
 type streamCase struct {
@@ -35,6 +36,7 @@ func TestStreamFixerFixtures(t *testing.T) {
 				FixTruncatedJSON: c.Cfg.FixTruncatedJSON,
 				MaxJSONDepth:     c.Cfg.MaxJSONDepth,
 				MaxFixSize:       c.Cfg.MaxFixSize,
+				Format:           c.Cfg.Format,
 			}
 
 			sf := NewStreamFixer(cfg)

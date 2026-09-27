@@ -1544,6 +1544,24 @@ function getReactiveRectifierDisplayName(rectifierType: ReactiveRectifierType): 
   return rectifierType;
 }
 
+export type HedgeAttemptFailureDecision =
+  | { action: "client_abort"; errorCategory: ErrorCategory; terminalError: Error }
+  | { action: "local_capacity"; errorCategory: ErrorCategory }
+  | { action: "db_overload"; errorCategory: ErrorCategory }
+  | {
+      action: "rectifier_retry";
+      errorCategory: ErrorCategory;
+      statusCode: number | undefined;
+      rectifierType: ReactiveRectifierType;
+      rectifierTrigger: string;
+    }
+  | {
+      action: "failed";
+      errorCategory: ErrorCategory;
+      statusCode: number | undefined;
+      nonRetryable: boolean;
+    };
+
 export type ReactiveRectifierParams = {
   error: Error;
   provider: Provider;
@@ -2875,6 +2893,250 @@ export class ProxyForwarder {
    * - retry：同供应商重试（调用方等待 delayMs，按 advanceEndpoint 推进端点游标）
    * - switch_provider：当前供应商已记入 failedProviderIds，调用方切换供应商
    */
+  /**
+   * legacy hedge 单个 attempt 失败时的归类与记账（本地 sendStreamingWithHedge 与 edge 竞速协调器共用）。
+   *
+   * 负责：错误归类、亲和墓碑、端点熔断、决策链、供应商熔断、反应式整流记账；
+   * 不负责：计时器、在途集合、trace 事件与竞速编排（由调用方按返回动作处理）。
+   */
+  static async handleHedgeAttemptFailure(ctx: {
+    session: ProxySession;
+    attemptSession: ProxySession;
+    provider: Provider;
+    endpointAudit: { endpointId: number | null; endpointUrl: string };
+    sequence: number;
+    requestAttemptCount: number;
+    reactiveRectifierRetryState: ReactiveRectifierRetryState;
+    failedProviderIds: number[];
+    rawCrossProviderFallbackEnabled: boolean;
+    error: Error;
+    getModelRedirect: () => ProviderChainItem["modelRedirect"] | undefined;
+    applyReactiveRectifier?: (params: ReactiveRectifierParams) => Promise<ReactiveRectifierResult>;
+    /** 终态失败记账前调用（本地用于同步 attempt 的结算标记） */
+    beforeTerminalAccounting?: () => void;
+    onProviderFailureRecorded?: () => void;
+  }): Promise<HedgeAttemptFailureDecision> {
+    const { session, provider, error } = ctx;
+    let errorCategory = await categorizeErrorAsync(error);
+    if (!session.isProbeRequest?.()) {
+      void maybeMarkUpstreamQuotaExhausted(provider, error);
+    }
+    // F3a：hedge attempt 供应商侧失败且正是亲和提名者 -> 定向墓碑
+    // 与顺序路径同一判定：request-scoped 空完成不写墓碑
+    if (
+      (errorCategory === ErrorCategory.PROVIDER_ERROR ||
+        errorCategory === ErrorCategory.RESOURCE_NOT_FOUND) &&
+      !isRequestScopedGateFailure(error)
+    ) {
+      void retainRequestMemoryUntil(
+        tombstoneAffinityOnFailure(session, provider.id),
+        "affinity-tombstone"
+      );
+    }
+    const statusCode = error instanceof ProxyError ? error.statusCode : undefined;
+    const databaseError = findSafeDatabaseError(error);
+    const errorMessage =
+      databaseError?.message ??
+      (error instanceof ProxyError ? error.getDetailedErrorMessage() : error.message);
+    let matchedRule: MatchedRuleDetails | undefined;
+    let matchedRuleLogContext: Record<string, unknown> = {};
+
+    if (ctx.endpointAudit.endpointId != null) {
+      const isTimeoutError = error instanceof ProxyError && error.statusCode === 524;
+      if (isTimeoutError || errorCategory === ErrorCategory.SYSTEM_ERROR) {
+        await recordEndpointFailure(ctx.endpointAudit.endpointId, error);
+      }
+    }
+
+    if (errorCategory === ErrorCategory.CLIENT_ABORT) {
+      session.addProviderToChain(provider, {
+        ...ctx.endpointAudit,
+        reason: "client_abort",
+        attemptNumber: ctx.sequence,
+        errorMessage: "Client aborted request",
+        circuitState: getCircuitState(provider.id),
+        modelRedirect: ctx.getModelRedirect(),
+      });
+      return {
+        action: "client_abort",
+        errorCategory,
+        terminalError:
+          error instanceof ProxyError
+            ? error
+            : new ProxyError("Request aborted by client", 499, undefined, true),
+      };
+    }
+
+    if (errorCategory === ErrorCategory.LOCAL_OVERLOAD) {
+      if (isLocalCapacityError(error)) {
+        return { action: "local_capacity", errorCategory };
+      }
+      const admission = findDbPoolAdmissionError(error);
+      const safeAdmissionMessage = admission?.message ?? "Database pool admission exceeded";
+      logger.warn("ProxyForwarder: Local database admission rejected during hedge", {
+        providerId: provider.id,
+        providerName: provider.name,
+        endpointId: ctx.endpointAudit.endpointId,
+        pool: admission?.pool,
+        maxOutstanding: admission?.maxOutstanding,
+        participantSequence: ctx.sequence,
+        attemptNumber: ctx.requestAttemptCount,
+      });
+
+      session.addProviderToChain(provider, {
+        ...ctx.endpointAudit,
+        reason: "system_error",
+        attemptNumber: ctx.sequence,
+        errorMessage: safeAdmissionMessage,
+        circuitState: getCircuitState(provider.id),
+        errorDetails: {
+          system: {
+            errorType: "DbPoolAdmissionError",
+            errorName: "DbPoolAdmissionError",
+            errorMessage: safeAdmissionMessage,
+            errorCode: admission?.code,
+          },
+          request: buildRequestDetails(session),
+        },
+        modelRedirect: ctx.getModelRedirect(),
+      });
+      return { action: "db_overload", errorCategory };
+    }
+
+    const reactiveRectifierResult = await (ctx.applyReactiveRectifier ?? tryApplyReactiveRectifier)(
+      {
+        error,
+        provider,
+        requestSession: ctx.attemptSession,
+        persistSession: session,
+        errorMessage,
+        attemptNumber: ctx.requestAttemptCount,
+        retryAttemptNumber: ctx.requestAttemptCount + 1,
+        retryState: ctx.reactiveRectifierRetryState,
+      }
+    );
+
+    if (reactiveRectifierResult.matched) {
+      if (!reactiveRectifierResult.applied) {
+        if (reactiveRectifierResult.reason === "not_applicable") {
+          logger.info(
+            `ProxyForwarder: ${getReactiveRectifierDisplayName(
+              reactiveRectifierResult.rectifierType
+            )} not applicable in hedge, skipping retry`,
+            {
+              providerId: provider.id,
+              providerName: provider.name,
+              trigger: reactiveRectifierResult.trigger,
+              participantSequence: ctx.sequence,
+              attemptNumber: ctx.requestAttemptCount,
+            }
+          );
+        }
+
+        errorCategory = ErrorCategory.NON_RETRYABLE_CLIENT_ERROR;
+      } else {
+        logger.info(
+          `ProxyForwarder: ${getReactiveRectifierDisplayName(
+            reactiveRectifierResult.rectifierType
+          )} applied in hedge, retrying same provider`,
+          {
+            providerId: provider.id,
+            providerName: provider.name,
+            trigger: reactiveRectifierResult.trigger,
+            participantSequence: ctx.sequence,
+            attemptNumber: ctx.requestAttemptCount,
+            willRetryAttemptNumber: ctx.requestAttemptCount + 1,
+          }
+        );
+
+        session.addProviderToChain(provider, {
+          ...buildRetryFailedChainEntry(
+            provider,
+            ctx.endpointAudit,
+            ctx.requestAttemptCount,
+            error,
+            errorMessage,
+            reactiveRectifierResult.requestDetailsBeforeRectify,
+            ctx.rawCrossProviderFallbackEnabled
+          ),
+          modelRedirect: ctx.getModelRedirect(),
+        });
+
+        return {
+          action: "rectifier_retry",
+          errorCategory,
+          statusCode,
+          rectifierType: reactiveRectifierResult.rectifierType,
+          rectifierTrigger: reactiveRectifierResult.trigger,
+        };
+      }
+    }
+
+    if (errorCategory === ErrorCategory.NON_RETRYABLE_CLIENT_ERROR) {
+      matchedRule = buildMatchedRuleDetails(await getErrorDetectionResultAsync(error));
+      matchedRuleLogContext = buildMatchedRuleLogContext(matchedRule);
+
+      logger.warn("ProxyForwarder: Non-retryable client error in hedge, aborting all attempts", {
+        providerId: provider.id,
+        providerName: provider.name,
+        statusCode,
+        error: errorMessage,
+        participantSequence: ctx.sequence,
+        attemptNumber: ctx.requestAttemptCount,
+        ...matchedRuleLogContext,
+      });
+    }
+
+    ctx.beforeTerminalAccounting?.();
+    ProxyForwarder.markProviderFailed(session, ctx.failedProviderIds, provider.id);
+
+    if (
+      errorCategory === ErrorCategory.PROVIDER_ERROR &&
+      statusCode !== 404 &&
+      !isRequestScopedGateFailure(error)
+    ) {
+      ctx.onProviderFailureRecorded?.();
+      await recordFailure(provider.id, error);
+    }
+
+    session.addProviderToChain(
+      provider,
+      errorCategory === ErrorCategory.NON_RETRYABLE_CLIENT_ERROR
+        ? {
+            ...buildClientErrorChainEntry(
+              provider,
+              ctx.endpointAudit,
+              ctx.sequence,
+              error,
+              errorMessage,
+              buildRequestDetails(session),
+              matchedRule,
+              ctx.rawCrossProviderFallbackEnabled
+            ),
+            modelRedirect: ctx.getModelRedirect(),
+          }
+        : {
+            ...ctx.endpointAudit,
+            reason:
+              errorCategory === ErrorCategory.RESOURCE_NOT_FOUND
+                ? "resource_not_found"
+                : "retry_failed",
+            attemptNumber: ctx.sequence,
+            statusCode,
+            errorMessage,
+            circuitState: getCircuitState(provider.id),
+            modelRedirect: ctx.getModelRedirect(),
+          }
+    );
+
+    return {
+      action: "failed",
+      errorCategory,
+      statusCode,
+      nonRetryable: errorCategory === ErrorCategory.NON_RETRYABLE_CLIENT_ERROR,
+    };
+  }
+
   static async handleSerialAttemptFailure(
     context: SerialAttemptFailureContext
   ): Promise<SerialAttemptFailureDecision> {
@@ -6018,39 +6280,35 @@ export class ProxyForwarder {
       attempt.healthOutcome = "other_failure";
       lastError = error;
 
-      let errorCategory = await categorizeErrorAsync(error);
-      lastErrorCategory = errorCategory;
-      if (!session.isProbeRequest?.()) {
-        void maybeMarkUpstreamQuotaExhausted(attempt.provider, error);
-      }
-      // F3a：hedge attempt 供应商侧失败且正是亲和提名者 -> 定向墓碑
-      // 与顺序路径同一判定：request-scoped 空完成不写墓碑
-      if (
-        (errorCategory === ErrorCategory.PROVIDER_ERROR ||
-          errorCategory === ErrorCategory.RESOURCE_NOT_FOUND) &&
-        !isRequestScopedGateFailure(error)
-      ) {
-        void retainRequestMemoryUntil(
-          tombstoneAffinityOnFailure(session, attempt.provider.id),
-          "affinity-tombstone"
-        );
-      }
-      const statusCode = error instanceof ProxyError ? error.statusCode : undefined;
-      const databaseError = findSafeDatabaseError(error);
-      const errorMessage =
-        databaseError?.message ??
-        (error instanceof ProxyError ? error.getDetailedErrorMessage() : error.message);
-      let matchedRule: MatchedRuleDetails | undefined;
-      let matchedRuleLogContext: Record<string, unknown> = {};
+      const decision = await ProxyForwarder.handleHedgeAttemptFailure({
+        session,
+        attemptSession: attempt.session,
+        provider: attempt.provider,
+        endpointAudit: attempt.endpointAudit,
+        sequence: attempt.sequence,
+        requestAttemptCount: attempt.requestAttemptCount,
+        reactiveRectifierRetryState: attempt.reactiveRectifierRetryState,
+        failedProviderIds,
+        rawCrossProviderFallbackEnabled,
+        error,
+        getModelRedirect: () => getAttemptModelRedirect(attempt),
+        beforeTerminalAccounting: () => {
+          attempt.healthSettlementClaimed = true;
+          attempt.healthOutcome = "other_failure";
+          attempt.settled = true;
+          if (attempt.thresholdTimer) {
+            clearTimeout(attempt.thresholdTimer);
+            attempt.thresholdTimer = null;
+          }
+          attempts.delete(attempt);
+        },
+        onProviderFailureRecorded: () => {
+          attempt.healthOutcome = "provider_failure";
+        },
+      });
+      lastErrorCategory = decision.errorCategory;
 
-      if (attempt.endpointAudit.endpointId != null) {
-        const isTimeoutError = error instanceof ProxyError && error.statusCode === 524;
-        if (isTimeoutError || errorCategory === ErrorCategory.SYSTEM_ERROR) {
-          await recordEndpointFailure(attempt.endpointAudit.endpointId, error);
-        }
-      }
-
-      if (errorCategory === ErrorCategory.CLIENT_ABORT) {
+      if (decision.action === "client_abort") {
         attempt.settled = true;
         if (attempt.thresholdTimer) {
           clearTimeout(attempt.thresholdTimer);
@@ -6061,215 +6319,53 @@ export class ProxyForwarder {
           outcome: "client_abort",
           cancellationKind: "client_abort",
         });
-
-        session.addProviderToChain(attempt.provider, {
-          ...attempt.endpointAudit,
-          reason: "client_abort",
-          attemptNumber: attempt.sequence,
-          errorMessage: "Client aborted request",
-          circuitState: getCircuitState(attempt.provider.id),
-          modelRedirect: getAttemptModelRedirect(attempt),
-        });
         abortAllAttempts(undefined, "client_abort");
-        await settleFailure(
-          error instanceof ProxyError
-            ? error
-            : new ProxyError("Request aborted by client", 499, undefined, true)
-        );
+        await settleFailure(decision.terminalError);
         return;
       }
 
-      if (errorCategory === ErrorCategory.LOCAL_OVERLOAD) {
-        if (isLocalCapacityError(error)) {
-          abortAllAttempts(undefined, "local_capacity_exceeded");
-          await settleFailure(error);
-          return;
-        }
-        const admission = findDbPoolAdmissionError(error);
-        const safeAdmissionMessage = admission?.message ?? "Database pool admission exceeded";
-        logger.warn("ProxyForwarder: Local database admission rejected during hedge", {
-          providerId: attempt.provider.id,
-          providerName: attempt.provider.name,
-          endpointId: attempt.endpointAudit.endpointId,
-          pool: admission?.pool,
-          maxOutstanding: admission?.maxOutstanding,
-          participantSequence: attempt.sequence,
-          attemptNumber: attempt.requestAttemptCount,
-        });
+      if (decision.action === "local_capacity") {
+        abortAllAttempts(undefined, "local_capacity_exceeded");
+        await settleFailure(error);
+        return;
+      }
 
-        session.addProviderToChain(attempt.provider, {
-          ...attempt.endpointAudit,
-          reason: "system_error",
-          attemptNumber: attempt.sequence,
-          errorMessage: safeAdmissionMessage,
-          circuitState: getCircuitState(attempt.provider.id),
-          errorDetails: {
-            system: {
-              errorType: "DbPoolAdmissionError",
-              errorName: "DbPoolAdmissionError",
-              errorMessage: safeAdmissionMessage,
-              errorCode: admission?.code,
-            },
-            request: buildRequestDetails(session),
-          },
-          modelRedirect: getAttemptModelRedirect(attempt),
-        });
+      if (decision.action === "db_overload") {
         abortAllAttempts(undefined, "database_pool_overload");
         await settleFailure(error);
         return;
       }
 
-      const reactiveRectifierResult = await tryApplyReactiveRectifier({
-        error,
-        provider: attempt.provider,
-        requestSession: attempt.session,
-        persistSession: session,
-        errorMessage,
-        attemptNumber: attempt.requestAttemptCount,
-        retryAttemptNumber: attempt.requestAttemptCount + 1,
-        retryState: attempt.reactiveRectifierRetryState,
-      });
-
-      if (reactiveRectifierResult.matched) {
-        if (!reactiveRectifierResult.applied) {
-          if (reactiveRectifierResult.reason === "not_applicable") {
-            logger.info(
-              `ProxyForwarder: ${getReactiveRectifierDisplayName(
-                reactiveRectifierResult.rectifierType
-              )} not applicable in hedge, skipping retry`,
-              {
-                providerId: attempt.provider.id,
-                providerName: attempt.provider.name,
-                trigger: reactiveRectifierResult.trigger,
-                participantSequence: attempt.sequence,
-                attemptNumber: attempt.requestAttemptCount,
-              }
-            );
-          }
-
-          errorCategory = ErrorCategory.NON_RETRYABLE_CLIENT_ERROR;
-          lastErrorCategory = errorCategory;
-        } else {
-          logger.info(
-            `ProxyForwarder: ${getReactiveRectifierDisplayName(
-              reactiveRectifierResult.rectifierType
-            )} applied in hedge, retrying same provider`,
-            {
-              providerId: attempt.provider.id,
-              providerName: attempt.provider.name,
-              trigger: reactiveRectifierResult.trigger,
-              participantSequence: attempt.sequence,
-              attemptNumber: attempt.requestAttemptCount,
-              willRetryAttemptNumber: attempt.requestAttemptCount + 1,
-            }
-          );
-
-          session.addProviderToChain(attempt.provider, {
-            ...buildRetryFailedChainEntry(
-              attempt.provider,
-              attempt.endpointAudit,
-              attempt.requestAttemptCount,
-              error,
-              errorMessage,
-              reactiveRectifierResult.requestDetailsBeforeRectify,
-              rawCrossProviderFallbackEnabled
-            ),
-            modelRedirect: getAttemptModelRedirect(attempt),
-          });
-
-          if (attempt.thresholdTimer) {
-            clearTimeout(attempt.thresholdTimer);
-            attempt.thresholdTimer = null;
-          }
-          traceAttemptFinished(attempt, {
-            outcome: "failed",
-            ...(statusCode != null ? { statusCode } : {}),
-            reason: "reactive_rectifier_retry",
-          });
-          attempt.requestAttemptCount += 1;
-          attempt.dispatched = false;
-          attempt.startedAtMonotonic = 0;
-          attempt.firstByteAt = null;
-          attempt.attemptId = `legacy-hedge-${attempt.sequence}-${attempt.requestAttemptCount}`;
-          attempt.healthSettlementClaimed = false;
-          attempt.healthOutcome = null;
-          attempt.hedgeSaturationRecorded = false;
-          traceAttemptStarted(attempt);
-          runAttempt(attempt);
-          return;
+      if (decision.action === "rectifier_retry") {
+        if (attempt.thresholdTimer) {
+          clearTimeout(attempt.thresholdTimer);
+          attempt.thresholdTimer = null;
         }
-      }
-
-      if (errorCategory === ErrorCategory.NON_RETRYABLE_CLIENT_ERROR) {
-        matchedRule = buildMatchedRuleDetails(await getErrorDetectionResultAsync(error));
-        matchedRuleLogContext = buildMatchedRuleLogContext(matchedRule);
-
-        logger.warn("ProxyForwarder: Non-retryable client error in hedge, aborting all attempts", {
-          providerId: attempt.provider.id,
-          providerName: attempt.provider.name,
-          statusCode,
-          error: errorMessage,
-          participantSequence: attempt.sequence,
-          attemptNumber: attempt.requestAttemptCount,
-          ...matchedRuleLogContext,
+        traceAttemptFinished(attempt, {
+          outcome: "failed",
+          ...(decision.statusCode != null ? { statusCode: decision.statusCode } : {}),
+          reason: "reactive_rectifier_retry",
         });
+        attempt.requestAttemptCount += 1;
+        attempt.dispatched = false;
+        attempt.startedAtMonotonic = 0;
+        attempt.firstByteAt = null;
+        attempt.attemptId = `legacy-hedge-${attempt.sequence}-${attempt.requestAttemptCount}`;
+        attempt.healthSettlementClaimed = false;
+        attempt.healthOutcome = null;
+        attempt.hedgeSaturationRecorded = false;
+        traceAttemptStarted(attempt);
+        runAttempt(attempt);
+        return;
       }
 
-      attempt.healthSettlementClaimed = true;
-      attempt.healthOutcome = "other_failure";
-      attempt.settled = true;
-      if (attempt.thresholdTimer) {
-        clearTimeout(attempt.thresholdTimer);
-        attempt.thresholdTimer = null;
-      }
-      attempts.delete(attempt);
       traceAttemptFinished(attempt, {
         outcome: "failed",
-        ...(statusCode != null ? { statusCode } : {}),
-        reason: ErrorCategory[errorCategory]?.toLowerCase(),
+        ...(decision.statusCode != null ? { statusCode: decision.statusCode } : {}),
+        reason: ErrorCategory[decision.errorCategory]?.toLowerCase(),
       });
-      ProxyForwarder.markProviderFailed(session, failedProviderIds, attempt.provider.id);
 
-      if (
-        errorCategory === ErrorCategory.PROVIDER_ERROR &&
-        statusCode !== 404 &&
-        !isRequestScopedGateFailure(error)
-      ) {
-        attempt.healthOutcome = "provider_failure";
-        await recordFailure(attempt.provider.id, error);
-      }
-
-      session.addProviderToChain(
-        attempt.provider,
-        errorCategory === ErrorCategory.NON_RETRYABLE_CLIENT_ERROR
-          ? {
-              ...buildClientErrorChainEntry(
-                attempt.provider,
-                attempt.endpointAudit,
-                attempt.sequence,
-                error,
-                errorMessage,
-                buildRequestDetails(session),
-                matchedRule,
-                rawCrossProviderFallbackEnabled
-              ),
-              modelRedirect: getAttemptModelRedirect(attempt),
-            }
-          : {
-              ...attempt.endpointAudit,
-              reason:
-                errorCategory === ErrorCategory.RESOURCE_NOT_FOUND
-                  ? "resource_not_found"
-                  : "retry_failed",
-              attemptNumber: attempt.sequence,
-              statusCode,
-              errorMessage,
-              circuitState: getCircuitState(attempt.provider.id),
-              modelRedirect: getAttemptModelRedirect(attempt),
-            }
-      );
-
-      if (errorCategory === ErrorCategory.NON_RETRYABLE_CLIENT_ERROR) {
+      if (decision.nonRetryable) {
         abortAllAttempts(undefined, "client_error_non_retryable");
         await settleFailure(error);
         return;
@@ -9099,10 +9195,7 @@ export class ProxyForwarder {
     };
   }
 
-  private static createStreamingShadowSession(
-    session: ProxySession,
-    provider: Provider
-  ): ProxySession {
+  static createStreamingShadowSession(session: ProxySession, provider: Provider): ProxySession {
     const shadow = Object.assign(
       Object.create(Object.getPrototypeOf(session)) as ProxySession,
       session
@@ -9169,7 +9262,7 @@ export class ProxyForwarder {
     return shadow;
   }
 
-  private static syncWinningAttemptSession(target: ProxySession, source: ProxySession): void {
+  static syncWinningAttemptSession(target: ProxySession, source: ProxySession): void {
     target.request.message = source.request.message;
     target.request.buffer = source.request.buffer;
     const logDescriptor = Object.getOwnPropertyDescriptor(source.request, "log");

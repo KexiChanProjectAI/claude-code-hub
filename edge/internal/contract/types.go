@@ -26,30 +26,54 @@ type FingerprintChain struct {
 
 // RequestDigest is the body of POST /api/internal/edge/decide.
 type RequestDigest struct {
-	SchemaVersion    int                        `json:"schemaVersion"`
-	EdgeID           string                     `json:"edgeId"`
-	EdgeRequestID    string                     `json:"edgeRequestId"`
-	ReceivedAtMs     int64                      `json:"receivedAtMs"`
-	Method           string                     `json:"method"`
-	Path             string                     `json:"path"`
-	Headers          []HeaderPair               `json:"headers"`
-	ClientIP         *string                    `json:"clientIp"`
-	BodyBytes        int                        `json:"bodyBytes"`
-	BodyParseError   *string                    `json:"bodyParseError"`
-	TopLevel         map[string]json.RawMessage `json:"topLevel"`
-	MessagesCount    int                        `json:"messagesCount"`
-	SystemKind       string                     `json:"systemKind"`
-	HasPrivateParams bool                       `json:"hasPrivateParams"`
-	IsProbe          bool                       `json:"isProbe"`
-	IsWarmup         bool                       `json:"isWarmup"`
-	MessagesHash     *string                    `json:"messagesHash"`
-	Fingerprint      *FingerprintChain          `json:"fingerprint"`
+	SchemaVersion  int          `json:"schemaVersion"`
+	EdgeID         string       `json:"edgeId"`
+	EdgeRequestID  string       `json:"edgeRequestId"`
+	ReceivedAtMs   int64        `json:"receivedAtMs"`
+	Method         string       `json:"method"`
+	Path           string       `json:"path"`
+	Headers        []HeaderPair `json:"headers"`
+	ClientIP       *string      `json:"clientIp"`
+	BodyBytes      int          `json:"bodyBytes"`
+	BodyParseError *string      `json:"bodyParseError"`
+	// Format is the client format resolved from the normalized path:
+	// claude | response | openai (unsupported paths resolve to claude).
+	Format   string                     `json:"format"`
+	TopLevel map[string]json.RawMessage `json:"topLevel"`
+	// MessagesCount / InputCount are the lengths of messages / input when they
+	// are arrays (response format: after input normalization), otherwise null.
+	MessagesCount        *int                  `json:"messagesCount"`
+	InputCount           *int                  `json:"inputCount"`
+	ResponseInputRectify *ResponseInputRectify `json:"responseInputRectify"`
+	IsRemoteCompactionV2 bool                  `json:"isRemoteCompactionV2"`
+	CodexInitialTextHash *string               `json:"codexInitialTextHash"`
+	SystemKind           string                `json:"systemKind"`
+	HasPrivateParams     bool                  `json:"hasPrivateParams"`
+	IsProbe              bool                  `json:"isProbe"`
+	IsWarmup             bool                  `json:"isWarmup"`
+	MessagesHash         *string               `json:"messagesHash"`
+	Fingerprint          *FingerprintChain     `json:"fingerprint"`
 }
 
-// TopLevelKeys are the body fields carried in RequestDigest.TopLevel.
+// ResponseInputRectify mirrors rectifyResponseInput's result (response format only).
+type ResponseInputRectify struct {
+	Action       string `json:"action"`
+	OriginalType string `json:"originalType"`
+}
+
+// Client formats (RequestDigest.Format / ExecutionStep.ClientFormat).
+const (
+	FormatClaude   = "claude"
+	FormatResponse = "response"
+	FormatOpenAI   = "openai"
+)
+
+// TopLevelKeys are the body fields carried in RequestDigest.TopLevel
+// (EDGE_TOP_LEVEL_KEYS in contract.ts, same order).
 var TopLevelKeys = []string{
-	"model", "stream", "max_tokens", "thinking", "output_config",
-	"reasoning_effort", "reasoning", "metadata",
+	"model", "stream", "stream_options", "max_tokens", "thinking", "output_config",
+	"reasoning_effort", "reasoning", "text", "service_tier", "parallel_tool_calls",
+	"prompt_cache_key", "previous_response_id", "metadata",
 }
 
 // BodyOp is a typed body transformation. Only the fields relevant to Op are set.
@@ -67,12 +91,15 @@ const (
 	OpSetCacheControlTTL              = "set_cache_control_ttl"
 	OpApplyThinkingSignatureRectifier = "apply_thinking_signature_rectifier"
 	OpStripPrivateParams              = "strip_private_params"
+	OpNormalizeResponseInput          = "normalize_response_input"
 )
 
 // MutableTopLevelKeys lists the keys set_top_level / delete_top_level may touch.
 var MutableTopLevelKeys = map[string]bool{
 	"model": true, "max_tokens": true, "thinking": true,
-	"output_config": true, "reasoning_effort": true, "metadata": true,
+	"output_config": true, "reasoning_effort": true, "reasoning": true,
+	"text": true, "service_tier": true, "parallel_tool_calls": true,
+	"prompt_cache_key": true, "stream_options": true, "metadata": true,
 }
 
 type StepProvider struct {
@@ -137,25 +164,29 @@ type StepReporting struct {
 
 // ExecutionStep describes exactly one upstream attempt.
 type ExecutionStep struct {
-	StepID                  string        `json:"stepId"`
-	AttemptNumber           int           `json:"attemptNumber"`
-	TotalProvidersAttempted int           `json:"totalProvidersAttempted"`
-	AttemptKind             string        `json:"attemptKind"`
-	Provider                StepProvider  `json:"provider"`
-	Endpoint                StepEndpoint  `json:"endpoint"`
-	Method                  string        `json:"method"`
-	URL                     string        `json:"url"`
-	Headers                 []HeaderPair  `json:"headers"`
-	BodyOps                 []BodyOp      `json:"bodyOps"`
-	DelayMs                 int64         `json:"delayMs"`
-	IsStreaming             bool          `json:"isStreaming"`
-	Timeouts                StepTimeouts  `json:"timeouts"`
-	Transport               StepTransport `json:"transport"`
-	Gate                    StepGate      `json:"gate"`
-	Fixer                   StepFixer     `json:"fixer"`
-	Hedge                   *StepHedge    `json:"hedge"`
-	Reporting               StepReporting `json:"reporting"`
-	ClientAbortDrainMs      int64         `json:"clientAbortDrainMs"`
+	StepID                  string       `json:"stepId"`
+	AttemptNumber           int          `json:"attemptNumber"`
+	TotalProvidersAttempted int          `json:"totalProvidersAttempted"`
+	AttemptKind             string       `json:"attemptKind"`
+	Provider                StepProvider `json:"provider"`
+	// ClientFormat selects the gate protocol family, compact capture and metering rules.
+	ClientFormat string `json:"clientFormat"`
+	// ForceStreamHandling treats a 2xx non-SSE/HTML/JSON body as a stream (codex).
+	ForceStreamHandling bool          `json:"forceStreamHandling"`
+	Endpoint            StepEndpoint  `json:"endpoint"`
+	Method              string        `json:"method"`
+	URL                 string        `json:"url"`
+	Headers             []HeaderPair  `json:"headers"`
+	BodyOps             []BodyOp      `json:"bodyOps"`
+	DelayMs             int64         `json:"delayMs"`
+	IsStreaming         bool          `json:"isStreaming"`
+	Timeouts            StepTimeouts  `json:"timeouts"`
+	Transport           StepTransport `json:"transport"`
+	Gate                StepGate      `json:"gate"`
+	Fixer               StepFixer     `json:"fixer"`
+	Hedge               *StepHedge    `json:"hedge"`
+	Reporting           StepReporting `json:"reporting"`
+	ClientAbortDrainMs  int64         `json:"clientAbortDrainMs"`
 }
 
 // FailResponse is relayed to the client verbatim.
@@ -259,6 +290,8 @@ type NextEvent struct {
 	Dispatched    bool            `json:"dispatched"`
 	FirstByteSeen bool            `json:"firstByteSeen"`
 	Timing        *AttemptTiming  `json:"timing,omitempty"`
+	// Peers carries the other in-flight hedge attempts on a pre-commit client abort.
+	Peers []PeerTiming `json:"peers,omitempty"`
 	// suspect_2xx
 	Status        int          `json:"status,omitempty"`
 	Headers       []HeaderPair `json:"headers,omitempty"`
@@ -276,6 +309,9 @@ func (e NextEvent) MarshalJSON() ([]byte, error) {
 		out["dispatched"] = e.Dispatched
 		out["firstByteSeen"] = e.FirstByteSeen
 		out["timing"] = e.Timing
+		if len(e.Peers) > 0 {
+			out["peers"] = e.Peers
+		}
 	case "suspect_2xx":
 		headers := e.Headers
 		if headers == nil {
@@ -290,6 +326,14 @@ func (e NextEvent) MarshalJSON() ([]byte, error) {
 		out["opResults"] = e.OpResults
 	}
 	return json.Marshal(out)
+}
+
+// PeerTiming is the dispatch/first-byte state of another in-flight hedge attempt.
+type PeerTiming struct {
+	StepID          string `json:"stepId"`
+	Dispatched      bool   `json:"dispatched"`
+	FirstByteSeen   bool   `json:"firstByteSeen"`
+	HealthElapsedMs int64  `json:"healthElapsedMs"`
 }
 
 type NextRequest struct {

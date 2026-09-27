@@ -135,6 +135,33 @@
       "type": "failure"
     }
   },
+  "next_failure_client_abort_peers": {
+    "requestId": 1,
+    "edgeToken": "tttttttttttttttttttttttttttttttt",
+    "stepId": "1:h1:1",
+    "event": {
+      "dispatched": true,
+      "failure": {
+        "kind": "client_abort"
+      },
+      "firstByteSeen": false,
+      "peers": [
+        {
+          "stepId": "1:h2:1",
+          "dispatched": true,
+          "firstByteSeen": false,
+          "healthElapsedMs": 40
+        }
+      ],
+      "timing": {
+        "dispatchedAtMs": 1000,
+        "firstByteAtMs": null,
+        "endedAtMs": 1500,
+        "healthElapsedMs": 500
+      },
+      "type": "failure"
+    }
+  },
   "next_failure_empty_response": {
     "requestId": 1,
     "edgeToken": "tttttttttttttttttttttttttttttttt",

@@ -400,7 +400,95 @@ type StreamFixtureConfig = {
   fixTruncatedJson: boolean;
   maxJsonDepth: number;
   maxFixSize: number;
+  // Not part of ResponseFixerConfig: mirrors session.originalFormat, only
+  // consulted by filterInertResponsesChatCompletionChunks ("response" only).
+  format?: string;
 };
+
+// Local reimplementation of ResponseFixer.filterInertResponsesChatCompletionChunks
+// (response-fixer/index.ts) -- avoids importing index.ts, which pulls in
+// SessionManager/session (see file header note on why response-handler.ts
+// et al. cannot be imported from a plain bun script).
+function hasMeaningfulValueLocal(value: unknown): boolean {
+  if (value == null) return false;
+  if (typeof value === "string") return value.length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (value && typeof value === "object") return Object.keys(value).length > 0;
+  return true;
+}
+
+function isInertChatCompletionChoiceLocal(choice: unknown): boolean {
+  if (!choice || typeof choice !== "object") return false;
+  const c = choice as Record<string, unknown>;
+  if (c.finish_reason != null) return false;
+  const delta = c.delta;
+  if (!delta || typeof delta !== "object") return true;
+  for (const [key, value] of Object.entries(delta as Record<string, unknown>)) {
+    if (key === "role") continue;
+    if (hasMeaningfulValueLocal(value)) return false;
+  }
+  return true;
+}
+
+function isInertChatCompletionChunkPayloadLocal(payload: unknown): boolean {
+  if (!payload || typeof payload !== "object") return false;
+  const p = payload as Record<string, unknown>;
+  if (p.object !== "chat.completion.chunk") return false;
+  if (hasMeaningfulValueLocal(p.usage)) return false;
+  const choices = p.choices;
+  if (!Array.isArray(choices) || choices.length === 0) return false;
+  return choices.every(isInertChatCompletionChoiceLocal);
+}
+
+function filterInertResponsesChatCompletionChunksLocal(
+  format: string | undefined,
+  data: Uint8Array
+): { data: Uint8Array; applied: boolean } {
+  if (format !== "response") return { data, applied: false };
+  const text = dec.decode(data);
+  if (!text.includes('"chat.completion.chunk"')) return { data, applied: false };
+
+  const lines = text.split("\n");
+  const out: string[] = [];
+  let applied = false;
+  let skipNextBlank = false;
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    const hasLineBreak = i < lines.length - 1;
+
+    if (skipNextBlank && (line === "" || line === "\r")) {
+      skipNextBlank = false;
+      continue;
+    }
+    skipNextBlank = false;
+
+    let isInert = false;
+    if (line.startsWith("data:")) {
+      let payloadText = line.slice(5);
+      if (payloadText.startsWith(" ")) payloadText = payloadText.slice(1);
+      if (payloadText.startsWith("{")) {
+        try {
+          isInert = isInertChatCompletionChunkPayloadLocal(JSON.parse(payloadText));
+        } catch {
+          isInert = false;
+        }
+      }
+    }
+
+    if (isInert) {
+      applied = true;
+      skipNextBlank = true;
+      continue;
+    }
+
+    out.push(line);
+    if (hasLineBreak) out.push("\n");
+  }
+
+  if (!applied) return { data, applied: false };
+  return { data: enc.encode(out.join("")), applied: true };
+}
 
 function runStreamPipeline(chunks: Uint8Array[], cfg: StreamFixtureConfig): Uint8Array {
   const encodingFixer = cfg.fixEncoding ? new EncodingFixer() : null;
@@ -420,6 +508,8 @@ function runStreamPipeline(chunks: Uint8Array[], cfg: StreamFixtureConfig): Uint
     if (jsonFixer) {
       data = fixSseJsonLines(data, jsonFixer);
     }
+    const filtered = filterInertResponsesChatCompletionChunksLocal(cfg.format, data);
+    if (filtered.applied) data = filtered.data;
     return data;
   };
 
@@ -508,14 +598,20 @@ function buildStreamCases(): StreamCase[] {
   ]);
 
   const cases: StreamCase[] = [];
-  const add = (name: string, full: Uint8Array, splitPattern: string, chunks: Uint8Array[]) => {
-    const expected = runStreamPipeline(chunks, cfg);
+  const add = (
+    name: string,
+    full: Uint8Array,
+    splitPattern: string,
+    chunks: Uint8Array[],
+    caseCfg: StreamFixtureConfig = cfg
+  ) => {
+    const expected = runStreamPipeline(chunks, caseCfg);
     cases.push({
       name,
       fullInputB64: b64(full),
       splitPattern,
       chunksB64: chunks.map(b64),
-      cfg,
+      cfg: caseCfg,
       expectedOutputB64: b64(expected),
     });
   };
@@ -546,6 +642,64 @@ function buildStreamCases(): StreamCase[] {
     // CRLF split exactly at the CR/LF boundary across chunks.
     const full = enc.encode('data: test\r\ndata: test2\r\n');
     add("crlf_split_at_boundary", full, "custom_crlf", splitBytes(full, [11, 9999]));
+  }
+
+  {
+    // response format: an inert chat.completion.chunk frame interleaved
+    // with Responses-shaped SSE events must be dropped, split across chunk
+    // boundaries.
+    const responseCfg: StreamFixtureConfig = { ...cfg, format: "response" };
+    const inertChunk =
+      'data: {"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n';
+    const respCreated =
+      'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_1","status":"in_progress"}}\n\n';
+    const respCompleted =
+      'event: response.completed\ndata: {"type":"response.completed","response":{"id":"resp_1","status":"completed"}}\n\n';
+    const full = enc.encode(respCreated + inertChunk + respCompleted);
+    add(
+      "response_format_drops_inert_chat_completion_chunk_single",
+      full,
+      "single",
+      splitBytes(full, "single"),
+      responseCfg
+    );
+    add(
+      "response_format_drops_inert_chat_completion_chunk_byte",
+      full,
+      "byte",
+      splitBytes(full, "byte"),
+      responseCfg
+    );
+    add(
+      "response_format_drops_inert_chat_completion_chunk_split",
+      full,
+      "custom_mid_line",
+      splitBytes(full, [40, 90, 9999]),
+      responseCfg
+    );
+
+    // A non-inert chat.completion.chunk (has content) must be kept.
+    const nonInertChunk =
+      'data: {"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"hi"},"finish_reason":null}]}\n\n';
+    const full2 = enc.encode(respCreated + nonInertChunk + respCompleted);
+    add(
+      "response_format_keeps_non_inert_chat_completion_chunk",
+      full2,
+      "single",
+      splitBytes(full2, "single"),
+      responseCfg
+    );
+
+    // Non-"response" formats must never apply the filter, even if the
+    // marker string is present.
+    const full3 = enc.encode(respCreated + inertChunk + respCompleted);
+    add(
+      "claude_format_does_not_filter_chat_completion_chunk",
+      full3,
+      "single",
+      splitBytes(full3, "single"),
+      cfg
+    );
   }
 
   return cases;
@@ -1359,6 +1513,213 @@ function buildCompactCases(): CompactCase[] {
 }
 
 // ---------------------------------------------------------------------------
+// response-normalize.json -- normalizeResponseOutputPayload
+// (response-output-normalizer.ts), Responses-API non-stream body normalization.
+//
+// Local, faithful port (not a "simplified" subset): the real function is
+// pure and self-contained (no server-only/session imports), so this is a
+// straight copy of its logic rather than a reduced reimplementation.
+// ---------------------------------------------------------------------------
+
+function isRecordLocal(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function stringifyArgumentsLocal(value: unknown): string {
+  if (value == null) return "{}";
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value) ?? "{}";
+  } catch {
+    return String(value);
+  }
+}
+
+function normalizeFunctionArgumentsLocal(
+  target: Record<string, unknown>,
+  key: string,
+  fixes: string[],
+  path: string
+): void {
+  if (!(key in target)) return;
+  const value = target[key];
+  const normalized = stringifyArgumentsLocal(value);
+  if (normalized === value) return;
+  target[key] = normalized;
+  fixes.push(`${path}.${key}`);
+}
+
+function normalizeContentPartLocal(part: unknown, fixes: string[], path: string): void {
+  if (!isRecordLocal(part)) return;
+  if ("text" in part && part.text === null) {
+    part.text = "";
+    fixes.push(`${path}.text`);
+  }
+  if ("annotations" in part && part.annotations === null) {
+    part.annotations = [];
+    fixes.push(`${path}.annotations`);
+  }
+  if ("logprobs" in part && part.logprobs === null) {
+    part.logprobs = [];
+    fixes.push(`${path}.logprobs`);
+  }
+}
+
+function normalizeToolCallLocal(toolCall: unknown, fixes: string[], path: string): void {
+  if (!isRecordLocal(toolCall)) return;
+  const nestedFunction = toolCall.function;
+  if (isRecordLocal(nestedFunction)) {
+    normalizeFunctionArgumentsLocal(nestedFunction, "arguments", fixes, `${path}.function`);
+  }
+}
+
+function normalizeOutputItemLocal(item: unknown, fixes: string[], path: string): void {
+  if (!isRecordLocal(item)) return;
+  if ("content" in item) {
+    if (item.content === null) {
+      item.content = [];
+      fixes.push(`${path}.content`);
+    } else if (Array.isArray(item.content)) {
+      item.content.forEach((part, index) => {
+        normalizeContentPartLocal(part, fixes, `${path}.content[${index}]`);
+      });
+    }
+  }
+  if ("summary" in item && item.summary === null) {
+    item.summary = [];
+    fixes.push(`${path}.summary`);
+  }
+  normalizeFunctionArgumentsLocal(item, "arguments", fixes, path);
+  const nestedFunction = item.function;
+  if (isRecordLocal(nestedFunction)) {
+    normalizeFunctionArgumentsLocal(nestedFunction, "arguments", fixes, `${path}.function`);
+  }
+  if (Array.isArray(item.tool_calls)) {
+    item.tool_calls.forEach((toolCall, index) => {
+      normalizeToolCallLocal(toolCall, fixes, `${path}.tool_calls[${index}]`);
+    });
+  }
+}
+
+function normalizeResponseOutputPayloadLocal(payload: unknown): {
+  payload: unknown;
+  applied: boolean;
+  fixes: string[];
+} {
+  const fixes: string[] = [];
+  if (!isRecordLocal(payload) || payload.object !== "response") {
+    return { payload, applied: false, fixes };
+  }
+  if ("output" in payload) {
+    if (payload.output === null) {
+      payload.output = [];
+      fixes.push("output");
+    } else if (Array.isArray(payload.output)) {
+      payload.output.forEach((item, index) => {
+        normalizeOutputItemLocal(item, fixes, `output[${index}]`);
+      });
+    }
+  }
+  if ("tools" in payload && payload.tools === null) {
+    payload.tools = [];
+    fixes.push("tools");
+  }
+  return { payload, applied: fixes.length > 0, fixes };
+}
+
+type ResponseNormalizeCase = {
+  name: string;
+  inputJson: string;
+  expectedApplied: boolean;
+  expectedOutputJson: string;
+  expectedFixes: string[];
+};
+
+function buildResponseNormalizeCases(): ResponseNormalizeCase[] {
+  const cases: ResponseNormalizeCase[] = [];
+  const run = (name: string, input: unknown) => {
+    const inputJson = JSON.stringify(input);
+    // Re-parse so mutation doesn't affect a shared literal across cases.
+    const res = normalizeResponseOutputPayloadLocal(JSON.parse(inputJson));
+    cases.push({
+      name,
+      inputJson,
+      expectedApplied: res.applied,
+      expectedOutputJson: JSON.stringify(res.payload),
+      expectedFixes: res.fixes,
+    });
+  };
+
+  run("not_a_response_object_untouched", { object: "chat.completion", output: null });
+  run("no_object_field_untouched", { output: null });
+
+  run("null_output_becomes_empty_array", { object: "response", output: null });
+  run("null_tools_becomes_empty_array", { object: "response", tools: null });
+  run("both_null_output_and_tools", { object: "response", output: null, tools: null });
+
+  run("output_item_null_content_becomes_array", {
+    object: "response",
+    output: [{ type: "message", content: null }],
+  });
+  run("output_item_content_part_null_text", {
+    object: "response",
+    output: [{ type: "message", content: [{ type: "output_text", text: null }] }],
+  });
+  run("output_item_content_part_null_annotations_and_logprobs", {
+    object: "response",
+    output: [
+      {
+        type: "message",
+        content: [{ type: "output_text", text: "ok", annotations: null, logprobs: null }],
+      },
+    ],
+  });
+  run("output_item_null_summary_becomes_array", {
+    object: "response",
+    output: [{ type: "reasoning", summary: null }],
+  });
+  run("output_item_object_arguments_stringified", {
+    object: "response",
+    output: [{ type: "function_call", name: "f", arguments: { a: 1, b: "x" } }],
+  });
+  run("output_item_null_arguments_stringified_to_empty_object", {
+    object: "response",
+    output: [{ type: "function_call", name: "f", arguments: null }],
+  });
+  run("output_item_string_arguments_untouched", {
+    object: "response",
+    output: [{ type: "function_call", name: "f", arguments: '{"a":1}' }],
+  });
+  run("output_item_nested_function_arguments_stringified", {
+    object: "response",
+    output: [{ type: "custom", function: { name: "f", arguments: [1, 2, 3] } }],
+  });
+  run("output_item_tool_calls_function_arguments_stringified", {
+    object: "response",
+    output: [
+      {
+        type: "message",
+        tool_calls: [{ id: "call_1", function: { name: "f", arguments: { x: true } } }],
+      },
+    ],
+  });
+  run("output_array_with_multiple_items_mixed", {
+    object: "response",
+    output: [
+      { type: "message", content: null },
+      { type: "reasoning", summary: null },
+      { type: "message", content: [{ type: "output_text", text: "already set" }] },
+    ],
+    tools: null,
+  });
+  run("fully_clean_payload_no_fixes", {
+    object: "response",
+    output: [{ type: "message", content: [{ type: "output_text", text: "hi" }] }],
+    tools: [{ type: "function", name: "f" }],
+  });
+
+  return cases;
+}
 
 async function main() {
   await writeJSON("fixer/encoding.json", buildEncodingCases());
@@ -1366,6 +1727,7 @@ async function main() {
   await writeJSON("fixer/json.json", buildJsonCases());
   await writeJSON("fixer/nonstream.json", buildNonStreamCases());
   await writeJSON("fixer/stream.json", buildStreamCases());
+  await writeJSON("fixer/response-normalize.json", buildResponseNormalizeCases());
   await writeJSON("capture/metering.json", buildMeteringCases());
   await writeJSON("capture/compact.json", buildCompactCases());
   console.log("done");

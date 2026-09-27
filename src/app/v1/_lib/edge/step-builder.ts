@@ -1,7 +1,8 @@
 /**
  * 为 edge 执行器构建单次 attempt 的 ExecutionStep。
  *
- * 逐步复刻 ProxyForwarder.doForwardPrepared 在 claude / claude-auth 标准分支上的准备流程，
+ * 逐步复刻 ProxyForwarder.doForwardPrepared 标准分支（claude / claude-auth / codex /
+ * openai-compatible）上的准备流程，
  * 但把"作用于请求体"的改写转换为 body op 日志交给远端执行：
  * - 只改写顶层字段的步骤（模型重定向、供应商参数覆写、会话守卫的 metadata 补全、
  *   反应式 budget/effort 整流）照常在合成请求体上执行，最终以顶层字段 diff 下发；
@@ -12,6 +13,7 @@
  * 由此远端执行 "原始请求体 + bodyOps" 得到的正文与本地转发完全一致。
  */
 import { applyAnthropicProviderOverridesWithAudit } from "@/lib/anthropic/provider-overrides";
+import { applyCodexProviderOverridesWithAudit } from "@/lib/codex/provider-overrides";
 import { getCachedSystemSettings, isHttp2Enabled } from "@/lib/config";
 import { getEnvConfig } from "@/lib/config/env.schema";
 import { logger } from "@/lib/logger";
@@ -28,7 +30,9 @@ import {
   resolveCacheTtlPreference,
 } from "../proxy/forwarder";
 import { ModelRedirector } from "../proxy/model-redirector";
+import { ensureOpenAIChatStreamUsageOption } from "../proxy/openai-chat-usage-options";
 import { DEFAULT_RESPONSE_FIXER_CONFIG } from "../proxy/response-fixer";
+import { isCodexResponsesStreamRequest } from "../proxy/response-handler";
 import type { ProxySession } from "../proxy/session";
 import {
   resolveStreamGateCaps,
@@ -38,6 +42,7 @@ import { buildProxyUrl } from "../url";
 import {
   type BodyOp,
   EDGE_MUTABLE_TOP_LEVEL_KEYS,
+  type EdgeClientFormat,
   type ExecutionStep,
   type HeaderPairs,
 } from "./contract";
@@ -114,12 +119,29 @@ function appendContentOp(body: EdgeBodyState, op: BodyOp): void {
   body.contentOps.push(op);
 }
 
+/** 按名称稳定排序（与 Node Headers 的迭代顺序一致，不随运行时的 Headers 实现变化） */
 function headersToPairs(headers: Headers): HeaderPairs {
   const pairs: HeaderPairs = [];
   headers.forEach((value, name) => {
     pairs.push([name.toLowerCase(), value]);
   });
-  return pairs;
+  return pairs.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+}
+
+function resolveEdgeProviderType(provider: Provider): ExecutionStep["provider"]["type"] {
+  switch (provider.providerType) {
+    case "claude-auth":
+    case "codex":
+    case "openai-compatible":
+      return provider.providerType;
+    default:
+      return "claude";
+  }
+}
+
+function resolveStepClientFormat(session: ProxySession): EdgeClientFormat {
+  const format = session.originalFormat;
+  return format === "response" || format === "openai" ? format : "claude";
 }
 
 export async function buildExecutionStep(params: BuildStepParams): Promise<ExecutionStep> {
@@ -134,7 +156,9 @@ export async function buildExecutionStep(params: BuildStepParams): Promise<Execu
     provider.cacheTtlPreference
   );
   session.setCacheTtlResolved(resolvedCacheTtl);
-  if (session.clientRequestsContext1m()) {
+  const isAnthropicProvider =
+    provider.providerType === "claude" || provider.providerType === "claude-auth";
+  if (isAnthropicProvider && session.clientRequestsContext1m()) {
     session.setContext1mApplied(true);
   }
 
@@ -142,14 +166,35 @@ export async function buildExecutionStep(params: BuildStepParams): Promise<Execu
     // 2. 模型重定向（直接作用于合成体的 model）
     ModelRedirector.apply(session, provider);
 
-    // 3. billing header 整流（内容型，幂等）
+    // 3. Codex 供应商参数覆写（仅本供应商首次 attempt；只改写顶层字段，图片生成偏好已由资格判定排除）
+    if (params.applyProviderOverrides && provider.providerType === "codex") {
+      const { request: overridden, audit } = applyCodexProviderOverridesWithAudit(
+        provider,
+        session.request.message as Record<string, unknown>,
+        {
+          originalModel: session.getRawIntakeModel(),
+          executionModel: session.getCurrentModel(),
+          originalReasoningEffort: session.getRawResponsesReasoningEffort(),
+          reasoningEffortOverrideRules: getReasoningEffortOverrideRules(provider),
+        }
+      );
+      session.request.message = overridden;
+      if (audit) {
+        session.addSpecialSetting(audit);
+        await persistSpecialSettings(session);
+      }
+    }
+  }
+
+  if (!endpointPolicy.bypassForwarderPreprocessing && isAnthropicProvider) {
+    // 4. billing header 整流（内容型，幂等）
     if (settings.enableBillingHeaderRectifier ?? true) {
       if (!body.contentOps.some((op) => op.op === "remove_system_billing_header")) {
         appendContentOp(body, { op: "remove_system_billing_header" });
       }
     }
 
-    // 4. Anthropic 供应商参数覆写（仅本供应商首次 attempt）
+    // 5. Anthropic 供应商参数覆写（仅本供应商首次 attempt）
     if (params.applyProviderOverrides) {
       const { request: overridden, audit } = applyAnthropicProviderOverridesWithAudit(
         provider,
@@ -168,28 +213,30 @@ export async function buildExecutionStep(params: BuildStepParams): Promise<Execu
       }
     }
 
-    // 5. cache_control TTL 覆写（内容型）
+    // 6. cache_control TTL 覆写（内容型）
     if (resolvedCacheTtl) {
       appendContentOp(body, { op: "set_cache_control_ttl", ttl: resolvedCacheTtl });
     }
   }
 
-  // 6. 出站请求头与 URL
+  // 7. 出站请求头与 URL
   const headers = ProxyForwarder.buildHeaders(session, provider, endpoint.baseUrl);
   const url = buildProxyUrl(endpoint.baseUrl, session.requestUrl);
   headers.set("host", HeaderProcessor.extractHost(url));
 
-  // 7. 发送时步骤：私有参数过滤 -> metadata.user_id 注入（不写回合成体）
+  // 8. 发送时步骤：私有参数过滤 -> metadata.user_id 注入 -> Chat 流式 usage 选项（不写回合成体）
   const sendTimeOps: BodyOp[] = [];
   if (body.hasPrivateParams) {
     sendTimeOps.push({ op: "strip_private_params" });
   }
   const filtered = filterPrivateParameters(session.request.message) as Record<string, unknown>;
-  const injection = applyClaudeMetadataUserIdInjectionWithAudit(
-    filtered,
-    session,
-    settings.enableClaudeMetadataUserIdInjection ?? true
-  );
+  const injection = isAnthropicProvider
+    ? applyClaudeMetadataUserIdInjectionWithAudit(
+        filtered,
+        session,
+        settings.enableClaudeMetadataUserIdInjection ?? true
+      )
+    : null;
   if (injection) {
     session.addSpecialSetting(injection.audit);
     await persistSpecialSettings(session);
@@ -205,7 +252,7 @@ export async function buildExecutionStep(params: BuildStepParams): Promise<Execu
     }
   }
 
-  // 8. final 阶段请求过滤器：资格预检已保证只含请求头操作
+  // 9. final 阶段请求过滤器：资格预检已保证只含请求头操作
   if (!endpointPolicy.bypassRequestFilters) {
     const { requestFilterEngine } = await import("@/lib/request-filter-engine");
     await requestFilterEngine.applyFinal(
@@ -213,6 +260,22 @@ export async function buildExecutionStep(params: BuildStepParams): Promise<Execu
       structuredClone(session.request.message as Record<string, unknown>),
       headers
     );
+  }
+
+  // 10. OpenAI Chat 流式请求补齐 stream_options.include_usage（作用于过滤后的发送体）
+  const usageProbe = structuredClone(filtered);
+  if (
+    ensureOpenAIChatStreamUsageOption(
+      usageProbe,
+      provider.providerType,
+      session.requestUrl.pathname
+    )
+  ) {
+    sendTimeOps.push({
+      op: "set_top_level",
+      key: "stream_options",
+      value: structuredClone(usageProbe.stream_options),
+    });
   }
 
   // 远端会重新序列化正文，入站 content-encoding 不再适用
@@ -245,8 +308,10 @@ export async function buildExecutionStep(params: BuildStepParams): Promise<Execu
       id: provider.id,
       name: provider.name,
       priority: provider.priority || 0,
-      type: provider.providerType === "claude-auth" ? "claude-auth" : "claude",
+      type: resolveEdgeProviderType(provider),
     },
+    clientFormat: resolveStepClientFormat(session),
+    forceStreamHandling: isCodexResponsesStreamRequest(session),
     endpoint: { id: endpoint.endpointId, url: sanitizeUrl(endpoint.baseUrl) },
     method: session.method,
     url,

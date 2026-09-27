@@ -2,12 +2,17 @@
 //
 // Request flow (see docs in src/app/v1/_lib/edge/contract.ts):
 //
-//	static route -> not POST /v1/messages: reverse proxy to the control plane
+//	static route -> not POST /v1/messages | /v1/responses | /v1/chat/completions:
+//	                reverse proxy to the control plane
 //	read + decode body -> digest -> POST /decide
 //	  delegate -> reverse proxy the original bytes
 //	  fail     -> relay the prepared error response
 //	  execute  -> run ExecutionSteps until one commits:
-//	              pre-commit failures -> POST /next (retry | fail | delegate)
+//	              serial: pre-commit failures -> POST /next (retry | fail | delegate)
+//	              hedge:  attempts race in parallel; first-byte thresholds and
+//	                      failures -> POST /next (launch | retry | wait | none | fail),
+//	                      the first attempt ready commits, losers are cancelled or
+//	                      drained for billing (see hedge.go)
 //	              commit -> stream to the client, heartbeat, POST /complete
 //
 // Invariants: no byte reaches the client before commit; /next is only called

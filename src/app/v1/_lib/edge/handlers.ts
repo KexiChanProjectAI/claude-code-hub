@@ -8,7 +8,7 @@ import { getCachedSystemSettings } from "@/lib/config";
 import { getEnvConfig } from "@/lib/config/env.schema";
 import { logger } from "@/lib/logger";
 import type { Provider } from "@/types/provider";
-import { sanitizeUrl } from "../proxy/errors";
+import { ProxyError, sanitizeUrl } from "../proxy/errors";
 import {
   buildThinkingSignatureRectifierAudit,
   CLIENT_ABORT_HEALTH_FALLBACK_THRESHOLD_MS,
@@ -28,6 +28,7 @@ import type {
   NextRequest,
   NextResponse,
   OpResults,
+  WinnerResult,
 } from "./contract";
 import {
   type EdgeRuntime,
@@ -36,6 +37,16 @@ import {
   releaseEdgeConcurrency,
 } from "./coordinator";
 import { attemptFailureToError, evaluateSuspectNonStreamBody } from "./failure-errors";
+import {
+  commitHedgeWinner,
+  type EdgeHedgeOutcome,
+  findHedgeParticipant,
+  flushHedgeSessions,
+  handleHedgeClientAbort,
+  handleHedgeFailure,
+  handleHedgeThreshold,
+  participantSession,
+} from "./hedge-coordinator";
 import {
   clearEdgeDeadline,
   type EdgeAttemptRecord,
@@ -73,6 +84,7 @@ async function loadRuntime(requestId: number, edgeToken: string): Promise<EdgeRu
 }
 
 async function persistRuntime(rt: EdgeRuntime): Promise<void> {
+  flushHedgeSessions(rt);
   rt.state.session = rt.session.toEdgeSnapshot();
   const env = getEnvConfig();
   if (rt.state.phase === "settled") {
@@ -98,10 +110,11 @@ function findProvider(rt: EdgeRuntime, providerId: number): Provider {
 async function applyOpResults(
   rt: EdgeRuntime,
   attempt: EdgeAttemptRecord,
-  opResults: OpResults | undefined
+  opResults: OpResults | undefined,
+  session: ProxySession = rt.session
 ): Promise<void> {
   if (!opResults) return;
-  const { state, session } = rt;
+  const { state } = rt;
   let changed = false;
 
   if (opResults.billingHeader && !state.billingHeaderAudited) {
@@ -176,66 +189,69 @@ export async function handleEdgeNext(request: NextRequest): Promise<NextResponse
 
     const event = request.event;
     let response: NextResponse;
-    switch (event.type) {
-      case "hedge_threshold":
-        // 串行模式没有竞速：首字节超时由远端按 firstByteMs 作为 524 失败上报
-        response = { action: "none" };
-        break;
-      case "suspect_2xx": {
-        await applyOpResults(rt, attempt, event.opResults);
-        const provider = findProvider(rt, attempt.providerId);
-        const error = evaluateSuspectNonStreamBody(event.bodyText, event.bodyTruncated, provider);
-        if (!error) {
-          response = { action: "commit" };
+    if (rt.state.mode === "hedge") {
+      response = await handleHedgeEvent(rt, attempt, event);
+    } else
+      switch (event.type) {
+        case "hedge_threshold":
+          // 串行模式没有竞速：首字节超时由远端按 firstByteMs 作为 524 失败上报
+          response = { action: "none" };
+          break;
+        case "suspect_2xx": {
+          await applyOpResults(rt, attempt, event.opResults);
+          const provider = findProvider(rt, attempt.providerId);
+          const error = evaluateSuspectNonStreamBody(event.bodyText, event.bodyTruncated, provider);
+          if (!error) {
+            response = { action: "commit" };
+            break;
+          }
+          response = stepOutcomeToNextResponse(
+            rt,
+            await handleSerialFailure(rt, {
+              stepId: attempt.stepId,
+              error,
+              dispatched: true,
+              firstByteSeen: true,
+              healthElapsedMs: 0,
+            })
+          );
           break;
         }
-        response = stepOutcomeToNextResponse(
-          rt,
-          await handleSerialFailure(rt, {
-            stepId: attempt.stepId,
-            error,
-            dispatched: true,
-            firstByteSeen: true,
-            healthElapsedMs: 0,
-          })
-        );
-        break;
+        case "rectifier_not_applicable": {
+          await applyOpResults(rt, attempt, event.opResults);
+          const lastFailure = rt.state.lastFailure;
+          if (!lastFailure) throw new EdgeHandlerError(409, "missing_rectifier_trigger");
+          const provider = findProvider(rt, lastFailure.providerId);
+          // 签名整流已记为本供应商重试过：同一错误再次进入决策表即按不可重试的客户端错误终止
+          response = stepOutcomeToNextResponse(
+            rt,
+            await handleSerialFailure(rt, {
+              stepId: attempt.stepId,
+              error: attemptFailureToError(lastFailure.failure, provider),
+              dispatched: false,
+              firstByteSeen: false,
+              healthElapsedMs: 0,
+            })
+          );
+          break;
+        }
+        case "failure": {
+          await applyOpResults(rt, attempt, event.opResults);
+          const provider = findProvider(rt, attempt.providerId);
+          rt.state.lastFailure = { providerId: provider.id, failure: event.failure };
+          response = stepOutcomeToNextResponse(
+            rt,
+            await handleSerialFailure(rt, {
+              stepId: attempt.stepId,
+              error: attemptFailureToError(event.failure, provider),
+              dispatched: event.dispatched,
+              firstByteSeen: event.firstByteSeen,
+              healthElapsedMs: event.timing.healthElapsedMs,
+            })
+          );
+          break;
+        }
       }
-      case "rectifier_not_applicable": {
-        await applyOpResults(rt, attempt, event.opResults);
-        const lastFailure = rt.state.lastFailure;
-        if (!lastFailure) throw new EdgeHandlerError(409, "missing_rectifier_trigger");
-        const provider = findProvider(rt, lastFailure.providerId);
-        // 签名整流已记为本供应商重试过：同一错误再次进入决策表即按不可重试的客户端错误终止
-        response = stepOutcomeToNextResponse(
-          rt,
-          await handleSerialFailure(rt, {
-            stepId: attempt.stepId,
-            error: attemptFailureToError(lastFailure.failure, provider),
-            dispatched: false,
-            firstByteSeen: false,
-            healthElapsedMs: 0,
-          })
-        );
-        break;
-      }
-      case "failure": {
-        await applyOpResults(rt, attempt, event.opResults);
-        const provider = findProvider(rt, attempt.providerId);
-        rt.state.lastFailure = { providerId: provider.id, failure: event.failure };
-        response = stepOutcomeToNextResponse(
-          rt,
-          await handleSerialFailure(rt, {
-            stepId: attempt.stepId,
-            error: attemptFailureToError(event.failure, provider),
-            dispatched: event.dispatched,
-            firstByteSeen: event.firstByteSeen,
-            healthElapsedMs: event.timing.healthElapsedMs,
-          })
-        );
-        break;
-      }
-    }
 
     await persistRuntime(rt);
     await setIdempotentResponse(
@@ -253,6 +269,115 @@ export async function handleEdgeNext(request: NextRequest): Promise<NextResponse
   });
 }
 
+function buildStreamSettlementInput(winner: WinnerResult, responseHeaders: Headers) {
+  return {
+    allContent: winner.compactSse,
+    upstreamStatusCode: winner.upstreamStatus,
+    streamEndedNormally: winner.streamEndedNormally,
+    clientAborted: winner.clientAborted,
+    abortReason: winner.abortReason ?? undefined,
+    protocolObservation: winner.protocol
+      ? {
+          sawContent: winner.protocol.sawContent,
+          sawTerminal: winner.protocol.sawTerminal,
+          sawIncomplete: winner.protocol.sawIncomplete,
+          observationIncomplete: winner.protocol.observationIncomplete,
+          failure: winner.protocol.failure
+            ? {
+                afterContent: winner.protocol.failure.afterContent,
+                verdict: winner.protocol.failure.verdict,
+                eventName: winner.protocol.failure.eventName,
+                ...(winner.protocol.failure.sawMalformed ? { sawMalformed: true as const } : {}),
+              }
+            : null,
+        }
+      : null,
+    firstByteSeen: winner.firstByteSeen,
+    responseHeaders,
+    sseEventCount: winner.sseEventCount,
+  };
+}
+
+function hedgeOutcomeToNextResponse(rt: EdgeRuntime, outcome: EdgeHedgeOutcome): NextResponse {
+  switch (outcome.kind) {
+    case "fail":
+      rt.state.phase = "settled";
+      return { action: "fail", response: outcome.response };
+    case "launch":
+      return { action: "launch", step: outcome.step };
+    case "retry":
+      return { action: "retry", step: outcome.step };
+    case "wait":
+      return { action: "wait" };
+    case "none":
+      return { action: "none" };
+  }
+}
+
+/** 竞速模式的 next 事件：交给 hedge 协调器（对应本地 sendStreamingWithHedge 的各回调） */
+async function handleHedgeEvent(
+  rt: EdgeRuntime,
+  attempt: EdgeAttemptRecord,
+  event: NextRequest["event"]
+): Promise<NextResponse> {
+  const participant = findHedgeParticipant(rt.state, attempt.stepId);
+  if (!participant) throw new EdgeHandlerError(409, "stale_step");
+  const attemptSession = participantSession(rt, participant);
+  const provider = findProvider(rt, participant.providerId);
+
+  switch (event.type) {
+    case "hedge_threshold":
+      return hedgeOutcomeToNextResponse(rt, await handleHedgeThreshold(rt, participant));
+    case "suspect_2xx": {
+      await applyOpResults(rt, attempt, event.opResults, attemptSession);
+      const error = evaluateSuspectNonStreamBody(event.bodyText, event.bodyTruncated, provider);
+      if (!error) return { action: "commit" };
+      return hedgeOutcomeToNextResponse(
+        rt,
+        await handleHedgeFailure(rt, participant, {
+          error,
+          errorDescriptor: {
+            kind: "proxy",
+            message: error.message,
+            statusCode: error instanceof ProxyError ? error.statusCode : 502,
+            providerId: provider.id,
+            providerName: provider.name,
+          },
+        })
+      );
+    }
+    case "rectifier_not_applicable": {
+      await applyOpResults(rt, attempt, event.opResults, attemptSession);
+      const lastFailure = participant.lastFailure;
+      if (!lastFailure) throw new EdgeHandlerError(409, "missing_rectifier_trigger");
+      return hedgeOutcomeToNextResponse(
+        rt,
+        await handleHedgeFailure(rt, participant, {
+          error: attemptFailureToError(lastFailure, provider),
+          errorDescriptor: { kind: "failure", providerId: provider.id, failure: lastFailure },
+        })
+      );
+    }
+    case "failure": {
+      await applyOpResults(rt, attempt, event.opResults, attemptSession);
+      if (event.failure.kind === "client_abort") {
+        return hedgeOutcomeToNextResponse(
+          rt,
+          await handleHedgeClientAbort(rt, event, attempt.stepId)
+        );
+      }
+      participant.lastFailure = event.failure;
+      return hedgeOutcomeToNextResponse(
+        rt,
+        await handleHedgeFailure(rt, participant, {
+          error: attemptFailureToError(event.failure, provider),
+          errorDescriptor: { kind: "failure", providerId: provider.id, failure: event.failure },
+        })
+      );
+    }
+  }
+}
+
 export async function handleEdgeComplete(
   request: CompleteRequest
 ): Promise<{ ok: true; alreadySettled: boolean }> {
@@ -267,12 +392,35 @@ export async function handleEdgeComplete(
       throw new EdgeHandlerError(409, "stale_step");
     }
     const provider = findProvider(rt, attempt.providerId);
-    session.setProvider(provider);
+    const hedgeParticipant =
+      state.mode === "hedge" ? findHedgeParticipant(state, winner.stepId) : null;
+    if (state.mode === "hedge" && !hedgeParticipant) {
+      throw new EdgeHandlerError(409, "stale_step");
+    }
+    if (!hedgeParticipant) session.setProvider(provider);
     attempt.status = "winner";
     state.phase = "completing";
     await saveEdgeState(state, getEnvConfig().CCH_EDGE_STATE_TTL_SECONDS);
 
-    await applyOpResults(rt, attempt, winner.opResults);
+    let runLoserBilling: (() => Promise<void>) | null = null;
+    if (hedgeParticipant) {
+      // 审计先落到胜者自己的会话，随 syncWinningAttemptSession 合并回原会话
+      await applyOpResults(rt, attempt, winner.opResults, participantSession(rt, hedgeParticipant));
+      if (winner.timing.firstByteAtMs !== null) {
+        session.recordFirstByte(winner.timing.firstByteAtMs);
+      }
+      if (winner.timing.firstTokenAtMs !== null) {
+        session.recordTtft(winner.timing.firstTokenAtMs);
+      }
+      runLoserBilling = commitHedgeWinner(
+        rt,
+        hedgeParticipant,
+        winner,
+        request.losers
+      ).runLoserBilling;
+    } else {
+      await applyOpResults(rt, attempt, winner.opResults);
+    }
     if (winner.fixer?.hit) {
       session.addSpecialSetting({
         type: "response_fixer",
@@ -292,7 +440,13 @@ export async function handleEdgeComplete(
     };
 
     try {
-      if (winner.isStreaming) {
+      if (hedgeParticipant) {
+        await settleEdgeStreamCompletion(
+          session,
+          buildStreamSettlementInput(winner, responseHeaders)
+        );
+        await runLoserBilling?.();
+      } else if (winner.isStreaming) {
         if (winner.timing.firstByteAtMs !== null) {
           session.recordFirstByte(winner.timing.firstByteAtMs);
         }
@@ -323,34 +477,10 @@ export async function handleEdgeComplete(
           healthPausedDurationMs: 0,
           healthOutcomeSettled: false,
         });
-        await settleEdgeStreamCompletion(session, {
-          allContent: winner.compactSse,
-          upstreamStatusCode: winner.upstreamStatus,
-          streamEndedNormally: winner.streamEndedNormally,
-          clientAborted: winner.clientAborted,
-          abortReason: winner.abortReason ?? undefined,
-          protocolObservation: winner.protocol
-            ? {
-                sawContent: winner.protocol.sawContent,
-                sawTerminal: winner.protocol.sawTerminal,
-                sawIncomplete: winner.protocol.sawIncomplete,
-                observationIncomplete: winner.protocol.observationIncomplete,
-                failure: winner.protocol.failure
-                  ? {
-                      afterContent: winner.protocol.failure.afterContent,
-                      verdict: winner.protocol.failure.verdict,
-                      eventName: winner.protocol.failure.eventName,
-                      ...(winner.protocol.failure.sawMalformed
-                        ? { sawMalformed: true as const }
-                        : {}),
-                    }
-                  : null,
-              }
-            : null,
-          firstByteSeen: winner.firstByteSeen,
-          responseHeaders,
-          sseEventCount: winner.sseEventCount,
-        });
+        await settleEdgeStreamCompletion(
+          session,
+          buildStreamSettlementInput(winner, responseHeaders)
+        );
       } else {
         const entry = [...state.providerAttempts]
           .reverse()

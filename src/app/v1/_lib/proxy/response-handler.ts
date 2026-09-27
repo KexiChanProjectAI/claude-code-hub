@@ -6852,6 +6852,17 @@ export async function settleEdgeStreamCompletion(
     usageForCost = normalizeUsageWithSwap(usageForCost, session, provider.swapCacheTtlBilling);
   }
 
+  maybeSetCodexContext1m(session, provider, usageForCost?.input_tokens);
+
+  const codexPromptCacheKey =
+    provider.providerType === "codex" &&
+    finalized.isSuccessfulCompletion &&
+    session.sessionId &&
+    provider.id &&
+    finalized.allowAuxiliarySessionBinding
+      ? extractFirstCodexPromptCacheKeyFromSse(allContent)
+      : null;
+
   const billableUsageForCost = await resolveBillableUsageMetricsForCost(
     session,
     provider,
@@ -6934,6 +6945,23 @@ export async function settleEdgeStreamCompletion(
   const postTerminalSideEffects: Array<() => Promise<void>> = finalized.commitSideEffects
     ? [finalized.commitSideEffects]
     : [];
+  if (codexPromptCacheKey && session.sessionId) {
+    const sessionId = session.sessionId;
+    const keyId = session.authState?.key?.id ?? session.messageContext?.key?.id ?? null;
+    postTerminalSideEffects.push(async () => {
+      if (!(await finalized.confirmAuxiliarySessionBinding())) return;
+      try {
+        await SessionManager.updateSessionWithCodexCacheKey(
+          sessionId,
+          codexPromptCacheKey,
+          provider.id,
+          keyId
+        );
+      } catch (err) {
+        logger.error("[ResponseHandler] Failed to update Codex session (edge stream):", err);
+      }
+    });
+  }
   if (finalized.isSuccessfulCompletion && session.affinity && providerIdForPersistence) {
     const winnerProviderId = providerIdForPersistence;
     postTerminalSideEffects.push(async () => {
@@ -7075,6 +7103,42 @@ export async function settleEdgeNonStreamCompletion(
   );
 
   if (billableUsageMetrics) {
+    maybeSetCodexContext1m(session, provider, billableUsageMetrics.input_tokens);
+  }
+
+  if (
+    provider.providerType === "codex" &&
+    statusCode >= 200 &&
+    statusCode < 300 &&
+    session.sessionId &&
+    provider.id &&
+    isSessionBindingMutationAllowed(session)
+  ) {
+    try {
+      const responseData = JSON.parse(responseText) as Record<string, unknown>;
+      const promptCacheKey = SessionManager.extractCodexPromptCacheKey(responseData);
+      if (promptCacheKey) {
+        const sessionId = session.sessionId;
+        const keyId = session.authState?.key?.id ?? session.messageContext?.key?.id ?? null;
+        postTerminalSideEffects.push(async () => {
+          try {
+            await SessionManager.updateSessionWithCodexCacheKey(
+              sessionId,
+              promptCacheKey,
+              provider.id,
+              keyId
+            );
+          } catch (err) {
+            logger.error("[ResponseHandler] Failed to update Codex session (edge):", err);
+          }
+        });
+      }
+    } catch (parseError) {
+      logger.trace("[ResponseHandler] Failed to parse JSON for Codex session:", parseError);
+    }
+  }
+
+  if (billableUsageMetrics) {
     const billing = sessionBillingInputs(session, provider, priorityServiceTierApplied);
     const costUpdateResult = await updateRequestCostFromUsage(
       messageContext.id,
@@ -7214,6 +7278,22 @@ export async function settleEdgeNonStreamCompletion(
 /**
  * 会话追踪用（含倍率）与 Langfuse 用（原始）费用及拆分；与流式 / 非流式本地路径的计算一致。
  */
+function extractFirstCodexPromptCacheKeyFromSse(allContent: string): string | null {
+  try {
+    for (const event of parseSSEData(allContent)) {
+      if (typeof event.data === "object" && event.data) {
+        const promptCacheKey = SessionManager.extractCodexPromptCacheKey(
+          event.data as Record<string, unknown>
+        );
+        if (promptCacheKey) return promptCacheKey;
+      }
+    }
+  } catch (parseError) {
+    logger.trace("[ResponseHandler] Failed to parse SSE for Codex session:", parseError);
+  }
+  return null;
+}
+
 async function computeSessionAndRawCost(
   session: ProxySession,
   provider: Provider,

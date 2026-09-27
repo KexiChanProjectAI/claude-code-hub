@@ -138,8 +138,58 @@ describe("edge contract fixtures", () => {
       step: { ...step, stepId: "7:1:2", delayMs: 100 },
     };
     const nextFail: NextResponse = { action: "fail", response: failResponse };
+
+    const responsesDigest = buildRequestDigest({
+      edgeId: "edge-1",
+      edgeRequestId: "req-2",
+      receivedAtMs: 1_700_000_000_000,
+      method: "POST",
+      path: "/v1/responses",
+      headers: [["user-agent", "codex_cli_rs/0.50.0"]],
+      clientIp: null,
+      body: { model: "gpt-5-codex", stream: true, input: "hello", reasoning: { effort: "high" } },
+      bodyBytes: 80,
+    });
+    const codexSession = createEdgeSessionFromDigest(responsesDigest);
+    codexSession.setOriginalFormat("response");
+    const codexStep = await buildExecutionStep({
+      session: codexSession,
+      body: {
+        originalTopLevel: responsesDigest.topLevel,
+        hasPrivateParams: false,
+        contentOps: [{ op: "normalize_response_input" }],
+      },
+      provider: {
+        ...provider,
+        id: 11,
+        providerType: "codex",
+        url: "https://api.openai.example.com/v1",
+      } as Provider,
+      endpoint: { endpointId: null, baseUrl: "https://api.openai.example.com/v1" },
+      stepId: "8:h1:1",
+      attemptNumber: 1,
+      totalProvidersAttempted: 1,
+      attemptKind: "normal",
+      applyProviderOverrides: true,
+      delayMs: 0,
+      hedge: { thresholdMs: 30_000, maxInFlight: 2, billLosers: true, loserDrainMs: 120_000 },
+      heartbeatIntervalMs: 15_000,
+    });
+    const nextLaunch: NextResponse = {
+      action: "launch",
+      step: { ...codexStep, stepId: "8:h2:1", attemptKind: "hedge" },
+    };
     const samples = {
       digest,
+      digest_responses: responsesDigest,
+      decide_execute_hedge: {
+        action: "execute",
+        requestId: 8,
+        edgeToken: "t".repeat(48),
+        step: codexStep,
+      } satisfies DecideResponse,
+      next_launch: nextLaunch,
+      next_wait: { action: "wait" } satisfies NextResponse,
       decide_execute: decideExecute,
       decide_delegate: decideDelegate,
       decide_fail: decideFail,

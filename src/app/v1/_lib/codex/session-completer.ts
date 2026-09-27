@@ -30,6 +30,11 @@ type CompleteArgs = {
   headers: Headers;
   requestBody: Record<string, unknown>;
   userAgent: string | null;
+  /**
+   * 预计算的首轮消息文本哈希（edge 会话只持有合成请求体，由远端按
+   * extractInitialMessageTextHash 同算法计算）；传入时不再读取 requestBody.input。
+   */
+  initialTextHash?: string | null;
 };
 
 function getSessionTtlSeconds(): number {
@@ -55,7 +60,7 @@ function extractClientIp(headers: Headers): string | null {
   return realIp ? realIp.trim() : null;
 }
 
-function extractInitialMessageTextHash(requestBody: Record<string, unknown>): string | null {
+export function extractInitialMessageTextHash(requestBody: Record<string, unknown>): string | null {
   const input = requestBody.input;
   if (!Array.isArray(input) || input.length === 0) {
     return null;
@@ -135,7 +140,10 @@ export function generateUuidV7(): string {
 function calculateFingerprintHash(args: CompleteArgs): string | null {
   const ip = extractClientIp(args.headers) ?? "unknown";
   const ua = args.userAgent ?? args.headers.get("user-agent") ?? "unknown";
-  const messageHash = extractInitialMessageTextHash(args.requestBody) ?? "unknown";
+  const messageHash =
+    (args.initialTextHash !== undefined
+      ? args.initialTextHash
+      : extractInitialMessageTextHash(args.requestBody)) ?? "unknown";
 
   const fingerprint = `v1|key:${args.keyId}|ip:${ip}|ua:${ua}|m:${messageHash}`;
   return crypto.createHash("sha256").update(fingerprint, "utf8").digest("hex");

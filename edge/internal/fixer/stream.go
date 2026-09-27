@@ -199,6 +199,17 @@ func (f *StreamFixer) applyStreamFixers(input []byte) []byte {
 		}
 	}
 
+	// filterInertResponsesChatCompletionChunks is the fixed final step
+	// (response format only); the audit counts it as an "sse" fix, same as
+	// TS (see ResponseFixer.processStream's applyStreamFixers).
+	if filtered := filterInertResponsesChatCompletionChunks(f.cfg.Format, data); filtered.Applied {
+		f.appliedSse = true
+		if f.sseDetails == "" {
+			f.sseDetails = filtered.Details
+		}
+		data = filtered.Data
+	}
+
 	return data
 }
 

@@ -33,6 +33,8 @@ export interface EdgeRuntime {
   settings: SystemSettings;
   /** 本次调用内还原的最近一次失败错误（供全部耗尽时构造 503 文案） */
   lastError?: Error | null;
+  /** 竞速影子会话（按参与者序号缓存，调用结束时写回快照） */
+  hedgeSessions?: Map<number, ProxySession>;
 }
 
 export type EdgeStepOutcome =

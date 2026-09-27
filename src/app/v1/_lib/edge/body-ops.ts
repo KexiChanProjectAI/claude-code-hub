@@ -7,6 +7,7 @@
  */
 import { rectifyBillingHeader } from "../proxy/billing-header-rectifier";
 import { applyCacheTtlOverrideToMessage, filterPrivateParameters } from "../proxy/forwarder";
+import { rectifyResponseInput } from "../proxy/response-input-rectifier";
 import { rectifyAnthropicRequestMessage } from "../proxy/thinking-signature-rectifier";
 import type { BodyOp, OpResults } from "./contract";
 
@@ -59,6 +60,9 @@ export function applyBodyOps(
       }
       case "strip_private_params":
         message = filterPrivateParameters(message) as Record<string, unknown>;
+        break;
+      case "normalize_response_input":
+        rectifyResponseInput(message);
         break;
     }
   }

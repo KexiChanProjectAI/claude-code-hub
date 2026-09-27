@@ -54,7 +54,9 @@ import { applyBodyOps } from "@/app/v1/_lib/edge/body-ops";
 import type { HeaderPairs } from "@/app/v1/_lib/edge/contract";
 import { buildRequestDigest, createEdgeSessionFromDigest } from "@/app/v1/_lib/edge/digest";
 import { buildExecutionStep, type EdgeBodyState } from "@/app/v1/_lib/edge/step-builder";
+import { detectFormatByEndpoint } from "@/app/v1/_lib/proxy/format-mapper";
 import { ProxyForwarder } from "@/app/v1/_lib/proxy/forwarder";
+import { normalizeResponseInput } from "@/app/v1/_lib/proxy/response-input-rectifier";
 import { ProxySession } from "@/app/v1/_lib/proxy/session";
 import type { Key } from "@/types/key";
 import type { Provider } from "@/types/provider";
@@ -142,10 +144,17 @@ function prepare(session: ProxySession, key: Key): void {
   session.setSessionId("sess_parity_1");
 }
 
-async function runLocal(body: Record<string, unknown>, provider: Provider, key: Key) {
-  const session = await ProxySession.fromContext(
-    makeContext("https://proxy.local/v1/messages", body)
-  );
+async function runLocal(
+  body: Record<string, unknown>,
+  provider: Provider,
+  key: Key,
+  path = "/v1/messages"
+) {
+  const session = await ProxySession.fromContext(makeContext(`https://proxy.local${path}`, body));
+  // 与 proxy-handler 一致：按端点识别格式，response 格式在守卫链前规范化 input
+  const format = detectFormatByEndpoint(path);
+  if (format) session.setOriginalFormat(format);
+  if (session.originalFormat === "response") await normalizeResponseInput(session);
   prepare(session, key);
   session.setProvider(provider);
   let captured: { url: string; headers: Headers; body: string } | null = null;
@@ -161,28 +170,48 @@ async function runLocal(body: Record<string, unknown>, provider: Provider, key: 
     spy.mockRestore();
   }
   if (!captured) throw new Error("fetch not called");
-  return captured as { url: string; headers: Headers; body: string };
+  return {
+    ...(captured as { url: string; headers: Headers; body: string }),
+    specialSettings: session.getSpecialSettings(),
+  };
 }
 
-async function runEdge(body: Record<string, unknown>, provider: Provider, key: Key) {
+async function runEdge(
+  body: Record<string, unknown>,
+  provider: Provider,
+  key: Key,
+  path = "/v1/messages"
+) {
   const text = JSON.stringify(body);
   const digest = buildRequestDigest({
     edgeId: "edge-test",
     edgeRequestId: "r1",
     receivedAtMs: Date.now(),
     method: "POST",
-    path: "/v1/messages",
+    path,
     headers: CLIENT_HEADERS,
     clientIp: null,
     body,
     bodyBytes: Buffer.byteLength(text),
   });
   const session = createEdgeSessionFromDigest(digest);
+  session.setOriginalFormat(digest.format);
+  const inputRectified =
+    !!digest.responseInputRectify && digest.responseInputRectify.action !== "passthrough";
+  if (digest.responseInputRectify && inputRectified) {
+    session.addSpecialSetting({
+      type: "response_input_rectifier",
+      scope: "request",
+      hit: true,
+      action: digest.responseInputRectify.action,
+      originalType: digest.responseInputRectify.originalType,
+    });
+  }
   prepare(session, key);
   const bodyState: EdgeBodyState = {
     originalTopLevel: structuredClone(digest.topLevel),
     hasPrivateParams: digest.hasPrivateParams,
-    contentOps: [],
+    contentOps: inputRectified ? [{ op: "normalize_response_input" }] : [],
   };
   const step = await buildExecutionStep({
     session,
@@ -227,9 +256,51 @@ const BASE_BODY = {
   ],
 };
 
+const RESPONSES_BODY = {
+  model: "gpt-5-codex",
+  stream: true,
+  instructions: "You are Codex.",
+  reasoning: { effort: "medium", summary: "auto" },
+  text: { verbosity: "medium" },
+  parallel_tool_calls: false,
+  prompt_cache_key: "pck-1",
+  input: [
+    { role: "user", content: [{ type: "input_text", text: "fix the bug" }] },
+    { type: "function_call_output", call_id: "c1", output: "done", _trace: 1 },
+  ],
+};
+
+const CHAT_BODY = {
+  model: "gpt-4.1",
+  stream: true,
+  messages: [
+    { role: "system", content: "sys" },
+    { role: "user", content: "hello" },
+  ],
+};
+
+const CODEX_PROVIDER: Partial<Provider> = {
+  name: "codex-main",
+  url: "https://api.openai.example.com/v1",
+  providerType: "codex",
+  codexReasoningEffortPreference: null,
+  codexReasoningSummaryPreference: null,
+  codexTextVerbosityPreference: null,
+  codexParallelToolCallsPreference: null,
+  codexImageGenerationPreference: null,
+  codexServiceTierPreference: null,
+} as Partial<Provider>;
+
+const CHAT_PROVIDER: Partial<Provider> = {
+  name: "openai-compatible",
+  url: "https://api.openai.example.com/v1",
+  providerType: "openai-compatible",
+};
+
 const CASES: Array<{
   name: string;
   body: Record<string, unknown>;
+  path?: string;
   provider?: Partial<Provider>;
   key?: Partial<Key>;
 }> = [
@@ -283,6 +354,58 @@ const CASES: Array<{
     name: "string system prompt that is a billing header",
     body: { ...BASE_BODY, system: "x-anthropic-billing-header: cc_version=1" },
   },
+  {
+    name: "codex responses passthrough with private params",
+    body: RESPONSES_BODY,
+    path: "/v1/responses",
+    provider: CODEX_PROVIDER,
+  },
+  {
+    name: "codex responses with provider overrides",
+    body: { ...RESPONSES_BODY, service_tier: "priority" },
+    path: "/v1/responses",
+    provider: {
+      ...CODEX_PROVIDER,
+      codexReasoningEffortPreference: "high",
+      codexReasoningSummaryPreference: "detailed",
+      codexTextVerbosityPreference: "low",
+      codexParallelToolCallsPreference: "true",
+      codexServiceTierPreference: "flex",
+    } as Partial<Provider>,
+  },
+  {
+    name: "codex responses with string input normalized",
+    body: { model: "gpt-5-codex", stream: false, input: "hello there" },
+    path: "/v1/responses",
+    provider: CODEX_PROVIDER,
+  },
+  {
+    name: "codex responses with object input and model redirect",
+    body: { model: "gpt-5-codex", input: { role: "user", content: "hi" } },
+    path: "/v1/responses",
+    provider: {
+      ...CODEX_PROVIDER,
+      modelRedirects: [{ matchType: "exact", source: "gpt-5-codex", target: "gpt-5.1-codex" }],
+    } as Partial<Provider>,
+  },
+  {
+    name: "chat completions stream gets include_usage",
+    body: CHAT_BODY,
+    path: "/v1/chat/completions",
+    provider: CHAT_PROVIDER,
+  },
+  {
+    name: "chat completions keeps existing stream_options",
+    body: { ...CHAT_BODY, stream_options: { include_obfuscation: false } },
+    path: "/v1/chat/completions",
+    provider: CHAT_PROVIDER,
+  },
+  {
+    name: "chat completions non-stream is untouched",
+    body: { ...CHAT_BODY, stream: false, _meta: 1 },
+    path: "/v1/chat/completions",
+    provider: CHAT_PROVIDER,
+  },
 ];
 
 describe("edge step builder parity with local forwarder", () => {
@@ -290,17 +413,55 @@ describe("edge step builder parity with local forwarder", () => {
     vi.clearAllMocks();
   });
 
-  test.each(CASES)("$name", async ({ body, provider: providerOverrides, key: keyOverrides }) => {
-    const provider = createProvider(providerOverrides);
-    const key = makeKey(keyOverrides);
+  test.each(CASES)(
+    "$name",
+    async ({ body, path, provider: providerOverrides, key: keyOverrides }) => {
+      const provider = createProvider(providerOverrides);
+      const key = makeKey(keyOverrides);
 
-    const local = await runLocal(structuredClone(body), provider, key);
-    const edge = await runEdge(structuredClone(body), provider, key);
+      const local = await runLocal(structuredClone(body), provider, key, path);
+      const edge = await runEdge(structuredClone(body), provider, key, path);
 
-    expect(edge.step.url).toBe(local.url);
-    expect(comparableHeaders(edge.step.headers)).toEqual(comparableHeaders(local.headers));
-    expect(JSON.parse(edge.body)).toEqual(JSON.parse(local.body));
-    expect(edge.body).toBe(local.body);
+      expect(edge.step.url).toBe(local.url);
+      expect(comparableHeaders(edge.step.headers)).toEqual(comparableHeaders(local.headers));
+      expect(JSON.parse(edge.body)).toEqual(JSON.parse(local.body));
+      expect(edge.body).toBe(local.body);
+      // billing header 审计由远端 opResults 回填（handlers.applyOpResults），此处不比较
+      const withoutBillingAudit = (settings: unknown) =>
+        ((settings as Array<{ type: string }> | null) ?? []).filter(
+          (setting) => setting.type !== "billing_header_rectifier"
+        );
+      expect(withoutBillingAudit(edge.session.getSpecialSettings())).toEqual(
+        withoutBillingAudit(local.specialSettings)
+      );
+    }
+  );
+
+  test("step carries client format and forced stream handling for codex", async () => {
+    const codex = await runEdge(
+      structuredClone(RESPONSES_BODY),
+      createProvider(CODEX_PROVIDER),
+      makeKey(),
+      "/v1/responses"
+    );
+    expect(codex.step.clientFormat).toBe("response");
+    expect(codex.step.provider.type).toBe("codex");
+    expect(codex.step.forceStreamHandling).toBe(true);
+
+    const chat = await runEdge(
+      structuredClone(CHAT_BODY),
+      createProvider(CHAT_PROVIDER),
+      makeKey(),
+      "/v1/chat/completions"
+    );
+    expect(chat.step.clientFormat).toBe("openai");
+    expect(chat.step.provider.type).toBe("openai-compatible");
+    expect(chat.step.forceStreamHandling).toBe(false);
+    expect(chat.step.bodyOps).toContainEqual({
+      op: "set_top_level",
+      key: "stream_options",
+      value: { include_usage: true },
+    });
   });
 
   test("provider overrides are only applied on the first attempt", async () => {

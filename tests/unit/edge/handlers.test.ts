@@ -15,6 +15,14 @@ const mocks = vi.hoisted(() => ({
   commitNonStreamSuccess: vi.fn(async () => {}),
   persistSpecialSettings: vi.fn(async () => {}),
   setDeferredStreamingFinalization: vi.fn(),
+  handleHedgeThreshold: vi.fn(async () => ({ kind: "launch", step: { stepId: "77:h2:1" } })),
+  handleHedgeFailure: vi.fn(async () => ({ kind: "wait" })),
+  handleHedgeClientAbort: vi.fn(async () => ({
+    kind: "fail",
+    response: { status: 499, headers: [], bodyText: "{}" },
+  })),
+  runLoserBilling: vi.fn(async () => {}),
+  commitHedgeWinner: vi.fn(),
 }));
 
 vi.mock("@/lib/redis/client", () => ({ getRedisClient: () => mocks.redis }));
@@ -29,6 +37,16 @@ vi.mock("@/app/v1/_lib/edge/coordinator", () => ({
   handleSerialFailure: mocks.handleSerialFailure,
   releaseEdgeConcurrency: mocks.releaseEdgeConcurrency,
 }));
+vi.mock("@/app/v1/_lib/edge/hedge-coordinator", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/app/v1/_lib/edge/hedge-coordinator")>();
+  return {
+    ...actual,
+    handleHedgeThreshold: mocks.handleHedgeThreshold,
+    handleHedgeFailure: mocks.handleHedgeFailure,
+    handleHedgeClientAbort: mocks.handleHedgeClientAbort,
+    commitHedgeWinner: mocks.commitHedgeWinner,
+  };
+});
 vi.mock("@/app/v1/_lib/proxy/response-handler", () => ({
   settleEdgeStreamCompletion: mocks.settleEdgeStreamCompletion,
   settleEdgeNonStreamCompletion: mocks.settleEdgeNonStreamCompletion,
@@ -463,5 +481,169 @@ describe("edge heartbeat handler", () => {
     await expect(
       handleEdgeHeartbeat({ requestId: 77, edgeToken: TOKEN, bytesForwarded: 0 })
     ).rejects.toMatchObject({ status: 409 });
+  });
+
+  describe("hedge mode", () => {
+    async function seedHedge(): Promise<EdgeRequestState> {
+      const state = await seedState({
+        mode: "hedge",
+        attempts: [
+          {
+            stepId: "77:h1:1",
+            kind: "normal",
+            providerId: 9,
+            endpointId: null,
+            baseUrl: "https://up.example.com",
+            attemptNumber: 1,
+            totalProvidersAttempted: 1,
+            sequence: 1,
+            status: "inflight",
+            isStreaming: true,
+          },
+        ],
+      });
+      state.hedge = {
+        launchedProviderIds: [9],
+        launchedProviderCount: 1,
+        noMoreProviders: false,
+        maxInFlight: 2,
+        billLosers: false,
+        initialProviderId: 9,
+        participants: [
+          {
+            sequence: 1,
+            providerId: 9,
+            provider: PROVIDER,
+            endpointId: null,
+            baseUrl: "https://up.example.com",
+            endpointUrl: "https://up.example.com",
+            attemptId: "legacy-hedge-1-1",
+            stepId: "77:h1:1",
+            requestAttemptCount: 1,
+            applyProviderOverrides: false,
+            reactiveRectifierRetryState: {
+              thinkingSignatureRetried: false,
+              thinkingBudgetRetried: false,
+              thinkingEffortConflictRetried: false,
+              geminiFunctionIdRetried: false,
+            },
+            status: "inflight",
+            thresholdTriggered: false,
+            saturationRecorded: false,
+            useOriginalSession: true,
+            shadow: null,
+            body: null,
+            billAsLoser: false,
+            startedAtMs: Date.now(),
+          },
+        ],
+        lastError: null,
+        lastErrorCategory: null,
+        metrics: { attempts: 1, active: 1, maxActive: 1, providerMs: 0 },
+      };
+      await saveEdgeState(state, 600);
+      return state;
+    }
+
+    test("threshold events are answered by the hedge coordinator", async () => {
+      await seedHedge();
+      const response = await handleEdgeNext(nextRequest({ type: "hedge_threshold" }, "77:h1:1"));
+      expect(response).toEqual({ action: "launch", step: { stepId: "77:h2:1" } });
+      expect(mocks.handleSerialFailure).not.toHaveBeenCalled();
+      const replay = await handleEdgeNext(nextRequest({ type: "hedge_threshold" }, "77:h1:1"));
+      expect(replay).toEqual(response);
+      expect(mocks.handleHedgeThreshold).toHaveBeenCalledTimes(1);
+    });
+
+    test("failures keep the participant failure for a later rectifier retry", async () => {
+      await seedHedge();
+      const failure = {
+        kind: "upstream_status" as const,
+        status: 400,
+        statusText: "Bad Request",
+        headers: [],
+        bodyText: "invalid signature in thinking block",
+        bodyTruncated: false,
+      };
+      const response = await handleEdgeNext(
+        nextRequest(
+          {
+            type: "failure",
+            failure,
+            dispatched: true,
+            firstByteSeen: true,
+            timing: { dispatchedAtMs: 1, firstByteAtMs: 2, endedAtMs: 3, healthElapsedMs: 2 },
+          },
+          "77:h1:1"
+        )
+      );
+      expect(response).toEqual({ action: "wait" });
+      const [, participant, params] = mocks.handleHedgeFailure.mock.calls[0] as unknown as [
+        unknown,
+        { sequence: number },
+        { errorDescriptor: unknown },
+      ];
+      expect(participant.sequence).toBe(1);
+      expect(params.errorDescriptor).toEqual({ kind: "failure", providerId: 9, failure });
+      const state = await loadEdgeState(77);
+      expect(state?.hedge?.participants[0].lastFailure).toEqual(failure);
+    });
+
+    test("pre-commit client aborts settle through the request-level abort handler", async () => {
+      await seedHedge();
+      const response = await handleEdgeNext(
+        nextRequest(
+          {
+            type: "failure",
+            failure: { kind: "client_abort" },
+            dispatched: true,
+            firstByteSeen: false,
+            timing: { dispatchedAtMs: 1, firstByteAtMs: null, endedAtMs: 3, healthElapsedMs: 2 },
+            peers: [],
+          },
+          "77:h1:1"
+        )
+      );
+      expect(response).toMatchObject({ action: "fail", response: { status: 499 } });
+      expect(mocks.handleHedgeClientAbort).toHaveBeenCalledTimes(1);
+      expect((await loadEdgeState(77))?.phase).toBe("settled");
+    });
+
+    test("complete commits the hedge winner, settles it and then bills losers", async () => {
+      await seedHedge();
+      const order: string[] = [];
+      mocks.commitHedgeWinner.mockImplementation(() => {
+        order.push("commit");
+        return {
+          runLoserBilling: async () => {
+            order.push("losers");
+          },
+        };
+      });
+      mocks.settleEdgeStreamCompletion.mockImplementationOnce(async () => {
+        order.push("settle");
+        return { effectiveStatusCode: 200, isSuccessfulCompletion: true };
+      });
+      const losers = [
+        {
+          stepId: "77:h2:1",
+          upstreamStatus: 200,
+          drainComplete: true,
+          meteringText: "x",
+          endedAtMs: 1,
+        },
+      ];
+      await handleEdgeComplete({
+        requestId: 77,
+        edgeToken: TOKEN,
+        winner: winner({ stepId: "77:h1:1" }),
+        losers,
+      });
+      expect(order).toEqual(["commit", "settle", "losers"]);
+      expect(mocks.commitHedgeWinner.mock.calls[0][3]).toEqual(losers);
+      expect(mocks.setDeferredStreamingFinalization).not.toHaveBeenCalled();
+      expect(mocks.releaseEdgeConcurrency).toHaveBeenCalledTimes(1);
+      expect((await loadEdgeState(77))?.phase).toBe("settled");
+    });
   });
 });

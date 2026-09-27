@@ -92,29 +92,67 @@ type streamOutcome struct {
 
 func strPtr(value string) *string { return &value }
 
-func (e *execution) handleStream(
-	ctx context.Context,
-	step *contract.ExecutionStep,
-	resp *http.Response,
-	timers *attemptTimers,
-	stopFirstByteTimer func(),
-	markCommitted func(),
-	opResults *contract.OpResults,
-) attemptResult {
-	body := resp.Body
-	reader := newChunkReader(body)
-	defer reader.close()
+// preparedStream is an attempt that passed its pre-commit phase (gate commit or
+// first non-empty chunk) and can be committed to the client.
+type preparedStream struct {
+	resp           *http.Response
+	reader         *chunkReader
+	prefix         [][]byte
+	readerDone     bool
+	commitMarker   *contract.GateCommit
+	firstTokenAt   time.Time
+	forcedStream   bool
+	protocolFamily gate.Family
+}
 
-	var prefix [][]byte
-	var commitMarker *contract.GateCommit
-	readerDone := false
+func (p *preparedStream) close() {
+	p.reader.close()
+	_ = p.resp.Body.Close()
+}
+
+// clientFormat returns the step's client format (claude when unset).
+func clientFormat(step *contract.ExecutionStep) string {
+	switch step.ClientFormat {
+	case contract.FormatResponse, contract.FormatOpenAI:
+		return step.ClientFormat
+	}
+	return contract.FormatClaude
+}
+
+// providerFormat mirrors mapProviderTypeToClientFormat (used for hedge loser metering).
+func providerFormat(providerType string) string {
+	switch providerType {
+	case "codex":
+		return contract.FormatResponse
+	case "openai-compatible":
+		return contract.FormatOpenAI
+	}
+	return contract.FormatClaude
+}
+
+func stepFamily(step *contract.ExecutionStep) gate.Family {
+	if family, ok := gate.FamilyForProviderType(step.Provider.Type); ok {
+		return family
+	}
+	return gate.FamilyAnthropic
+}
+
+// prepareStream runs the precommit gate (enforce mode, not high concurrency) or
+// waits for the first non-empty chunk. On failure the body is released by the caller.
+func (e *execution) prepareStream(run *attemptRun, resp *http.Response, forced bool) (*preparedStream, attemptResult) {
+	step := run.step
+	timers := run.timers
+	ctx := run.ctx
+	reader := newChunkReader(resp.Body)
+
+	prepared := &preparedStream{resp: resp, reader: reader, forcedStream: forced, protocolFamily: stepFamily(step)}
 	gateStarted := time.Now()
 	precommit := step.Gate.Mode == "enforce" && !step.Gate.HighConcurrency
 
 	if precommit {
 		input := &gateInput{reader: reader}
 		result := gate.Run(ctx, input, gate.Options{
-			Family:              gate.Family("anthropic"),
+			Family:              prepared.protocolFamily,
 			EventCap:            step.Gate.EventCap,
 			ByteCap:             step.Gate.ByteCap,
 			IdleTimeout:         time.Duration(step.Gate.IdleMs) * time.Millisecond,
@@ -122,17 +160,18 @@ func (e *execution) handleStream(
 			Budget:              e.h.budget,
 			OnFirstByte: func() {
 				timers.markFirstByte()
-				stopFirstByteTimer()
+				run.stopFirstByteTimer()
 			},
 		})
 		if !result.Committed {
-			return attemptResult{event: e.failureEvent(e.gateFailure(ctx, result), timers, opResults)}
+			reader.close()
+			return nil, attemptResult{event: e.failureEvent(e.gateFailure(ctx, result), timers, run.opResults)}
 		}
-		prefix = result.Prefix
-		readerDone = result.ReaderDone
+		prepared.prefix = result.Prefix
+		prepared.readerDone = result.ReaderDone
 		if result.CommitMarker != nil {
 			marker := result.CommitMarker
-			commitMarker = &contract.GateCommit{
+			prepared.commitMarker = &contract.GateCommit{
 				FrameIndex:        marker.FrameIndex,
 				ChunkIndex:        marker.ChunkIndex,
 				EventName:         marker.EventName,
@@ -143,38 +182,57 @@ func (e *execution) handleStream(
 		}
 		// Bytes the gate pulled from the reader but did not consume stay in input.buf.
 		if len(input.buf) > 0 {
-			prefix = append(prefix, input.buf)
+			prepared.prefix = append(prepared.prefix, input.buf)
 			input.buf = nil
 		}
 		if input.err != nil {
-			readerDone = true
+			prepared.readerDone = true
 		}
 	} else {
 		first, ok := e.readFirstChunk(ctx, reader, step)
 		if !ok.committed {
-			return ok
+			reader.close()
+			return nil, ok
 		}
 		timers.markFirstByte()
-		stopFirstByteTimer()
-		prefix = [][]byte{first.data}
-		readerDone = first.err != nil
+		run.stopFirstByteTimer()
+		prepared.prefix = [][]byte{first.data}
+		prepared.readerDone = first.err != nil
 	}
-	firstTokenAt := time.Now()
+	prepared.firstTokenAt = time.Now()
+	return prepared, attemptResult{}
+}
+
+// commitStream relays a prepared attempt to the client and reports completion.
+// losers (hedge mode) is called after the winner finished and returns the hedge
+// loser outcomes to include in the completion report.
+func (e *execution) commitStream(run *attemptRun, prepared *preparedStream, losers func() []contract.LoserResult) attemptResult {
+	step := run.step
+	timers := run.timers
+	resp := prepared.resp
+	reader := prepared.reader
+	defer prepared.close()
 
 	// COMMIT POINT: from here on nothing may fail over.
-	markCommitted()
+	run.markCommitted()
+	run.stopFirstByteTimer()
 	e.h.metrics.attempts.Add("committed_stream", 1)
+	if prepared.forcedStream {
+		resp.Header.Set("Content-Type", "text/event-stream; charset=utf-8")
+	}
 	e.writeResponseHeaders(resp)
 	flusher, _ := e.w.(http.Flusher)
 	if flusher != nil {
 		flusher.Flush()
 	}
 
-	observer := gate.NewObserver(gate.Family("anthropic"), step.Gate.ByteCap)
-	compact := capture.NewCompactCapture(step.Reporting.MaxCompactBytes)
-	metering := capture.NewMeteringObserver("claude", 0)
+	format := clientFormat(step)
+	observer := gate.NewObserver(prepared.protocolFamily, step.Gate.ByteCap)
+	compact := capture.NewCompactCaptureForFormat(format, step.Reporting.MaxCompactBytes)
+	metering := capture.NewMeteringObserver(format, 0)
 	var streamFixer *fixer.StreamFixer
-	if step.Fixer.Enabled {
+	// Forced codex streams bypass the response fixer (ProxyResponseHandler.dispatch).
+	if step.Fixer.Enabled && !prepared.forcedStream {
 		streamFixer = fixer.NewStreamFixer(fixerConfig(step))
 	}
 
@@ -208,11 +266,11 @@ func (e *execution) handleStream(
 		}
 	}
 
-	for _, part := range prefix {
+	for _, part := range prepared.prefix {
 		deliver(part)
 	}
 
-	outcome := e.relay(step, reader, readerDone, deliver, &clientGone, &meteringDone, metering)
+	outcome := e.relay(step, reader, prepared.readerDone, deliver, &clientGone, &meteringDone, metering)
 
 	if streamFixer != nil && !clientGone {
 		if tail := streamFixer.Flush(); len(tail) > 0 {
@@ -264,6 +322,11 @@ func (e *execution) handleStream(
 		}
 	}
 
+	loserResults := []contract.LoserResult{}
+	if losers != nil {
+		loserResults = losers()
+	}
+
 	dispatched, firstByte := timers.snapshot()
 	e.h.reporter.Complete(e.h.baseCtx, &contract.CompleteRequest{
 		RequestID: e.requestID,
@@ -281,19 +344,19 @@ func (e *execution) handleStream(
 			CompactSSE:          compactText,
 			CompactTruncated:    compactTruncated,
 			Protocol:            protocol,
-			GateCommit:          commitMarker,
+			GateCommit:          prepared.commitMarker,
 			Fixer:               fixerAudit,
 			Timing: contract.WinnerTiming{
 				DispatchedAtMs:  dispatched.UnixMilli(),
 				FirstByteAtMs:   msPtr(firstByte),
-				FirstTokenAtMs:  msPtr(firstTokenAt),
+				FirstTokenAtMs:  msPtr(prepared.firstTokenAt),
 				EndedAtMs:       time.Now().UnixMilli(),
 				HealthElapsedMs: time.Since(dispatched).Milliseconds(),
 			},
 			BytesToClient: bytesToClient,
-			OpResults:     opResults,
+			OpResults:     run.opResults,
 		},
-		Losers: []contract.LoserResult{},
+		Losers: loserResults,
 	})
 	return attemptResult{committed: true}
 }

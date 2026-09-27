@@ -29,10 +29,13 @@ type normalizedMessage struct {
 	hasCacheControl bool
 }
 
-// ComputeFingerprintChainClaude ports computeFingerprintChain(message, "claude", window)
-// from src/app/v1/_lib/proxy/affinity/fingerprint.ts. It fails open (returns nil)
-// on any malformed input, matching the TS try/catch wrapper.
-func ComputeFingerprintChainClaude(body *ojson.Value, window int) (chain *contract.FingerprintChain) {
+// ComputeFingerprintChain ports computeFingerprintChain(message, format, window)
+// from src/app/v1/_lib/proxy/affinity/fingerprint.ts for format in
+// {claude, openai, response} (the edge-supported EdgeClientFormat set; other
+// formats fall through extractConversation's default case and return nil,
+// matching computeChainInner's null on an unrecognized format). It fails open
+// (returns nil) on any malformed input, matching the TS try/catch wrapper.
+func ComputeFingerprintChain(body *ojson.Value, format string, window int) (chain *contract.FingerprintChain) {
 	defer func() {
 		if r := recover(); r != nil {
 			chain = nil
@@ -45,7 +48,7 @@ func ComputeFingerprintChainClaude(body *ojson.Value, window int) (chain *contra
 		window = MaxAffinityWindow
 	}
 
-	extracted := extractClaude(body)
+	extracted := extractConversation(body, format)
 	if extracted == nil {
 		return nil
 	}
@@ -101,6 +104,25 @@ func joinStrings(parts []string) string {
 type extractedConversation struct {
 	sysSegments []string
 	messages    []normalizedMessage
+}
+
+// extractConversation ports the switch in computeChainInner (fingerprint.ts
+// extractConversation), restricted to the edge-supported formats: claude,
+// openai, response. gemini/gemini-cli never reach the edge digest (their
+// paths resolve to "claude" via resolveEdgeClientFormat), so they are not
+// ported here; any other format value falls through to nil, matching the
+// TS `default: return null`.
+func extractConversation(body *ojson.Value, format string) *extractedConversation {
+	switch format {
+	case contract.FormatClaude:
+		return extractClaude(body)
+	case contract.FormatOpenAI:
+		return extractOpenAIChat(body)
+	case contract.FormatResponse:
+		return extractResponses(body)
+	default:
+		return nil
+	}
 }
 
 func extractClaude(body *ojson.Value) *extractedConversation {
@@ -202,6 +224,151 @@ func digestMediaSource(source *ojson.Value) string {
 	}
 	url := readString(source, "url")
 	return mediaType + ":" + url
+}
+
+// ===== openai (Chat Completions) =====
+
+func extractOpenAIChat(body *ojson.Value) *extractedConversation {
+	messages, ok := body.ObjectGet("messages")
+	if !ok || !messages.IsArray() {
+		return nil
+	}
+
+	sysSegments := []string{sep}
+	if tools, ok := body.ObjectGet("tools"); ok {
+		appendTools(&sysSegments, tools, func(tool *ojson.Value) toolSpec {
+			fn := readRecord(tool, "function")
+			if fn != nil {
+				return toolSpec{
+					name:        readString(fn, "name"),
+					description: readString(fn, "description"),
+					parameters:  readRecord(fn, "parameters"),
+				}
+			}
+			return toolSpec{
+				name:        readString(tool, "name"),
+				description: readString(tool, "description"),
+				parameters:  nil,
+			}
+		})
+	}
+
+	normalized := make([]normalizedMessage, 0, messages.ArrayLen())
+	inLeadingSystem := true
+	for _, raw := range messages.ArrayItems() {
+		if raw == nil || !raw.IsObject() {
+			continue
+		}
+		role := readString(raw, "role")
+		content, _ := raw.ObjectGet("content")
+		// Leading system/developer messages belong to the cross-conversation
+		// stable segment and are folded into F_sys.
+		if inLeadingSystem && (role == "system" || role == "developer") {
+			sysSegments = append(sysSegments, sep, role, ":", serializeUnknownContent(content))
+			continue
+		}
+		inLeadingSystem = false
+
+		parts := []string{sep, role}
+		parts = append(parts, sep, "content:", serializeUnknownContent(content))
+		if toolCalls, ok := raw.ObjectGet("tool_calls"); ok && toolCalls.IsArray() {
+			for _, call := range toolCalls.ArrayItems() {
+				if call == nil || !call.IsObject() {
+					continue
+				}
+				fn := readRecord(call, "function")
+				fnName, fnArgs := "", ""
+				if fn != nil {
+					fnName = readString(fn, "name")
+					fnArgs = readString(fn, "arguments")
+				}
+				// Strip the volatile call id.
+				parts = append(parts, sep, "tool_call:", fnName, ":", fnArgs)
+			}
+		}
+		if raw.ObjectHas("tool_call_id") {
+			// tool-role message: strip tool_call_id, content already captured above.
+			parts = append(parts, sep, "tool_result")
+		}
+		normalized = append(normalized, finishMessage(parts, false))
+	}
+
+	return &extractedConversation{sysSegments: sysSegments, messages: normalized}
+}
+
+// ===== response (OpenAI Responses / Codex) =====
+
+func extractResponses(body *ojson.Value) *extractedConversation {
+	input, hasInput := body.ObjectGet("input")
+
+	sysSegments := []string{sep}
+	if instructions, ok := body.ObjectGet("instructions"); ok && instructions.IsString() {
+		sysSegments = append(sysSegments, instructions.String())
+	}
+	if tools, ok := body.ObjectGet("tools"); ok {
+		appendTools(&sysSegments, tools, func(tool *ojson.Value) toolSpec {
+			return toolSpec{
+				name:        readString(tool, "name"),
+				description: readString(tool, "description"),
+				parameters:  readRecord(tool, "parameters"),
+			}
+		})
+	}
+
+	var normalized []normalizedMessage
+	switch {
+	case hasInput && input.IsString():
+		normalized = append(normalized, normalizedMessage{
+			bytes:           sep + "user" + sep + "text:" + input.String(),
+			hasCacheControl: false,
+		})
+	case hasInput && input.IsArray():
+		normalized = make([]normalizedMessage, 0, input.ArrayLen())
+		for _, raw := range input.ArrayItems() {
+			if raw == nil || !raw.IsObject() {
+				continue
+			}
+			typ := readString(raw, "type")
+			if typ == "" {
+				typ = "message"
+			}
+			parts := []string{sep}
+			switch typ {
+			case "message":
+				content, _ := raw.ObjectGet("content")
+				parts = append(parts, readString(raw, "role"), sep, "content:", serializeUnknownContent(content))
+			case "function_call":
+				// Strip the volatile call_id / id.
+				parts = append(parts, "function_call", sep, readString(raw, "name"), ":", readString(raw, "arguments"))
+			case "function_call_output":
+				output, _ := raw.ObjectGet("output")
+				parts = append(parts, "function_call_output", sep, serializeUnknownContent(output))
+			case "reasoning":
+				summaryOrContent := nullishCoalesce(raw, "summary", "content")
+				parts = append(parts, "reasoning", sep, serializeUnknownContent(summaryOrContent))
+			default:
+				parts = append(parts, typ, sep, ojson.StableStringify(stripVolatileKeys(raw)))
+			}
+			normalized = append(normalized, finishMessage(parts, false))
+		}
+	default:
+		return nil
+	}
+
+	return &extractedConversation{sysSegments: sysSegments, messages: normalized}
+}
+
+// nullishCoalesce reads record[primaryKey], falling back to record[fallbackKey]
+// only when primaryKey is absent or explicitly null (mirrors JS `a ?? b`, which
+// only falls through on null/undefined -- not on other falsy values).
+func nullishCoalesce(record *ojson.Value, primaryKey, fallbackKey string) *ojson.Value {
+	if v, ok := record.ObjectGet(primaryKey); ok && !v.IsNull() {
+		return v
+	}
+	if v, ok := record.ObjectGet(fallbackKey); ok {
+		return v
+	}
+	return nil
 }
 
 type toolSpec struct {

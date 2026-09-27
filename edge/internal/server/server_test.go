@@ -193,13 +193,13 @@ const sseStream = "event: message_start\ndata: {\"type\":\"message_start\",\"mes
 
 func TestStaticRoutesAreDelegated(t *testing.T) {
 	h := newHarness(t, &fakeControl{})
-	resp := h.post(t, "/v1/chat/completions", `{"x":1}`, map[string]string{"X-Cch-Internal": "spoof"})
+	resp := h.post(t, "/v1/embeddings", `{"x":1}`, map[string]string{"X-Cch-Internal": "spoof"})
 	defer resp.Body.Close()
 	if resp.Header.Get(delegate.ReasonHeader) != "static_route" {
 		t.Fatalf("expected static delegate, headers %v", resp.Header)
 	}
 	forwarded := <-h.delegated
-	if forwarded.URL.Path != "/v1/chat/completions" || forwarded.Header.Get("X-Cch-Internal") != "" {
+	if forwarded.URL.Path != "/v1/embeddings" || forwarded.Header.Get("X-Cch-Internal") != "" {
 		t.Fatalf("unexpected forwarded request %s %v", forwarded.URL.Path, forwarded.Header)
 	}
 	if len(h.control.digests) != 0 {
@@ -237,8 +237,8 @@ func TestDecideDelegateReplaysOriginalBytes(t *testing.T) {
 	}
 
 	digest := control.digests[0]
-	if digest.Path != "/v1/messages?beta=true" || digest.MessagesCount != 1 {
-		t.Fatalf("unexpected digest path=%s count=%d", digest.Path, digest.MessagesCount)
+	if digest.Path != "/v1/messages?beta=true" || digest.MessagesCount == nil || *digest.MessagesCount != 1 {
+		t.Fatalf("unexpected digest path=%s count=%v", digest.Path, digest.MessagesCount)
 	}
 	for _, pair := range digest.Headers {
 		if pair[0] == "content-encoding" {

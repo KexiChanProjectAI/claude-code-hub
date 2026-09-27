@@ -1,9 +1,10 @@
 // Package route decides which requests the edge may execute itself.
 //
 // Mirrors src/app/v1/_lib/unprefixed-v1-alias.ts (alias mapping) followed by
-// src/app/v1/_lib/proxy/endpoint-paths.ts normalizeEndpointPath. Only
-// POST /v1/messages (or the unprefixed /messages alias) is executed at the edge;
-// every other request is reverse-proxied to the control plane untouched.
+// src/app/v1/_lib/proxy/endpoint-paths.ts normalizeEndpointPath. Only POST
+// /v1/messages, /v1/responses and /v1/chat/completions (or their unprefixed
+// aliases) are executed at the edge; every other request is reverse-proxied to
+// the control plane untouched.
 package route
 
 import "strings"
@@ -15,7 +16,12 @@ const (
 	Execute
 )
 
-const messagesPath = "/v1/messages"
+// executablePaths are the normalized endpoints the edge executes itself.
+var executablePaths = map[string]bool{
+	"/v1/messages":         true,
+	"/v1/responses":        true,
+	"/v1/chat/completions": true,
+}
 
 var unprefixedAliases = []string{"/chat/completions", "/responses", "/models", "/messages"}
 
@@ -63,12 +69,12 @@ func CanonicalRequestPath(rawPath string) string {
 	return mapped
 }
 
-// Decide returns Execute only for POST requests to the Anthropic messages endpoint.
+// Decide returns Execute only for POST requests to an executable endpoint.
 func Decide(method, rawPath string) Decision {
 	if method != "POST" {
 		return Delegate
 	}
-	if Normalize(MapUnprefixed(rawPath)) == messagesPath {
+	if executablePaths[Normalize(MapUnprefixed(rawPath))] {
 		return Execute
 	}
 	return Delegate

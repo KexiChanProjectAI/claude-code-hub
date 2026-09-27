@@ -1,7 +1,9 @@
 // Package digest builds contract.RequestDigest from a parsed request body,
 // mirroring src/app/v1/_lib/edge/digest.ts buildRequestDigest (which in turn
-// calls into ProxySession.isProbeRequest/isWarmupRequest,
-// SessionManager.calculateMessagesHash and computeFingerprintChain).
+// calls into response-input-rectifier.ts#rectifyResponseInput,
+// ProxySession.getMessages/isProbeRequest/isWarmupRequest,
+// SessionManager.calculateMessagesHash, remote-compaction.ts#isRemoteCompactionV2Request,
+// codex/session-completer.ts#extractInitialMessageTextHash and computeFingerprintChain).
 package digest
 
 import (
@@ -33,32 +35,76 @@ type Input struct {
 // Build computes the RequestDigest for in, matching buildRequestDigest in
 // src/app/v1/_lib/edge/digest.ts field for field.
 func Build(in Input) contract.RequestDigest {
-	body := in.Body
-	if body == nil || !body.IsObject() {
+	originalBody := in.Body
+	if originalBody == nil || !originalBody.IsObject() {
 		// Mirrors the TS caller always passing a parsed object; when parsing
 		// failed upstream we degrade to an empty object like TS would.
-		body = ojson.NewObject()
+		originalBody = ojson.NewObject()
+	}
+
+	format := resolveEdgeClientFormat(in.Path)
+
+	// Response Input Rectifier runs before the guard pipeline: content-derived
+	// digest fields are computed on a normalized clone of the body, matching
+	// digest.ts's `const body = structuredClone(params.body)` + conditional rectify.
+	normalized := originalBody.Clone()
+	var responseInputRectify *contract.ResponseInputRectify
+	if format == contract.FormatResponse {
+		result := rectifyResponseInput(normalized)
+		responseInputRectify = &contract.ResponseInputRectify{
+			Action:       result.action,
+			OriginalType: result.originalType,
+		}
+	}
+
+	pn := pathname(in.Path)
+	messages := getMessagesLike(normalized)
+
+	var codexInitialTextHash *string
+	if inputVal, ok := normalized.ObjectGet("input"); ok && inputVal.IsArray() {
+		codexInitialTextHash = extractInitialMessageTextHash(normalized)
 	}
 
 	return contract.RequestDigest{
-		SchemaVersion:    contract.SchemaVersion,
-		EdgeID:           in.EdgeID,
-		EdgeRequestID:    in.EdgeRequestID,
-		ReceivedAtMs:     in.ReceivedAtMs,
-		Method:           in.Method,
-		Path:             in.Path,
-		Headers:          in.Headers,
-		ClientIP:         in.ClientIP,
-		BodyBytes:        in.BodyBytes,
-		BodyParseError:   in.BodyParseError,
-		TopLevel:         buildTopLevel(body),
-		MessagesCount:    messagesCount(body),
-		SystemKind:       resolveSystemKind(body),
-		HasPrivateParams: hasPrivateKeys(body),
-		IsProbe:          isProbeRequest(body),
-		IsWarmup:         isWarmupRequest(body, in.Path),
-		MessagesHash:     calculateMessagesHash(body),
-		Fingerprint:      ComputeFingerprintChainClaude(body, MaxAffinityWindow),
+		SchemaVersion:        contract.SchemaVersion,
+		EdgeID:               in.EdgeID,
+		EdgeRequestID:        in.EdgeRequestID,
+		ReceivedAtMs:         in.ReceivedAtMs,
+		Method:               in.Method,
+		Path:                 in.Path,
+		Format:               format,
+		Headers:              in.Headers,
+		ClientIP:             in.ClientIP,
+		BodyBytes:            in.BodyBytes,
+		BodyParseError:       in.BodyParseError,
+		TopLevel:             buildTopLevel(normalized),
+		MessagesCount:        arrayLenPtr(normalized, "messages"),
+		InputCount:           arrayLenPtr(normalized, "input"),
+		ResponseInputRectify: responseInputRectify,
+		// isRemoteCompactionV2Request is called with the ORIGINAL, un-normalized
+		// body in digest.ts (params.body, not the clone), so use originalBody here.
+		IsRemoteCompactionV2: isRemoteCompactionV2Request(pn, originalBody),
+		CodexInitialTextHash: codexInitialTextHash,
+		SystemKind:           resolveSystemKind(normalized),
+		HasPrivateParams:     hasPrivateKeys(normalized),
+		IsProbe:              isProbeRequest(messages),
+		IsWarmup:             isWarmupRequest(normalized, in.Path),
+		MessagesHash:         calculateMessagesHash(messages),
+		Fingerprint:          ComputeFingerprintChain(normalized, format, MaxAffinityWindow),
+	}
+}
+
+// resolveEdgeClientFormat ports resolveEdgeClientFormat in digest.ts: response/openai
+// are kept, everything else (including unsupported paths) resolves to "claude".
+func resolveEdgeClientFormat(rawPath string) string {
+	p := normalizeEndpointPath(pathname(rawPath))
+	switch {
+	case p == "/v1/responses" || strings.HasPrefix(p, "/v1/responses/"):
+		return contract.FormatResponse
+	case p == "/v1/chat/completions" || strings.HasPrefix(p, "/v1/chat/completions/"):
+		return contract.FormatOpenAI
+	default:
+		return contract.FormatClaude
 	}
 }
 
@@ -72,11 +118,12 @@ func buildTopLevel(body *ojson.Value) map[string]json.RawMessage {
 	return out
 }
 
-func messagesCount(body *ojson.Value) int {
-	if v, ok := body.ObjectGet("messages"); ok && v.IsArray() {
-		return v.ArrayLen()
+func arrayLenPtr(body *ojson.Value, key string) *int {
+	if v, ok := body.ObjectGet(key); ok && v.IsArray() {
+		n := v.ArrayLen()
+		return &n
 	}
-	return 0
+	return nil
 }
 
 func resolveSystemKind(body *ojson.Value) string {
@@ -124,10 +171,35 @@ func hasPrivateKeys(v *ojson.Value) bool {
 	}
 }
 
-// isProbeRequest ports ProxySession.isProbeRequest (session.ts ~L1656).
-func isProbeRequest(body *ojson.Value) bool {
-	messages, ok := body.ObjectGet("messages")
-	if !ok || !messages.IsArray() || messages.ArrayLen() != 1 {
+// getMessagesLike ports ProxySession.getMessages (session.ts ~L1100): messages,
+// else input, else contents, else request.contents, else absent. Returns the
+// raw value (which may not be an array); callers that need array semantics
+// check IsArray() themselves, matching how isProbeRequest/calculateMessagesHash
+// treat a present-but-non-array value as "not usable" rather than falling
+// through to the next candidate.
+func getMessagesLike(body *ojson.Value) *ojson.Value {
+	if v, ok := body.ObjectGet("messages"); ok {
+		return v
+	}
+	if v, ok := body.ObjectGet("input"); ok {
+		return v
+	}
+	if v, ok := body.ObjectGet("contents"); ok {
+		return v
+	}
+	if reqVal, ok := body.ObjectGet("request"); ok && reqVal.IsObject() {
+		if v, ok := reqVal.ObjectGet("contents"); ok {
+			return v
+		}
+	}
+	return nil
+}
+
+// isProbeRequest ports ProxySession.isProbeRequest (session.ts ~L1656), applied
+// to the result of getMessages() (not hardcoded to the "messages" field, so it
+// also covers Response API "input" arrays).
+func isProbeRequest(messages *ojson.Value) bool {
+	if !messages.IsArray() || messages.ArrayLen() != 1 {
 		return false
 	}
 	first := messages.ArrayGet(0)
@@ -142,10 +214,12 @@ func isProbeRequest(body *ojson.Value) bool {
 	return trimmed == "foo" || trimmed == "count"
 }
 
-// isWarmupRequest ports ProxySession.isWarmupRequest (session.ts ~L1688).
-// The TS version first checks getEndpoint() === "/v1/messages".
+// isWarmupRequest ports ProxySession.isWarmupRequest (session.ts ~L1688). Unlike
+// isProbeRequest, the TS source reads `message.messages` directly rather than
+// through getMessages(); this only matters when combined with the endpoint
+// check ("/v1/messages"), which restricts the format to "claude" in practice.
 func isWarmupRequest(body *ojson.Value, rawPath string) bool {
-	if pathname(rawPath) != "/v1/messages" {
+	if normalizeEndpointPath(pathname(rawPath)) != "/v1/messages" {
 		return false
 	}
 	messages, ok := body.ObjectGet("messages")
@@ -199,6 +273,18 @@ func pathname(rawPath string) string {
 	return u.Path
 }
 
+// normalizeEndpointPath ports normalizeEndpointPath (endpoint-paths.ts): strip
+// query, strip one trailing slash, lowercase.
+func normalizeEndpointPath(p string) string {
+	if idx := strings.IndexByte(p, '?'); idx >= 0 {
+		p = p[:idx]
+	}
+	if len(p) > 1 && strings.HasSuffix(p, "/") {
+		p = strings.TrimSuffix(p, "/")
+	}
+	return strings.ToLower(p)
+}
+
 // jsTrim strips the same set of characters JS String.prototype.trim strips:
 // Unicode whitespace plus the line terminators (LS/PS) and BOM.
 func jsTrim(s string) string {
@@ -214,10 +300,10 @@ func isJSWhitespace(r rune) bool {
 }
 
 // calculateMessagesHash ports SessionManager.calculateMessagesHash
-// (session-manager.ts ~L827-893).
-func calculateMessagesHash(body *ojson.Value) *string {
-	messages, ok := body.ObjectGet("messages")
-	if !ok || !messages.IsArray() || messages.ArrayLen() == 0 {
+// (session-manager.ts ~L827-893), applied to the result of getMessages()
+// (probe.getMessages() in digest.ts, not hardcoded to the "messages" field).
+func calculateMessagesHash(messages *ojson.Value) *string {
+	if !messages.IsArray() || messages.ArrayLen() == 0 {
 		return nil
 	}
 
@@ -280,4 +366,157 @@ func jsStringOrEmpty(v *ojson.Value) string {
 	// coerce via string concatenation. We fall back to the compact JSON form,
 	// which only matters for malformed inputs outside the ported contract.
 	return string(v.Marshal())
+}
+
+// ---- response-input-rectifier.ts#rectifyResponseInput ----
+
+type responseInputRectifyResult struct {
+	action       string
+	originalType string
+}
+
+// rectifyResponseInput ports rectifyResponseInput (response-input-rectifier.ts).
+// It mutates message.input in place, matching the TS "在 message 对象上原地修改" contract.
+func rectifyResponseInput(message *ojson.Value) responseInputRectifyResult {
+	input, hasInput := message.ObjectGet("input")
+
+	// Case 1: array -- passthrough.
+	if hasInput && input.IsArray() {
+		return responseInputRectifyResult{action: "passthrough", originalType: "array"}
+	}
+
+	// Case 2: string.
+	if hasInput && input.IsString() {
+		if input.String() == "" {
+			message.ObjectSet("input", ojson.NewArray())
+			return responseInputRectifyResult{action: "empty_string_to_empty_array", originalType: "string"}
+		}
+
+		wrapped := ojson.NewArray()
+		item := ojson.NewObject()
+		item.ObjectSet("role", ojson.NewString("user"))
+		contentArr := ojson.NewArray()
+		contentBlock := ojson.NewObject()
+		contentBlock.ObjectSet("type", ojson.NewString("input_text"))
+		contentBlock.ObjectSet("text", ojson.NewString(input.String()))
+		contentArr.ArrayAppend(contentBlock)
+		item.ObjectSet("content", contentArr)
+		wrapped.ArrayAppend(item)
+		message.ObjectSet("input", wrapped)
+		return responseInputRectifyResult{action: "string_to_array", originalType: "string"}
+	}
+
+	// Case 3: single object (MessageInput has role, ToolOutputsInput has type).
+	if hasInput && input.IsObject() {
+		if input.ObjectHas("role") || input.ObjectHas("type") {
+			wrapped := ojson.NewArray()
+			wrapped.ArrayAppend(input)
+			message.ObjectSet("input", wrapped)
+			return responseInputRectifyResult{action: "object_to_array", originalType: "object"}
+		}
+	}
+
+	// Case 4: undefined/null/other -- passthrough, let downstream handle the error.
+	return responseInputRectifyResult{action: "passthrough", originalType: "other"}
+}
+
+// ---- remote-compaction.ts#isRemoteCompactionV2Request ----
+
+func isRemoteCompactionV2Request(pn string, body *ojson.Value) bool {
+	if normalizeEndpointPath(pn) != "/v1/responses" {
+		return false
+	}
+	if body == nil || !body.IsObject() {
+		return false
+	}
+
+	input, ok := body.ObjectGet("input")
+	if !ok {
+		// items = [undefined]; typeof undefined !== "object" -> no match.
+		return false
+	}
+
+	if input.IsArray() {
+		for _, item := range input.ArrayItems() {
+			if isCompactionTriggerItem(item) {
+				return true
+			}
+		}
+		return false
+	}
+
+	// items = [input] (single-object shorthand uses the same item semantics).
+	return isCompactionTriggerItem(input)
+}
+
+func isCompactionTriggerItem(item *ojson.Value) bool {
+	if item == nil || !item.IsObject() {
+		return false
+	}
+	t, ok := item.ObjectGet("type")
+	return ok && t.IsString() && t.String() == "compaction_trigger"
+}
+
+// ---- codex/session-completer.ts#extractInitialMessageTextHash ----
+
+// extractInitialMessageTextHash ports extractInitialMessageTextHash
+// (session-completer.ts ~L63-108). Callers only invoke this when body.input
+// is a non-empty array (matching digest.ts's `Array.isArray(body.input) ? ... : null`).
+func extractInitialMessageTextHash(body *ojson.Value) *string {
+	input, ok := body.ObjectGet("input")
+	if !ok || !input.IsArray() || input.ArrayLen() == 0 {
+		return nil
+	}
+
+	var texts []string
+	for _, item := range input.ArrayItems() {
+		if item == nil || !item.IsObject() {
+			continue
+		}
+
+		itemType := ""
+		if tv, ok := item.ObjectGet("type"); ok && tv.IsString() {
+			itemType = tv.String()
+		}
+		// Only consider "message" items for conversation fingerprinting.
+		if itemType != "" && itemType != "message" {
+			continue
+		}
+
+		content, hasContent := item.ObjectGet("content")
+		if hasContent && content.IsString() {
+			if jsTrim(content.String()) != "" {
+				texts = append(texts, content.String())
+			}
+		} else if hasContent && content.IsArray() {
+			var parts []string
+			for _, part := range content.ArrayItems() {
+				if part == nil || !part.IsObject() {
+					continue
+				}
+				textVal, ok := part.ObjectGet("text")
+				if !ok || !textVal.IsString() || textVal.String() == "" {
+					continue
+				}
+				parts = append(parts, textVal.String())
+			}
+			joined := strings.Join(parts, "")
+			if jsTrim(joined) != "" {
+				texts = append(texts, joined)
+			}
+		}
+
+		if len(texts) >= 3 {
+			break
+		}
+	}
+
+	if len(texts) == 0 {
+		return nil
+	}
+
+	combined := strings.Join(texts, "|")
+	sum := sha256.Sum256([]byte(combined))
+	hash := hex.EncodeToString(sum[:])[:16]
+	return &hash
 }

@@ -20,6 +20,8 @@ export interface EdgeDigestHints {
   fingerprint: FingerprintChain | null;
   isProbe: boolean;
   isWarmup: boolean;
+  /** Codex 会话补全指纹用的首轮消息文本哈希（extractInitialMessageTextHash 同算法） */
+  codexInitialTextHash?: string | null;
 }
 
 type SessionWithEdgeHints = { edgeDigestHints?: EdgeDigestHints | null };

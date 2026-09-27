@@ -96,8 +96,8 @@ func TestApplyDisallowedKeyErrors(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for disallowed set_top_level key (stream is not mutable)")
 	}
-	_, _, err = Apply(body, []contract.BodyOp{{Op: contract.OpDeleteTopLevel, Key: "reasoning"}})
+	_, _, err = Apply(body, []contract.BodyOp{{Op: contract.OpDeleteTopLevel, Key: "previous_response_id"}})
 	if err == nil {
-		t.Fatal("expected error for disallowed delete_top_level key (reasoning is not mutable)")
+		t.Fatal("expected error for disallowed delete_top_level key (previous_response_id is not mutable)")
 	}
 }

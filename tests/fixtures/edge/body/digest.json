@@ -10,6 +10,7 @@
       "schemaVersion": 1,
       "method": "POST",
       "path": "/v1/messages",
+      "format": "claude",
       "headers": [],
       "clientIp": null,
       "bodyBytes": 475,
@@ -18,6 +19,10 @@
         "model": "claude-sonnet-4-5"
       },
       "messagesCount": 3,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
       "systemKind": "string",
       "hasPrivateParams": false,
       "isProbe": false,
@@ -60,6 +65,7 @@
       "schemaVersion": 1,
       "method": "POST",
       "path": "/v1/messages",
+      "format": "claude",
       "headers": [],
       "clientIp": null,
       "bodyBytes": 508,
@@ -68,6 +74,10 @@
         "model": "claude-sonnet-4-5"
       },
       "messagesCount": 4,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
       "systemKind": "string",
       "hasPrivateParams": false,
       "isProbe": false,
@@ -115,6 +125,7 @@
       "schemaVersion": 1,
       "method": "POST",
       "path": "/v1/messages",
+      "format": "claude",
       "headers": [],
       "clientIp": null,
       "bodyBytes": 333,
@@ -123,6 +134,10 @@
         "model": "claude-sonnet-4-5"
       },
       "messagesCount": 0,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
       "systemKind": "string",
       "hasPrivateParams": false,
       "isProbe": false,
@@ -149,12 +164,17 @@
       "schemaVersion": 1,
       "method": "POST",
       "path": "/v1/messages",
+      "format": "claude",
       "headers": [],
       "clientIp": null,
       "bodyBytes": 48,
       "bodyParseError": null,
       "topLevel": {},
       "messagesCount": 1,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
       "systemKind": "absent",
       "hasPrivateParams": false,
       "isProbe": false,
@@ -187,6 +207,7 @@
       "schemaVersion": 1,
       "method": "POST",
       "path": "/v1/messages",
+      "format": "claude",
       "headers": [],
       "clientIp": null,
       "bodyBytes": 395,
@@ -195,6 +216,10 @@
         "model": "claude-sonnet-4-5"
       },
       "messagesCount": 2,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
       "systemKind": "string",
       "hasPrivateParams": false,
       "isProbe": false,
@@ -227,6 +252,7 @@
       "schemaVersion": 1,
       "method": "POST",
       "path": "/v1/messages",
+      "format": "claude",
       "headers": [],
       "clientIp": null,
       "bodyBytes": 578,
@@ -235,6 +261,10 @@
         "model": "claude-sonnet-4-5"
       },
       "messagesCount": 3,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
       "systemKind": "string",
       "hasPrivateParams": false,
       "isProbe": false,
@@ -277,6 +307,7 @@
       "schemaVersion": 1,
       "method": "POST",
       "path": "/v1/messages",
+      "format": "claude",
       "headers": [],
       "clientIp": null,
       "bodyBytes": 467,
@@ -285,6 +316,10 @@
         "model": "claude-sonnet-4-5"
       },
       "messagesCount": 2,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
       "systemKind": "string",
       "hasPrivateParams": false,
       "isProbe": false,
@@ -322,6 +357,7 @@
       "schemaVersion": 1,
       "method": "POST",
       "path": "/v1/messages",
+      "format": "claude",
       "headers": [],
       "clientIp": null,
       "bodyBytes": 484,
@@ -330,6 +366,10 @@
         "model": "claude-sonnet-4-5"
       },
       "messagesCount": 2,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
       "systemKind": "string",
       "hasPrivateParams": false,
       "isProbe": false,
@@ -367,6 +407,7 @@
       "schemaVersion": 1,
       "method": "POST",
       "path": "/v1/messages",
+      "format": "claude",
       "headers": [],
       "clientIp": null,
       "bodyBytes": 469,
@@ -375,6 +416,10 @@
         "model": "claude-sonnet-4-5"
       },
       "messagesCount": 2,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
       "systemKind": "string",
       "hasPrivateParams": false,
       "isProbe": false,
@@ -413,6 +458,7 @@
       "schemaVersion": 1,
       "method": "POST",
       "path": "/v1/messages",
+      "format": "claude",
       "headers": [],
       "clientIp": null,
       "bodyBytes": 3227,
@@ -421,6 +467,10 @@
         "model": "claude-sonnet-4-5"
       },
       "messagesCount": 70,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
       "systemKind": "string",
       "hasPrivateParams": false,
       "isProbe": false,
@@ -768,6 +818,7 @@
       "schemaVersion": 1,
       "method": "POST",
       "path": "/v1/messages",
+      "format": "claude",
       "headers": [],
       "clientIp": null,
       "bodyBytes": 481,
@@ -776,6 +827,10 @@
         "model": "claude-sonnet-4-5"
       },
       "messagesCount": 1,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
       "systemKind": "string",
       "hasPrivateParams": false,
       "isProbe": false,
@@ -808,6 +863,7 @@
       "schemaVersion": 1,
       "method": "POST",
       "path": "/v1/messages",
+      "format": "claude",
       "headers": [],
       "clientIp": null,
       "bodyBytes": 454,
@@ -816,6 +872,10 @@
         "model": "claude-sonnet-4-5"
       },
       "messagesCount": 1,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
       "systemKind": "string",
       "hasPrivateParams": false,
       "isProbe": false,
@@ -848,6 +908,7 @@
       "schemaVersion": 1,
       "method": "POST",
       "path": "/v1/messages",
+      "format": "claude",
       "headers": [],
       "clientIp": null,
       "bodyBytes": 441,
@@ -856,6 +917,10 @@
         "model": "claude-sonnet-4-5"
       },
       "messagesCount": 1,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
       "systemKind": "string",
       "hasPrivateParams": false,
       "isProbe": false,
@@ -888,6 +953,7 @@
       "schemaVersion": 1,
       "method": "POST",
       "path": "/v1/messages",
+      "format": "claude",
       "headers": [],
       "clientIp": null,
       "bodyBytes": 366,
@@ -896,6 +962,10 @@
         "model": "claude-sonnet-4-5"
       },
       "messagesCount": 1,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
       "systemKind": "string",
       "hasPrivateParams": false,
       "isProbe": false,
@@ -928,6 +998,7 @@
       "schemaVersion": 1,
       "method": "POST",
       "path": "/v1/messages",
+      "format": "claude",
       "headers": [],
       "clientIp": null,
       "bodyBytes": 450,
@@ -936,6 +1007,10 @@
         "model": "claude-sonnet-4-5"
       },
       "messagesCount": 3,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
       "systemKind": "array",
       "hasPrivateParams": false,
       "isProbe": false,
@@ -973,6 +1048,7 @@
       "schemaVersion": 1,
       "method": "POST",
       "path": "/v1/messages",
+      "format": "claude",
       "headers": [],
       "clientIp": null,
       "bodyBytes": 258,
@@ -988,6 +1064,10 @@
         }
       },
       "messagesCount": 2,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
       "systemKind": "absent",
       "hasPrivateParams": true,
       "isProbe": false,
@@ -1025,6 +1105,7 @@
       "schemaVersion": 1,
       "method": "POST",
       "path": "/v1/messages",
+      "format": "claude",
       "headers": [],
       "clientIp": null,
       "bodyBytes": 227,
@@ -1042,6 +1123,10 @@
         }
       },
       "messagesCount": 1,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
       "systemKind": "absent",
       "hasPrivateParams": false,
       "isProbe": false,
@@ -1074,12 +1159,17 @@
       "schemaVersion": 1,
       "method": "POST",
       "path": "/v1/messages",
+      "format": "claude",
       "headers": [],
       "clientIp": null,
       "bodyBytes": 46,
       "bodyParseError": null,
       "topLevel": {},
       "messagesCount": 1,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
       "systemKind": "absent",
       "hasPrivateParams": false,
       "isProbe": true,
@@ -1112,12 +1202,17 @@
       "schemaVersion": 1,
       "method": "POST",
       "path": "/v1/messages",
+      "format": "claude",
       "headers": [],
       "clientIp": null,
       "bodyBytes": 52,
       "bodyParseError": null,
       "topLevel": {},
       "messagesCount": 1,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
       "systemKind": "absent",
       "hasPrivateParams": false,
       "isProbe": true,
@@ -1150,12 +1245,17 @@
       "schemaVersion": 1,
       "method": "POST",
       "path": "/v1/messages",
+      "format": "claude",
       "headers": [],
       "clientIp": null,
       "bodyBytes": 78,
       "bodyParseError": null,
       "topLevel": {},
       "messagesCount": 2,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
       "systemKind": "absent",
       "hasPrivateParams": false,
       "isProbe": false,
@@ -1193,12 +1293,17 @@
       "schemaVersion": 1,
       "method": "POST",
       "path": "/v1/messages",
+      "format": "claude",
       "headers": [],
       "clientIp": null,
       "bodyBytes": 71,
       "bodyParseError": null,
       "topLevel": {},
       "messagesCount": 1,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
       "systemKind": "absent",
       "hasPrivateParams": false,
       "isProbe": false,
@@ -1231,12 +1336,17 @@
       "schemaVersion": 1,
       "method": "POST",
       "path": "/v1/messages",
+      "format": "claude",
       "headers": [],
       "clientIp": null,
       "bodyBytes": 48,
       "bodyParseError": null,
       "topLevel": {},
       "messagesCount": 1,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
       "systemKind": "absent",
       "hasPrivateParams": false,
       "isProbe": false,
@@ -1269,12 +1379,17 @@
       "schemaVersion": 1,
       "method": "POST",
       "path": "/v1/messages",
+      "format": "claude",
       "headers": [],
       "clientIp": null,
       "bodyBytes": 111,
       "bodyParseError": null,
       "topLevel": {},
       "messagesCount": 1,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
       "systemKind": "absent",
       "hasPrivateParams": false,
       "isProbe": false,
@@ -1308,12 +1423,17 @@
       "schemaVersion": 1,
       "method": "POST",
       "path": "/v1/messages/count_tokens",
+      "format": "claude",
       "headers": [],
       "clientIp": null,
       "bodyBytes": 111,
       "bodyParseError": null,
       "topLevel": {},
       "messagesCount": 1,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
       "systemKind": "absent",
       "hasPrivateParams": false,
       "isProbe": false,
@@ -1347,12 +1467,17 @@
       "schemaVersion": 1,
       "method": "POST",
       "path": "/v1/messages",
+      "format": "claude",
       "headers": [],
       "clientIp": null,
       "bodyBytes": 74,
       "bodyParseError": null,
       "topLevel": {},
       "messagesCount": 1,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
       "systemKind": "absent",
       "hasPrivateParams": false,
       "isProbe": false,
@@ -1385,12 +1510,17 @@
       "schemaVersion": 1,
       "method": "POST",
       "path": "/v1/messages?beta=true",
+      "format": "claude",
       "headers": [],
       "clientIp": null,
       "bodyBytes": 115,
       "bodyParseError": null,
       "topLevel": {},
       "messagesCount": 1,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
       "systemKind": "absent",
       "hasPrivateParams": false,
       "isProbe": false,
@@ -1424,12 +1554,17 @@
       "schemaVersion": 1,
       "method": "POST",
       "path": "/v1/messages",
+      "format": "claude",
       "headers": [],
       "clientIp": null,
       "bodyBytes": 51,
       "bodyParseError": null,
       "topLevel": {},
       "messagesCount": 1,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
       "systemKind": "absent",
       "hasPrivateParams": false,
       "isProbe": false,
@@ -1462,12 +1597,17 @@
       "schemaVersion": 1,
       "method": "POST",
       "path": "/v1/messages",
+      "format": "claude",
       "headers": [],
       "clientIp": null,
       "bodyBytes": 133,
       "bodyParseError": null,
       "topLevel": {},
       "messagesCount": 1,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
       "systemKind": "absent",
       "hasPrivateParams": false,
       "isProbe": false,
@@ -1500,12 +1640,17 @@
       "schemaVersion": 1,
       "method": "POST",
       "path": "/v1/messages",
+      "format": "claude",
       "headers": [],
       "clientIp": null,
       "bodyBytes": 158,
       "bodyParseError": null,
       "topLevel": {},
       "messagesCount": 4,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
       "systemKind": "absent",
       "hasPrivateParams": false,
       "isProbe": false,
@@ -1553,12 +1698,17 @@
       "schemaVersion": 1,
       "method": "POST",
       "path": "/v1/messages",
+      "format": "claude",
       "headers": [],
       "clientIp": null,
       "bodyBytes": 43,
       "bodyParseError": null,
       "topLevel": {},
       "messagesCount": 1,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
       "systemKind": "absent",
       "hasPrivateParams": false,
       "isProbe": false,
@@ -1585,12 +1735,17 @@
       "schemaVersion": 1,
       "method": "POST",
       "path": "/v1/messages",
+      "format": "claude",
       "headers": [],
       "clientIp": null,
       "bodyBytes": 15,
       "bodyParseError": null,
       "topLevel": {},
       "messagesCount": 0,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
       "systemKind": "absent",
       "hasPrivateParams": false,
       "isProbe": false,
@@ -1603,6 +1758,864 @@
           "prefixBytes": 1
         },
         "tail": []
+      }
+    }
+  },
+  {
+    "name": "response_input_string",
+    "body": "{\"model\":\"gpt-5-codex\",\"instructions\":\"You are a coding assistant.\",\"tools\":[{\"type\":\"function\",\"name\":\"get_weather\",\"description\":\"Get the current weather\",\"parameters\":{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}}}}],\"input\":\"hello world\"}",
+    "path": "/v1/responses",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/responses",
+      "format": "response",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 252,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "gpt-5-codex"
+      },
+      "messagesCount": null,
+      "inputCount": 1,
+      "responseInputRectify": {
+        "action": "string_to_array",
+        "originalType": "string"
+      },
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": "b94d27b9934d3e08",
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "e3b0c44298fc1c14",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "5cf17db79a2826e6324f376acbc70493",
+          "prefixBytes": 122
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "b21560f71f6ba8935af0c12d01dad79f",
+            "prefixBytes": 180
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "response_input_empty_string",
+    "body": "{\"model\":\"gpt-5-codex\",\"instructions\":\"You are a coding assistant.\",\"tools\":[{\"type\":\"function\",\"name\":\"get_weather\",\"description\":\"Get the current weather\",\"parameters\":{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}}}}],\"input\":\"\"}",
+    "path": "/v1/responses",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/responses",
+      "format": "response",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 241,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "gpt-5-codex"
+      },
+      "messagesCount": null,
+      "inputCount": 0,
+      "responseInputRectify": {
+        "action": "empty_string_to_empty_array",
+        "originalType": "string"
+      },
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": null,
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "5cf17db79a2826e6324f376acbc70493",
+          "prefixBytes": 122
+        },
+        "tail": []
+      }
+    }
+  },
+  {
+    "name": "response_input_object_message",
+    "body": "{\"model\":\"gpt-5-codex\",\"instructions\":\"You are a coding assistant.\",\"tools\":[{\"type\":\"function\",\"name\":\"get_weather\",\"description\":\"Get the current weather\",\"parameters\":{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}}}}],\"input\":{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"hi there\"}]}}",
+    "path": "/v1/responses",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/responses",
+      "format": "response",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 306,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "gpt-5-codex"
+      },
+      "messagesCount": null,
+      "inputCount": 1,
+      "responseInputRectify": {
+        "action": "object_to_array",
+        "originalType": "object"
+      },
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": "9b96a1fe1d548cbb",
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "e3b0c44298fc1c14",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "5cf17db79a2826e6324f376acbc70493",
+          "prefixBytes": 122
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "ab1a88e3449890459da1f03e71efec68",
+            "prefixBytes": 177
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "response_input_object_tool_output",
+    "body": "{\"model\":\"gpt-5-codex\",\"instructions\":\"You are a coding assistant.\",\"tools\":[{\"type\":\"function\",\"name\":\"get_weather\",\"description\":\"Get the current weather\",\"parameters\":{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}}}}],\"input\":{\"type\":\"function_call_output\",\"call_id\":\"call_1\",\"output\":\"42\"}}",
+    "path": "/v1/responses",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/responses",
+      "format": "response",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 303,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "gpt-5-codex"
+      },
+      "messagesCount": null,
+      "inputCount": 1,
+      "responseInputRectify": {
+        "action": "object_to_array",
+        "originalType": "object"
+      },
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": null,
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "5cf17db79a2826e6324f376acbc70493",
+          "prefixBytes": 122
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "3e13be2c8d7d882cdce3d3b58bd9df48",
+            "prefixBytes": 146
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "response_input_object_unrecognized_passthrough",
+    "body": "{\"model\":\"gpt-5-codex\",\"instructions\":\"You are a coding assistant.\",\"tools\":[{\"type\":\"function\",\"name\":\"get_weather\",\"description\":\"Get the current weather\",\"parameters\":{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}}}}],\"input\":{\"foo\":\"bar\"}}",
+    "path": "/v1/responses",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/responses",
+      "format": "response",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 252,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "gpt-5-codex"
+      },
+      "messagesCount": null,
+      "inputCount": null,
+      "responseInputRectify": {
+        "action": "passthrough",
+        "originalType": "other"
+      },
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": null,
+      "fingerprint": null
+    }
+  },
+  {
+    "name": "response_input_null_passthrough",
+    "body": "{\"model\":\"gpt-5-codex\",\"instructions\":\"You are a coding assistant.\",\"tools\":[{\"type\":\"function\",\"name\":\"get_weather\",\"description\":\"Get the current weather\",\"parameters\":{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}}}}],\"input\":null}",
+    "path": "/v1/responses",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/responses",
+      "format": "response",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 243,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "gpt-5-codex"
+      },
+      "messagesCount": null,
+      "inputCount": null,
+      "responseInputRectify": {
+        "action": "passthrough",
+        "originalType": "other"
+      },
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": null,
+      "fingerprint": null
+    }
+  },
+  {
+    "name": "response_input_array_full_conversation",
+    "body": "{\"model\":\"gpt-5-codex\",\"instructions\":\"You are a coding assistant.\",\"tools\":[{\"type\":\"function\",\"name\":\"get_weather\",\"description\":\"Get the current weather\",\"parameters\":{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}}}}],\"input\":[{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"what's the weather in NYC?\"}]},{\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"get_weather\",\"arguments\":\"{\\\"city\\\":\\\"NYC\\\"}\"},{\"type\":\"function_call_output\",\"call_id\":\"call_1\",\"output\":\"sunny, 72F\"},{\"type\":\"reasoning\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"Checking the weather tool result.\"}]},{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"It's sunny, 72F.\"}]}]}",
+    "path": "/v1/responses",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/responses",
+      "format": "response",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 713,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "gpt-5-codex"
+      },
+      "messagesCount": null,
+      "inputCount": 5,
+      "responseInputRectify": {
+        "action": "passthrough",
+        "originalType": "array"
+      },
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": "9d9dd3ad61101f48",
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "e3b0c44298fc1c14",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "5cf17db79a2826e6324f376acbc70493",
+          "prefixBytes": 122
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "7761a90a5d2f7fc707d962d344d9f7f6",
+            "prefixBytes": 195
+          },
+          {
+            "depth": 2,
+            "fp": "07c20bede70a24be6480edb86e775b4a",
+            "prefixBytes": 236
+          },
+          {
+            "depth": 3,
+            "fp": "4e070d7518fefdb97dca69feb1cf73bf",
+            "prefixBytes": 268
+          },
+          {
+            "depth": 4,
+            "fp": "acc5f3ff5daee049cc128ff1af887601",
+            "prefixBytes": 347
+          },
+          {
+            "depth": 5,
+            "fp": "2b7b0bc8feb9ab21fe3d66e9406ad132",
+            "prefixBytes": 416
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "response_input_array_reasoning_falls_back_to_content",
+    "body": "{\"model\":\"gpt-5-codex\",\"instructions\":\"You are a coding assistant.\",\"tools\":[{\"type\":\"function\",\"name\":\"get_weather\",\"description\":\"Get the current weather\",\"parameters\":{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}}}}],\"input\":[{\"type\":\"reasoning\",\"content\":[{\"type\":\"reasoning_text\",\"text\":\"fallback text\"}]}]}",
+    "path": "/v1/responses",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/responses",
+      "format": "response",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 322,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "gpt-5-codex"
+      },
+      "messagesCount": null,
+      "inputCount": 1,
+      "responseInputRectify": {
+        "action": "passthrough",
+        "originalType": "array"
+      },
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "e3b0c44298fc1c14",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "5cf17db79a2826e6324f376acbc70493",
+          "prefixBytes": 122
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "ba9e128d47da8eeb989750631ea295ac",
+            "prefixBytes": 183
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "response_input_array_unknown_item_type",
+    "body": "{\"model\":\"gpt-5-codex\",\"instructions\":\"You are a coding assistant.\",\"tools\":[{\"type\":\"function\",\"name\":\"get_weather\",\"description\":\"Get the current weather\",\"parameters\":{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}}}}],\"input\":[{\"type\":\"item_reference\",\"id\":\"ref_1\"}]}",
+    "path": "/v1/responses",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/responses",
+      "format": "response",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 279,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "gpt-5-codex"
+      },
+      "messagesCount": null,
+      "inputCount": 1,
+      "responseInputRectify": {
+        "action": "passthrough",
+        "originalType": "array"
+      },
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": null,
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "5cf17db79a2826e6324f376acbc70493",
+          "prefixBytes": 122
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "605e81c5b51780cbfbc23a5e1afd0cdd",
+            "prefixBytes": 163
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "response_codex_initial_text_hash",
+    "body": "{\"model\":\"gpt-5-codex\",\"instructions\":\"You are a coding assistant.\",\"tools\":[{\"type\":\"function\",\"name\":\"get_weather\",\"description\":\"Get the current weather\",\"parameters\":{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}}}}],\"input\":[{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"first turn text\"}]},{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"reply\"}]}]}",
+    "path": "/v1/responses",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/responses",
+      "format": "response",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 420,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "gpt-5-codex"
+      },
+      "messagesCount": null,
+      "inputCount": 2,
+      "responseInputRectify": {
+        "action": "passthrough",
+        "originalType": "array"
+      },
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": "2f092b6cb2a84264",
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "cbe5cfdf7c2118a9",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "5cf17db79a2826e6324f376acbc70493",
+          "prefixBytes": 122
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "33d9b7899428a8f794ff3f0fce2cfc15",
+            "prefixBytes": 184
+          },
+          {
+            "depth": 2,
+            "fp": "c802988d937ff95ee8b84ee4ff7f1313",
+            "prefixBytes": 242
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "remote_compaction_v2_array_item",
+    "body": "{\"model\":\"gpt-5-codex\",\"instructions\":\"You are a coding assistant.\",\"tools\":[{\"type\":\"function\",\"name\":\"get_weather\",\"description\":\"Get the current weather\",\"parameters\":{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}}}}],\"input\":[{\"type\":\"compaction_trigger\",\"session_id\":\"s1\"}]}",
+    "path": "/v1/responses",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/responses",
+      "format": "response",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 288,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "gpt-5-codex"
+      },
+      "messagesCount": null,
+      "inputCount": 1,
+      "responseInputRectify": {
+        "action": "passthrough",
+        "originalType": "array"
+      },
+      "isRemoteCompactionV2": true,
+      "codexInitialTextHash": null,
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": null,
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "5cf17db79a2826e6324f376acbc70493",
+          "prefixBytes": 122
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "f86002be520f9afd3a2cb02b0830e14f",
+            "prefixBytes": 189
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "remote_compaction_v2_single_object_shorthand",
+    "body": "{\"model\":\"gpt-5-codex\",\"instructions\":\"You are a coding assistant.\",\"tools\":[{\"type\":\"function\",\"name\":\"get_weather\",\"description\":\"Get the current weather\",\"parameters\":{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}}}}],\"input\":{\"type\":\"compaction_trigger\",\"session_id\":\"s1\"}}",
+    "path": "/v1/responses",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/responses",
+      "format": "response",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 286,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "gpt-5-codex"
+      },
+      "messagesCount": null,
+      "inputCount": 1,
+      "responseInputRectify": {
+        "action": "object_to_array",
+        "originalType": "object"
+      },
+      "isRemoteCompactionV2": true,
+      "codexInitialTextHash": null,
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": null,
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "5cf17db79a2826e6324f376acbc70493",
+          "prefixBytes": 122
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "f86002be520f9afd3a2cb02b0830e14f",
+            "prefixBytes": 189
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "remote_compaction_v2_not_triggered",
+    "body": "{\"model\":\"gpt-5-codex\",\"instructions\":\"You are a coding assistant.\",\"tools\":[{\"type\":\"function\",\"name\":\"get_weather\",\"description\":\"Get the current weather\",\"parameters\":{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}}}}],\"input\":[{\"type\":\"message\",\"role\":\"user\",\"content\":\"hi\"}]}",
+    "path": "/v1/responses",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/responses",
+      "format": "response",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 288,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "gpt-5-codex"
+      },
+      "messagesCount": null,
+      "inputCount": 1,
+      "responseInputRectify": {
+        "action": "passthrough",
+        "originalType": "array"
+      },
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": "8f434346648f6b96",
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "8f434346648f6b96",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "5cf17db79a2826e6324f376acbc70493",
+          "prefixBytes": 122
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "e79c129233997d2c33e42c847523cc86",
+            "prefixBytes": 138
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "remote_compaction_v2_wrong_path_not_triggered",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}",
+    "path": "/v1/messages",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/messages",
+      "format": "claude",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 48,
+      "bodyParseError": null,
+      "topLevel": {},
+      "messagesCount": 1,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "2cf24dba5fb0a30e",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "ffe679bb831c95b67dc17819c63c5090",
+          "prefixBytes": 1
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "22ea0c6598e6a03b6d995e9a95f523e3",
+            "prefixBytes": 17
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "openai_chat_system_user_assistant_tool",
+    "body": "{\"model\":\"gpt-4o\",\"messages\":[{\"role\":\"system\",\"content\":\"You are a helpful assistant.\"},{\"role\":\"user\",\"content\":\"What's the weather in NYC?\"},{\"role\":\"assistant\",\"content\":null,\"tool_calls\":[{\"id\":\"call_abc\",\"type\":\"function\",\"function\":{\"name\":\"get_weather\",\"arguments\":\"{\\\"city\\\":\\\"NYC\\\"}\"}}]},{\"role\":\"tool\",\"tool_call_id\":\"call_abc\",\"content\":\"sunny, 72F\"},{\"role\":\"assistant\",\"content\":\"It's sunny and 72F in NYC.\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"get_weather\",\"description\":\"Get the current weather\",\"parameters\":{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}}}}}],\"stream_options\":{\"include_usage\":true}}",
+    "path": "/v1/chat/completions",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "format": "openai",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 639,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "gpt-4o",
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "messagesCount": 5,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "326f03859ffda3cc",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "9d9c870a4a21eb6f444f695853c788b9",
+          "prefixBytes": 131
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "e66a18db70e8cf745a09579afe913969",
+            "prefixBytes": 171
+          },
+          {
+            "depth": 2,
+            "fp": "3f94b7e42ea3515ec0583159d6733696",
+            "prefixBytes": 227
+          },
+          {
+            "depth": 3,
+            "fp": "3e95522d30f979b95df6216032d66833",
+            "prefixBytes": 263
+          },
+          {
+            "depth": 4,
+            "fp": "350c251f84e6ecdbd1f46925a750c008",
+            "prefixBytes": 308
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "openai_chat_developer_leading_message",
+    "body": "{\"model\":\"gpt-4o\",\"messages\":[{\"role\":\"developer\",\"content\":\"Follow house style.\"},{\"role\":\"user\",\"content\":\"hi\"}]}",
+    "path": "/v1/chat/completions",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "format": "openai",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 115,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "gpt-4o"
+      },
+      "messagesCount": 2,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "f69a10b1714ca2c8",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "1f4b3d03ba63dd5a600c2c922823e2e9",
+          "prefixBytes": 31
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "f371e38548492f65a1717138bfd41da7",
+            "prefixBytes": 47
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "openai_chat_multimodal_content_array",
+    "body": "{\"model\":\"gpt-4o\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"describe this\"},{\"type\":\"image_url\",\"image_url\":{\"url\":\"https://a.example/x.png\"}}]}]}",
+    "path": "/v1/chat/completions",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "format": "openai",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 165,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "gpt-4o"
+      },
+      "messagesCount": 1,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": false,
+      "isWarmup": false,
+      "messagesHash": "4681bc58962af93a",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "ffe679bb831c95b67dc17819c63c5090",
+          "prefixBytes": 1
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "77aab21f8c6c862b471275cd886acce7",
+            "prefixBytes": 122
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "openai_chat_probe_like",
+    "body": "{\"model\":\"gpt-4o\",\"messages\":[{\"role\":\"user\",\"content\":\"foo\"}]}",
+    "path": "/v1/chat/completions",
+    "method": "POST",
+    "headers": [],
+    "clientIp": null,
+    "expected": {
+      "schemaVersion": 1,
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "format": "openai",
+      "headers": [],
+      "clientIp": null,
+      "bodyBytes": 63,
+      "bodyParseError": null,
+      "topLevel": {
+        "model": "gpt-4o"
+      },
+      "messagesCount": 1,
+      "inputCount": null,
+      "responseInputRectify": null,
+      "isRemoteCompactionV2": false,
+      "codexInitialTextHash": null,
+      "systemKind": "absent",
+      "hasPrivateParams": false,
+      "isProbe": true,
+      "isWarmup": false,
+      "messagesHash": "2c26b46b68ffc68f",
+      "fingerprint": {
+        "sys": {
+          "depth": 0,
+          "fp": "ffe679bb831c95b67dc17819c63c5090",
+          "prefixBytes": 1
+        },
+        "tail": [
+          {
+            "depth": 1,
+            "fp": "6cd59ce0a0f1c827ea17a14440d13872",
+            "prefixBytes": 18
+          }
+        ]
       }
     }
   }

@@ -1,0 +1,142 @@
+[
+  {
+    "name": "not_a_response_object_untouched",
+    "inputJson": "{\"object\":\"chat.completion\",\"output\":null}",
+    "expectedApplied": false,
+    "expectedOutputJson": "{\"object\":\"chat.completion\",\"output\":null}",
+    "expectedFixes": []
+  },
+  {
+    "name": "no_object_field_untouched",
+    "inputJson": "{\"output\":null}",
+    "expectedApplied": false,
+    "expectedOutputJson": "{\"output\":null}",
+    "expectedFixes": []
+  },
+  {
+    "name": "null_output_becomes_empty_array",
+    "inputJson": "{\"object\":\"response\",\"output\":null}",
+    "expectedApplied": true,
+    "expectedOutputJson": "{\"object\":\"response\",\"output\":[]}",
+    "expectedFixes": [
+      "output"
+    ]
+  },
+  {
+    "name": "null_tools_becomes_empty_array",
+    "inputJson": "{\"object\":\"response\",\"tools\":null}",
+    "expectedApplied": true,
+    "expectedOutputJson": "{\"object\":\"response\",\"tools\":[]}",
+    "expectedFixes": [
+      "tools"
+    ]
+  },
+  {
+    "name": "both_null_output_and_tools",
+    "inputJson": "{\"object\":\"response\",\"output\":null,\"tools\":null}",
+    "expectedApplied": true,
+    "expectedOutputJson": "{\"object\":\"response\",\"output\":[],\"tools\":[]}",
+    "expectedFixes": [
+      "output",
+      "tools"
+    ]
+  },
+  {
+    "name": "output_item_null_content_becomes_array",
+    "inputJson": "{\"object\":\"response\",\"output\":[{\"type\":\"message\",\"content\":null}]}",
+    "expectedApplied": true,
+    "expectedOutputJson": "{\"object\":\"response\",\"output\":[{\"type\":\"message\",\"content\":[]}]}",
+    "expectedFixes": [
+      "output[0].content"
+    ]
+  },
+  {
+    "name": "output_item_content_part_null_text",
+    "inputJson": "{\"object\":\"response\",\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":null}]}]}",
+    "expectedApplied": true,
+    "expectedOutputJson": "{\"object\":\"response\",\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"\"}]}]}",
+    "expectedFixes": [
+      "output[0].content[0].text"
+    ]
+  },
+  {
+    "name": "output_item_content_part_null_annotations_and_logprobs",
+    "inputJson": "{\"object\":\"response\",\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"ok\",\"annotations\":null,\"logprobs\":null}]}]}",
+    "expectedApplied": true,
+    "expectedOutputJson": "{\"object\":\"response\",\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"ok\",\"annotations\":[],\"logprobs\":[]}]}]}",
+    "expectedFixes": [
+      "output[0].content[0].annotations",
+      "output[0].content[0].logprobs"
+    ]
+  },
+  {
+    "name": "output_item_null_summary_becomes_array",
+    "inputJson": "{\"object\":\"response\",\"output\":[{\"type\":\"reasoning\",\"summary\":null}]}",
+    "expectedApplied": true,
+    "expectedOutputJson": "{\"object\":\"response\",\"output\":[{\"type\":\"reasoning\",\"summary\":[]}]}",
+    "expectedFixes": [
+      "output[0].summary"
+    ]
+  },
+  {
+    "name": "output_item_object_arguments_stringified",
+    "inputJson": "{\"object\":\"response\",\"output\":[{\"type\":\"function_call\",\"name\":\"f\",\"arguments\":{\"a\":1,\"b\":\"x\"}}]}",
+    "expectedApplied": true,
+    "expectedOutputJson": "{\"object\":\"response\",\"output\":[{\"type\":\"function_call\",\"name\":\"f\",\"arguments\":\"{\\\"a\\\":1,\\\"b\\\":\\\"x\\\"}\"}]}",
+    "expectedFixes": [
+      "output[0].arguments"
+    ]
+  },
+  {
+    "name": "output_item_null_arguments_stringified_to_empty_object",
+    "inputJson": "{\"object\":\"response\",\"output\":[{\"type\":\"function_call\",\"name\":\"f\",\"arguments\":null}]}",
+    "expectedApplied": true,
+    "expectedOutputJson": "{\"object\":\"response\",\"output\":[{\"type\":\"function_call\",\"name\":\"f\",\"arguments\":\"{}\"}]}",
+    "expectedFixes": [
+      "output[0].arguments"
+    ]
+  },
+  {
+    "name": "output_item_string_arguments_untouched",
+    "inputJson": "{\"object\":\"response\",\"output\":[{\"type\":\"function_call\",\"name\":\"f\",\"arguments\":\"{\\\"a\\\":1}\"}]}",
+    "expectedApplied": false,
+    "expectedOutputJson": "{\"object\":\"response\",\"output\":[{\"type\":\"function_call\",\"name\":\"f\",\"arguments\":\"{\\\"a\\\":1}\"}]}",
+    "expectedFixes": []
+  },
+  {
+    "name": "output_item_nested_function_arguments_stringified",
+    "inputJson": "{\"object\":\"response\",\"output\":[{\"type\":\"custom\",\"function\":{\"name\":\"f\",\"arguments\":[1,2,3]}}]}",
+    "expectedApplied": true,
+    "expectedOutputJson": "{\"object\":\"response\",\"output\":[{\"type\":\"custom\",\"function\":{\"name\":\"f\",\"arguments\":\"[1,2,3]\"}}]}",
+    "expectedFixes": [
+      "output[0].function.arguments"
+    ]
+  },
+  {
+    "name": "output_item_tool_calls_function_arguments_stringified",
+    "inputJson": "{\"object\":\"response\",\"output\":[{\"type\":\"message\",\"tool_calls\":[{\"id\":\"call_1\",\"function\":{\"name\":\"f\",\"arguments\":{\"x\":true}}}]}]}",
+    "expectedApplied": true,
+    "expectedOutputJson": "{\"object\":\"response\",\"output\":[{\"type\":\"message\",\"tool_calls\":[{\"id\":\"call_1\",\"function\":{\"name\":\"f\",\"arguments\":\"{\\\"x\\\":true}\"}}]}]}",
+    "expectedFixes": [
+      "output[0].tool_calls[0].function.arguments"
+    ]
+  },
+  {
+    "name": "output_array_with_multiple_items_mixed",
+    "inputJson": "{\"object\":\"response\",\"output\":[{\"type\":\"message\",\"content\":null},{\"type\":\"reasoning\",\"summary\":null},{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"already set\"}]}],\"tools\":null}",
+    "expectedApplied": true,
+    "expectedOutputJson": "{\"object\":\"response\",\"output\":[{\"type\":\"message\",\"content\":[]},{\"type\":\"reasoning\",\"summary\":[]},{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"already set\"}]}],\"tools\":[]}",
+    "expectedFixes": [
+      "output[0].content",
+      "output[1].summary",
+      "tools"
+    ]
+  },
+  {
+    "name": "fully_clean_payload_no_fixes",
+    "inputJson": "{\"object\":\"response\",\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"hi\"}]}],\"tools\":[{\"type\":\"function\",\"name\":\"f\"}]}",
+    "expectedApplied": false,
+    "expectedOutputJson": "{\"object\":\"response\",\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"hi\"}]}],\"tools\":[{\"type\":\"function\",\"name\":\"f\"}]}",
+    "expectedFixes": []
+  }
+]

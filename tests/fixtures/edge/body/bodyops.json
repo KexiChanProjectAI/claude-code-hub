@@ -458,5 +458,170 @@
     ],
     "expectedBody": "{\"model\":\"new-model\",\"system\":[{\"type\":\"text\",\"text\":\"sys\",\"cache_control\":{\"type\":\"ephemeral\",\"ttl\":\"1h\"}}]}",
     "expectedOpResults": {}
+  },
+  {
+    "name": "normalize_response_input_string",
+    "body": "{\"input\":\"hello\"}",
+    "ops": [
+      {
+        "op": "normalize_response_input"
+      }
+    ],
+    "expectedBody": "{\"input\":[{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"hello\"}]}]}",
+    "expectedOpResults": {}
+  },
+  {
+    "name": "normalize_response_input_empty_string",
+    "body": "{\"input\":\"\"}",
+    "ops": [
+      {
+        "op": "normalize_response_input"
+      }
+    ],
+    "expectedBody": "{\"input\":[]}",
+    "expectedOpResults": {}
+  },
+  {
+    "name": "normalize_response_input_object",
+    "body": "{\"input\":{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"hi\"}]}}",
+    "ops": [
+      {
+        "op": "normalize_response_input"
+      }
+    ],
+    "expectedBody": "{\"input\":[{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"hi\"}]}]}",
+    "expectedOpResults": {}
+  },
+  {
+    "name": "normalize_response_input_object_unrecognized_passthrough",
+    "body": "{\"input\":{\"foo\":\"bar\"}}",
+    "ops": [
+      {
+        "op": "normalize_response_input"
+      }
+    ],
+    "expectedBody": "{\"input\":{\"foo\":\"bar\"}}",
+    "expectedOpResults": {}
+  },
+  {
+    "name": "normalize_response_input_array_passthrough",
+    "body": "{\"input\":[{\"type\":\"message\",\"role\":\"user\",\"content\":[]}]}",
+    "ops": [
+      {
+        "op": "normalize_response_input"
+      }
+    ],
+    "expectedBody": "{\"input\":[{\"type\":\"message\",\"role\":\"user\",\"content\":[]}]}",
+    "expectedOpResults": {}
+  },
+  {
+    "name": "normalize_response_input_absent_noop",
+    "body": "{\"model\":\"gpt-5-codex\"}",
+    "ops": [
+      {
+        "op": "normalize_response_input"
+      }
+    ],
+    "expectedBody": "{\"model\":\"gpt-5-codex\"}",
+    "expectedOpResults": {}
+  },
+  {
+    "name": "normalize_response_input_null_passthrough",
+    "body": "{\"input\":null}",
+    "ops": [
+      {
+        "op": "normalize_response_input"
+      }
+    ],
+    "expectedBody": "{\"input\":null}",
+    "expectedOpResults": {}
+  },
+  {
+    "name": "normalize_response_input_with_set_top_level_reasoning",
+    "body": "{\"input\":\"hi\",\"reasoning\":{\"effort\":\"low\"}}",
+    "ops": [
+      {
+        "op": "set_top_level",
+        "key": "reasoning",
+        "value": {
+          "effort": "high"
+        }
+      },
+      {
+        "op": "normalize_response_input"
+      }
+    ],
+    "expectedBody": "{\"input\":[{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"hi\"}]}],\"reasoning\":{\"effort\":\"high\"}}",
+    "expectedOpResults": {}
+  },
+  {
+    "name": "normalize_response_input_with_set_top_level_text",
+    "body": "{\"input\":\"hi\"}",
+    "ops": [
+      {
+        "op": "set_top_level",
+        "key": "text",
+        "value": {
+          "format": {
+            "type": "text"
+          }
+        }
+      },
+      {
+        "op": "normalize_response_input"
+      }
+    ],
+    "expectedBody": "{\"input\":[{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"hi\"}]}],\"text\":{\"format\":{\"type\":\"text\"}}}",
+    "expectedOpResults": {}
+  },
+  {
+    "name": "normalize_response_input_with_set_top_level_parallel_tool_calls",
+    "body": "{\"input\":{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"hi\"}]}}",
+    "ops": [
+      {
+        "op": "set_top_level",
+        "key": "parallel_tool_calls",
+        "value": false
+      },
+      {
+        "op": "normalize_response_input"
+      }
+    ],
+    "expectedBody": "{\"input\":[{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"hi\"}]}],\"parallel_tool_calls\":false}",
+    "expectedOpResults": {}
+  },
+  {
+    "name": "normalize_response_input_with_set_top_level_service_tier",
+    "body": "{\"input\":\"\"}",
+    "ops": [
+      {
+        "op": "set_top_level",
+        "key": "service_tier",
+        "value": "priority"
+      },
+      {
+        "op": "normalize_response_input"
+      }
+    ],
+    "expectedBody": "{\"input\":[],\"service_tier\":\"priority\"}",
+    "expectedOpResults": {}
+  },
+  {
+    "name": "normalize_response_input_with_set_top_level_stream_options",
+    "body": "{\"input\":[{\"type\":\"message\",\"role\":\"user\",\"content\":[]}]}",
+    "ops": [
+      {
+        "op": "set_top_level",
+        "key": "stream_options",
+        "value": {
+          "include_usage": true
+        }
+      },
+      {
+        "op": "normalize_response_input"
+      }
+    ],
+    "expectedBody": "{\"input\":[{\"type\":\"message\",\"role\":\"user\",\"content\":[]}],\"stream_options\":{\"include_usage\":true}}",
+    "expectedOpResults": {}
   }
 ]

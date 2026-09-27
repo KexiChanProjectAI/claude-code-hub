@@ -38,7 +38,12 @@ vi.mock("@/repository/message", () => ({
   updateMessageRequestCostWithBreakdown: vi.fn(),
   updateMessageRequestWinnerCost: vi.fn(),
   updateMessageRequestDetails: vi.fn(),
-  updateMessageRequestDetailsDurably: vi.fn(async () => true),
+  updateMessageRequestDetailsDurably: vi.fn(
+    async (_id: number, _details: unknown, options?: { onCommitted?: () => unknown }) => {
+      await options?.onCommitted?.();
+      return true;
+    }
+  ),
   updateMessageRequestDetailsIfUnfinalized: vi.fn(),
   updateMessageRequestDuration: vi.fn(),
 }));
@@ -88,6 +93,7 @@ import {
 import { ProxySession } from "@/app/v1/_lib/proxy/session";
 import { setDeferredStreamingFinalization } from "@/app/v1/_lib/proxy/stream-finalization";
 import { RateLimitService } from "@/lib/rate-limit";
+import { SessionManager } from "@/lib/session-manager";
 import {
   updateMessageRequestCostWithBreakdown,
   updateMessageRequestDetailsDurably,
@@ -113,15 +119,43 @@ const PROVIDER = {
   swapCacheTtlBilling: false,
 };
 
-function makeSession(stream: boolean): ProxySession {
+type SessionFormat = "claude" | "response" | "openai";
+
+const FORMAT_SETUP: Record<
+  SessionFormat,
+  { path: string; providerType: string; model: string; body: Record<string, unknown> }
+> = {
+  claude: {
+    path: "/v1/messages",
+    providerType: "claude",
+    model: "claude-sonnet-4-5",
+    body: { messages: [{}] },
+  },
+  response: {
+    path: "/v1/responses",
+    providerType: "codex",
+    model: "gpt-5-codex",
+    body: { input: [{}] },
+  },
+  openai: {
+    path: "/v1/chat/completions",
+    providerType: "openai-compatible",
+    model: "gpt-4.1",
+    body: { messages: [{}] },
+  },
+};
+
+function makeSession(stream: boolean, format: SessionFormat = "claude"): ProxySession {
+  const setup = FORMAT_SETUP[format];
   const session = ProxySession.fromEdgeDigest({
     receivedAtMs: Date.now() - 2000,
     method: "POST",
-    requestUrl: new URL("http://edge.local/v1/messages"),
+    requestUrl: new URL(`http://edge.local${setup.path}`),
     headers: new Headers({ "user-agent": "claude-cli/2.1.90" }),
-    syntheticMessage: { model: "claude-sonnet-4-5", stream, messages: [{}] },
+    syntheticMessage: { model: setup.model, stream, ...setup.body },
     hints: { messagesHash: null, fingerprint: null, isProbe: false, isWarmup: false },
   });
+  session.setOriginalFormat(format);
   const user = { id: 1, name: "u", dailyResetTime: "00:00", dailyResetMode: "fixed" };
   const key = { id: 2, name: "k", dailyResetTime: "00:00", dailyResetMode: "fixed" };
   session.setAuthState({ user, key, apiKey: "sk", success: true } as never);
@@ -133,10 +167,10 @@ function makeSession(stream: boolean): ProxySession {
     apiKey: "sk",
   } as never);
   session.setSessionId("sess_p");
-  session.setProvider(PROVIDER as never);
+  session.setProvider({ ...PROVIDER, providerType: setup.providerType } as never);
   Object.assign(session, {
     getResolvedPricingByBillingSource: async () => ({
-      resolvedModelName: "claude-sonnet-4-5",
+      resolvedModelName: setup.model,
       resolvedPricingProviderKey: "anthropic",
       source: "cloud_exact" as const,
       priceData: PRICE,
@@ -360,5 +394,158 @@ describe("edge settlement parity", () => {
     const edgeDetails = vi.mocked(updateMessageRequestDetailsDurably).mock.calls.at(-1);
     expect(comparableTerminalDetails(edgeDetails)).toEqual(comparableTerminalDetails(localDetails));
     expect(vi.mocked(RateLimitService.trackCost).mock.calls.at(-1)).toEqual(localTrack);
+  });
+
+  async function streamParity(format: SessionFormat, fullSse: string) {
+    const localSession = makeSession(true, format);
+    setDeferredStreamingFinalization(localSession, deferredMeta());
+    const response = await ProxyResponseHandler.dispatch(
+      localSession,
+      new Response(fullSse, { status: 200, headers: { "content-type": "text/event-stream" } })
+    );
+    await response.text();
+    await drain();
+    const localDetails = vi.mocked(updateMessageRequestDetailsDurably).mock.calls.at(-1);
+    const localCost = vi.mocked(updateMessageRequestCostWithBreakdown).mock.calls.at(-1);
+    const localTrack = vi.mocked(RateLimitService.trackCost).mock.calls.at(-1);
+    const localCacheKey = vi.mocked(SessionManager.updateSessionWithCodexCacheKey).mock.calls;
+    expect(localDetails).toBeDefined();
+    const localCacheKeyCalls = [...localCacheKey];
+    vi.clearAllMocks();
+
+    const edgeSession = makeSession(true, format);
+    setDeferredStreamingFinalization(edgeSession, deferredMeta());
+    await settleEdgeStreamCompletion(edgeSession, {
+      allContent: fullSse,
+      upstreamStatusCode: 200,
+      streamEndedNormally: true,
+      clientAborted: false,
+      protocolObservation: {
+        sawContent: true,
+        sawTerminal: true,
+        sawIncomplete: false,
+        observationIncomplete: false,
+        failure: null,
+      },
+      firstByteSeen: true,
+      responseHeaders: new Headers({ "content-type": "text/event-stream" }),
+      sseEventCount: 6,
+    });
+    await drain();
+    const edgeDetails = vi.mocked(updateMessageRequestDetailsDurably).mock.calls.at(-1);
+    expect(comparableTerminalDetails(edgeDetails)).toEqual(comparableTerminalDetails(localDetails));
+    expect(vi.mocked(updateMessageRequestCostWithBreakdown).mock.calls.at(-1)).toEqual(localCost);
+    expect(vi.mocked(RateLimitService.trackCost).mock.calls.at(-1)).toEqual(localTrack);
+    expect(vi.mocked(SessionManager.updateSessionWithCodexCacheKey).mock.calls).toEqual(
+      localCacheKeyCalls
+    );
+    return { details: comparableTerminalDetails(edgeDetails), cacheKeyCalls: localCacheKeyCalls };
+  }
+
+  test("codex responses stream matches the local finalization", async () => {
+    vi.mocked(SessionManager.extractCodexPromptCacheKey).mockImplementation(
+      (data: Record<string, unknown>) =>
+        ((data.response as Record<string, unknown> | undefined)?.prompt_cache_key as string) ?? null
+    );
+    const response = {
+      id: "resp_1",
+      object: "response",
+      model: "gpt-5-codex-2025",
+      status: "completed",
+      prompt_cache_key: "pck-9",
+      service_tier: "default",
+      usage: {
+        input_tokens: 2000,
+        input_tokens_details: { cached_tokens: 1500 },
+        output_tokens: 90,
+        output_tokens_details: { reasoning_tokens: 40 },
+        total_tokens: 2090,
+      },
+    };
+    const sse =
+      frame("response.created", {
+        type: "response.created",
+        response: { ...response, status: "in_progress", usage: null },
+      }) +
+      frame("response.output_text.delta", {
+        type: "response.output_text.delta",
+        item_id: "m1",
+        delta: "hello",
+      }) +
+      frame("response.completed", { type: "response.completed", response });
+    const { details, cacheKeyCalls } = await streamParity("response", sse);
+    expect(cacheKeyCalls).toEqual([["sess_p", "pck-9", 9, 2]]);
+    expect(details).toMatchObject({
+      statusCode: 200,
+      outputTokens: 90,
+      cacheReadInputTokens: 1500,
+      actualResponseModel: "gpt-5-codex-2025",
+    });
+  });
+
+  test("chat completions stream matches the local finalization", async () => {
+    const chunk = (extra: Record<string, unknown>) =>
+      `data: ${JSON.stringify({ id: "c1", object: "chat.completion.chunk", model: "gpt-4.1-2025", ...extra })}\n\n`;
+    const sse =
+      chunk({ choices: [{ index: 0, delta: { role: "assistant", content: "" } }] }) +
+      chunk({ choices: [{ index: 0, delta: { content: "hi" } }] }) +
+      chunk({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }) +
+      chunk({
+        choices: [],
+        usage: {
+          prompt_tokens: 50,
+          completion_tokens: 12,
+          total_tokens: 62,
+          prompt_tokens_details: { cached_tokens: 20 },
+        },
+      }) +
+      "data: [DONE]\n\n";
+    const { details } = await streamParity("openai", sse);
+    expect(details).toMatchObject({
+      statusCode: 200,
+      outputTokens: 12,
+      actualResponseModel: "gpt-4.1-2025",
+    });
+  });
+
+  test("codex non-stream completion binds the prompt cache key like the local path", async () => {
+    vi.mocked(SessionManager.extractCodexPromptCacheKey).mockImplementation(
+      (data: Record<string, unknown>) => (data.prompt_cache_key as string) ?? null
+    );
+    const body = JSON.stringify({
+      id: "resp_2",
+      object: "response",
+      model: "gpt-5-codex-2025",
+      status: "completed",
+      prompt_cache_key: "pck-2",
+      output: [],
+      usage: { input_tokens: 300, output_tokens: 20, input_tokens_details: { cached_tokens: 0 } },
+    });
+    const localSession = makeSession(false, "response");
+    const response = await ProxyResponseHandler.dispatch(
+      localSession,
+      new Response(body, { status: 200, headers: { "content-type": "application/json" } })
+    );
+    await response.text();
+    await drain();
+    const localDetails = vi.mocked(updateMessageRequestDetailsDurably).mock.calls.at(-1);
+    const localCacheKeyCalls = [
+      ...vi.mocked(SessionManager.updateSessionWithCodexCacheKey).mock.calls,
+    ];
+    expect(localCacheKeyCalls.length).toBe(1);
+    vi.clearAllMocks();
+
+    const edgeSession = makeSession(false, "response");
+    await settleEdgeNonStreamCompletion(edgeSession, {
+      responseText: body,
+      statusCode: 200,
+      responseHeaders: new Headers({ "content-type": "application/json" }),
+    });
+    await drain();
+    const edgeDetails = vi.mocked(updateMessageRequestDetailsDurably).mock.calls.at(-1);
+    expect(comparableTerminalDetails(edgeDetails)).toEqual(comparableTerminalDetails(localDetails));
+    expect(vi.mocked(SessionManager.updateSessionWithCodexCacheKey).mock.calls).toEqual(
+      localCacheKeyCalls
+    );
   });
 });

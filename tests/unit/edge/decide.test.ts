@@ -37,6 +37,10 @@ const mocks = vi.hoisted(() => ({
   })),
   releaseEdgeConcurrency: vi.fn(async () => {}),
   releaseProviderSessionRef: vi.fn(),
+  startHedge: vi.fn(async () => ({
+    kind: "step",
+    step: { stepId: "555:h1:1", provider: { id: 9 } },
+  })),
 }));
 
 const PROVIDER = {
@@ -106,6 +110,10 @@ vi.mock("@/app/v1/_lib/edge/coordinator", () => ({
   planNextSerialStep: mocks.planNextSerialStep,
   releaseEdgeConcurrency: mocks.releaseEdgeConcurrency,
 }));
+vi.mock("@/app/v1/_lib/edge/hedge-coordinator", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/app/v1/_lib/edge/hedge-coordinator")>();
+  return { ...actual, startHedge: mocks.startHedge };
+});
 vi.mock("@/app/v1/_lib/proxy/forwarder", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/app/v1/_lib/proxy/forwarder")>();
   return {
@@ -219,17 +227,59 @@ describe("edge decide", () => {
     });
   });
 
-  test("streaming requests that would hedge are delegated until hedge support lands", async () => {
+  test("streaming requests with a first-byte threshold run in hedge mode", async () => {
     selectProvider({ firstByteTimeoutStreamingMs: 5000 });
-    expect(await handleEdgeDecide(digest(), "edge-1")).toEqual({
-      action: "delegate",
-      reason: "hedge_pending",
+    mocks.settings = { ...mocks.settings, legacyHedgeMaxInFlight: 3, billHedgeLosers: true };
+    expect(await handleEdgeDecide(digest(), "edge-1")).toMatchObject({
+      action: "execute",
+      step: { stepId: "555:h1:1" },
     });
+    expect(mocks.startHedge).toHaveBeenCalledTimes(1);
+    expect(mocks.enterProvider).not.toHaveBeenCalled();
+    const state = await loadEdgeState(555);
+    expect(state?.mode).toBe("hedge");
+    expect(state?.hedge).toMatchObject({
+      maxInFlight: 3,
+      billLosers: true,
+      initialProviderId: 9,
+      noMoreProviders: false,
+    });
+    expect(state?.session.routingTrace?.mode).toBe("legacy_hedge");
+
     const nonStream = digest(
       {},
       { model: "m", stream: false, messages: [{ role: "user", content: "x" }] }
     );
     expect(await handleEdgeDecide(nonStream, "edge-1")).toMatchObject({ action: "execute" });
+    expect(mocks.planNextSerialStep).toHaveBeenCalledTimes(1);
+  });
+
+  test("responses requests record input normalization and replay it as the first op", async () => {
+    selectProvider({ providerType: "codex" });
+    const request = {
+      ...buildRequestDigest({
+        edgeId: "edge-1",
+        edgeRequestId: "r-responses",
+        receivedAtMs: Date.now(),
+        method: "POST",
+        path: "/v1/responses",
+        headers: [["user-agent", "codex_cli_rs/0.50.0"]],
+        clientIp: null,
+        body: { model: "gpt-5-codex", stream: false, input: "hello" },
+        bodyBytes: 10,
+      }),
+    };
+    expect(await handleEdgeDecide(request, "edge-1")).toMatchObject({ action: "execute" });
+    const state = await loadEdgeState(555);
+    expect(state?.body.contentOps).toEqual([{ op: "normalize_response_input" }]);
+    expect(state?.session.originalFormat).toBe("response");
+    expect(state?.session.specialSettings).toContainEqual({
+      type: "response_input_rectifier",
+      scope: "request",
+      hit: true,
+      action: "string_to_array",
+      originalType: "string",
+    });
   });
 
   test("guard early responses become fail payloads with the session id suffix", async () => {

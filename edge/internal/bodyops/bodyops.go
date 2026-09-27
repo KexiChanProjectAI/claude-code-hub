@@ -65,6 +65,8 @@ func Apply(body *ojson.Value, ops []contract.BodyOp) (*ojson.Value, contract.OpR
 			}
 		case contract.OpStripPrivateParams:
 			message = filterPrivateParameters(message)
+		case contract.OpNormalizeResponseInput:
+			rectifyResponseInput(message)
 		default:
 			return nil, contract.OpResults{}, fmt.Errorf("bodyops: unknown op %q", op.Op)
 		}
@@ -306,6 +308,52 @@ func rectifyAnthropicRequestMessage(message *ojson.Value) thinkingRectifierResul
 	}
 
 	return result
+}
+
+// ---- response input rectifier (response-input-rectifier.ts#rectifyResponseInput) ----
+//
+// Mutates message.input in place, matching applyBodyOps' `case "normalize_response_input":
+// rectifyResponseInput(message);` (the op result is not tracked in OpResults; only the
+// digest's separate responseInputRectify field records the action/originalType).
+func rectifyResponseInput(message *ojson.Value) {
+	input, hasInput := message.ObjectGet("input")
+
+	// Case 1: array -- passthrough.
+	if hasInput && input.IsArray() {
+		return
+	}
+
+	// Case 2: string.
+	if hasInput && input.IsString() {
+		if input.String() == "" {
+			message.ObjectSet("input", ojson.NewArray())
+			return
+		}
+		wrapped := ojson.NewArray()
+		item := ojson.NewObject()
+		item.ObjectSet("role", ojson.NewString("user"))
+		contentArr := ojson.NewArray()
+		contentBlock := ojson.NewObject()
+		contentBlock.ObjectSet("type", ojson.NewString("input_text"))
+		contentBlock.ObjectSet("text", ojson.NewString(input.String()))
+		contentArr.ArrayAppend(contentBlock)
+		item.ObjectSet("content", contentArr)
+		wrapped.ArrayAppend(item)
+		message.ObjectSet("input", wrapped)
+		return
+	}
+
+	// Case 3: single object (MessageInput has role, ToolOutputsInput has type).
+	if hasInput && input.IsObject() {
+		if input.ObjectHas("role") || input.ObjectHas("type") {
+			wrapped := ojson.NewArray()
+			wrapped.ArrayAppend(input)
+			message.ObjectSet("input", wrapped)
+			return
+		}
+	}
+
+	// Case 4: undefined/null/other -- passthrough, let downstream handle the error.
 }
 
 // ---- private parameter filtering (forwarder.ts#filterPrivateParameters) ----

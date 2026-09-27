@@ -124,11 +124,15 @@ export class ProxySessionGuard {
       const isCodexRequest = Array.isArray(requestMessage.input);
 
       if (!allowRawSessionContext && codexCompletionEnabled && isCodexRequest) {
+        const completionHints = getEdgeDigestHints(session);
         const completion = await completeCodexSessionIdentifiers({
           keyId,
           headers: session.headers,
           requestBody: requestMessage,
           userAgent: session.userAgent,
+          ...(completionHints
+            ? { initialTextHash: completionHints.codexInitialTextHash ?? null }
+            : {}),
         });
 
         if (completion.applied && completion.action !== "none") {
