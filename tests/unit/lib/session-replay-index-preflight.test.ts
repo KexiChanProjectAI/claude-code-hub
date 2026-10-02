@@ -3,6 +3,7 @@ import {
   DATABASE_TIMEOUT_INDEX_MARKER,
   DATABASE_TIMEOUT_INDEX_MIGRATION_CREATED_AT,
   SESSION_IDENTITY_PREFIX_INDEX_MARKER,
+  SESSION_IDENTITY_PREFIX_INDEX_MIGRATION_CREATED_AT,
   SESSION_REPLAY_INDEX_MARKER,
   SESSION_REPLAY_INDEX_SPECS,
   SESSION_REPLAY_MIGRATION_CREATED_AT,
@@ -230,10 +231,27 @@ describe("database index concurrent preflight", () => {
 
     const statements = execute.mock.calls.map(([statement]) => statement);
     expect(statements.some((statement) => statement.includes("ALTER TABLE"))).toBe(false);
-    expect(statements).toContain("SET lock_timeout = '5s'");
-    expect(statements).toContain("SET statement_timeout = '15min'");
+    expect(statements).toContain("SET lock_timeout = '5000ms'");
+    expect(statements).toContain("SET statement_timeout = '900000ms'");
     expect(statements).toContain("RESET statement_timeout");
     expect(statements).toContain("RESET lock_timeout");
+  });
+
+  test("applies configured lock and statement timeouts to concurrent index builds", async () => {
+    const { executor, execute } = createFakeExecutor();
+
+    await runSessionReplayIndexPreflight(executor, [spec], {
+      ensureColumns: false,
+      timeouts: { lockTimeoutMs: 30_000, statementTimeoutMs: 3_600_000 },
+    });
+
+    const statements = execute.mock.calls.map(([statement]) => statement);
+    const createAt = statements.findIndex((statement) =>
+      statement.startsWith("CREATE INDEX CONCURRENTLY")
+    );
+    expect(statements.indexOf("SET lock_timeout = '30000ms'")).toBeLessThan(createAt);
+    expect(statements.indexOf("SET statement_timeout = '3600000ms'")).toBeLessThan(createAt);
+    expect(statements.at(-1)).toBe("RESET lock_timeout");
   });
 
   test("adds pre-0116 Replay columns before building timeout indexes", async () => {
@@ -400,12 +418,38 @@ describe("database index migration orchestration", () => {
     expect(calls).toEqual(["indexes", "migrate", "indexes"]);
   });
 
-  test("runs only postflight after migration 0118 is already recorded", async () => {
+  test("prebuilds prefix indexes without table DDL before upgrading a 0118-0121 database", async () => {
     const calls: string[] = [];
 
     await runSessionReplayMigrationPlan({
       baseTablesReady: true,
       latestMigrationCreatedAt: DATABASE_TIMEOUT_INDEX_MIGRATION_CREATED_AT,
+      migrate: async () => calls.push("migrate"),
+      runIndexPreflight: async ({ ensureColumns }) => calls.push(`indexes:${ensureColumns}`),
+    });
+
+    expect(calls).toEqual(["indexes:false", "migrate", "indexes:false"]);
+  });
+
+  test("adds Replay columns in the pre-migration pass only for pre-0118 databases", async () => {
+    const calls: string[] = [];
+
+    await runSessionReplayMigrationPlan({
+      baseTablesReady: true,
+      latestMigrationCreatedAt: DATABASE_TIMEOUT_INDEX_MIGRATION_CREATED_AT - 1,
+      migrate: async () => calls.push("migrate"),
+      runIndexPreflight: async ({ ensureColumns }) => calls.push(`indexes:${ensureColumns}`),
+    });
+
+    expect(calls).toEqual(["indexes:true", "migrate", "indexes:false"]);
+  });
+
+  test("runs only postflight after the prefix index upgrade is recorded", async () => {
+    const calls: string[] = [];
+
+    await runSessionReplayMigrationPlan({
+      baseTablesReady: true,
+      latestMigrationCreatedAt: SESSION_IDENTITY_PREFIX_INDEX_MIGRATION_CREATED_AT,
       migrate: async () => calls.push("migrate"),
       runIndexPreflight: async () => calls.push("indexes"),
     });

@@ -34,7 +34,12 @@ afterEach(async () => {
 
 describe("请求内存确定性回收", () => {
   it("小预算连续处理大正文无需 GC，额度在响应 EOF 后归零", async () => {
-    const governor = new MemoryGovernor({ limit: 4 * 1024 ** 2, remote: false, monitor: false });
+    const governor = new MemoryGovernor({
+      limit: 4 * 1024 ** 2,
+      remote: false,
+      monitor: false,
+      enabled: true,
+    });
     vi.spyOn(getMemoryGovernor(), "acquire").mockImplementation((bytes, signal, wait) =>
       governor.acquire(bytes, signal, wait)
     );
@@ -59,7 +64,12 @@ describe("请求内存确定性回收", () => {
   });
 
   it.each(["no-body", "throw", "read-error", "cancel"])("%s 路径只归还一次", async (mode) => {
-    const governor = new MemoryGovernor({ limit: 100, remote: false, monitor: false });
+    const governor = new MemoryGovernor({
+      limit: 100,
+      remote: false,
+      monitor: false,
+      enabled: true,
+    });
     const lease = governor.tryLease(100)!;
     const release = vi.spyOn(lease, "release");
     const result = withRequestMemoryLifetime(async () => {
@@ -133,7 +143,12 @@ describe("请求内存确定性回收", () => {
   });
 
   it("取消响应后，后台消费者实际结束才释放；多个消费者不重复归还", async () => {
-    const governor = new MemoryGovernor({ limit: 100, remote: false, monitor: false });
+    const governor = new MemoryGovernor({
+      limit: 100,
+      remote: false,
+      monitor: false,
+      enabled: true,
+    });
     const held = Promise.withResolvers<void>();
     let background!: Promise<void>;
     let releaseOther!: () => void;
@@ -155,7 +170,12 @@ describe("请求内存确定性回收", () => {
 
   it("任务管理器取消不提前归还仍执行的消费者", async () => {
     vi.stubEnv("CI", "true");
-    const governor = new MemoryGovernor({ limit: 100, remote: false, monitor: false });
+    const governor = new MemoryGovernor({
+      limit: 100,
+      remote: false,
+      monitor: false,
+      enabled: true,
+    });
     const held = Promise.withResolvers<void>();
     const response = await withRequestMemoryLifetime(async () => {
       attachRequestMemory(governor.tryLease(100)!);
@@ -170,7 +190,7 @@ describe("请求内存确定性回收", () => {
   });
 
   it("作用域外使用兜底，已结束作用域的元数据回调不重复释放", async () => {
-    const governor = new MemoryGovernor({ limit: 1, remote: false, monitor: false });
+    const governor = new MemoryGovernor({ limit: 1, remote: false, monitor: false, enabled: true });
     const lease = governor.tryLease(1)!;
     expect(attachRequestMemory(lease)).toBe(false);
     retainCurrentRequestMemory()();
@@ -190,7 +210,12 @@ describe("请求内存确定性回收", () => {
   });
   it("永不结束的后台所有者在宽限到期后被强制归还，并丢弃正文引用", async () => {
     vi.useFakeTimers();
-    const governor = new MemoryGovernor({ limit: 100, remote: false, monitor: false });
+    const governor = new MemoryGovernor({
+      limit: 100,
+      remote: false,
+      monitor: false,
+      enabled: true,
+    });
     const disposed = vi.fn();
     const forcedBefore = getRequestMemoryLifetimeStats().forcedTotal;
     const response = await withRequestMemoryLifetime(async () => {
@@ -218,7 +243,12 @@ describe("请求内存确定性回收", () => {
 
   it("仍在推进的后台消费者刷新宽限；响应未结束时不计时", async () => {
     vi.useFakeTimers();
-    const governor = new MemoryGovernor({ limit: 100, remote: false, monitor: false });
+    const governor = new MemoryGovernor({
+      limit: 100,
+      remote: false,
+      monitor: false,
+      enabled: true,
+    });
     let retention!: ReturnType<typeof retainCurrentRequestMemory>;
     const body = new ReadableStream<Uint8Array>();
     const response = await withRequestMemoryLifetime(async () => {
@@ -246,7 +276,12 @@ describe("请求内存确定性回收", () => {
 
   it("正常结束不触发强制路径，也不调用丢弃回调", async () => {
     vi.useFakeTimers();
-    const governor = new MemoryGovernor({ limit: 100, remote: false, monitor: false });
+    const governor = new MemoryGovernor({
+      limit: 100,
+      remote: false,
+      monitor: false,
+      enabled: true,
+    });
     const disposed = vi.fn();
     const held = Promise.withResolvers<void>();
     const forcedBefore = getRequestMemoryLifetimeStats().forcedTotal;
@@ -266,7 +301,12 @@ describe("请求内存确定性回收", () => {
   });
 
   it("作用域结束后再挂载返回 false，由调用方走 GC 兜底而不是抛错", async () => {
-    const governor = new MemoryGovernor({ limit: 10, remote: false, monitor: false });
+    const governor = new MemoryGovernor({
+      limit: 10,
+      remote: false,
+      monitor: false,
+      enabled: true,
+    });
     let attachLate!: () => boolean;
     const response = await withRequestMemoryLifetime(async () => {
       const lease = governor.tryLease(10)!;

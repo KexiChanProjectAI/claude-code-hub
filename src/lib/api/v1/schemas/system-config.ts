@@ -260,6 +260,11 @@ export const SystemSettingsSchema = z
       .describe(
         "Whether remote edge executors may take over upstream calls for eligible /v1/messages requests. Authentication, rate limiting, routing, retries and billing stay on this service."
       ),
+    enableMemoryAdmission: z
+      .boolean()
+      .describe(
+        "Whether local memory admission is enabled. When enabled, request bodies and stream gate prefixes are admitted against the available memory budget, spill to disk, and return a local 429 when capacity runs out. When disabled, they stay in memory without queuing or local 429."
+      ),
     replayEnabled: z
       .boolean()
       .nullable()

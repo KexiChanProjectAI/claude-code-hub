@@ -84,7 +84,12 @@ export class ModelRedirector {
       const modelSegmentPattern = resolution.prefixStripped
         ? /\/models\/([^:]+?)(:[^/]+)?$/
         : /\/models\/([^/:]+)(:[^/]+)?$/;
-      const newPath = originalPath.replace(modelSegmentPattern, `/models/${redirectedModel}$2`);
+      // 按字面量写入重定向目标，避免客户端模型名中的 $ 被再次展开。
+      const newPath = originalPath.replace(
+        modelSegmentPattern,
+        (_match, _model: string, action: string | undefined) =>
+          `/models/${redirectedModel}${action ?? ""}`
+      );
 
       if (newPath !== originalPath) {
         // 创建新的 URL 对象并修改路径

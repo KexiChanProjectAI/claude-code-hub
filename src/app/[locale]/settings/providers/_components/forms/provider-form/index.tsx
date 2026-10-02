@@ -28,9 +28,7 @@ import { getDistinctProviderGroupsAction } from "@/lib/api-client/v1/actions/req
 import {
   type CustomHeadersValidationErrorCode,
   parseCustomHeadersJsonText,
-  stringifyCustomHeadersForTextarea,
 } from "@/lib/custom-headers";
-import { applyOpenCodeGoSessionHeader, shouldPromptOpenCodeGoAdapter } from "@/lib/opencode-go";
 import { PROVIDER_BATCH_PATCH_ERROR_CODES } from "@/lib/provider-batch-patch-error-codes";
 import { normalizeProviderPrefix } from "@/lib/provider-prefix";
 import { buildUpstreamQuotaProbeOptions } from "@/lib/provider-upstream-quota/options";
@@ -38,6 +36,7 @@ import { isValidUrl } from "@/lib/utils/validation";
 import type { ProviderDisplay, ProviderEndpoint, ProviderType } from "@/types/provider";
 import { invalidateProviderQueries } from "../../invalidate-provider-queries";
 import { FormTabNav, NAV_ORDER, PARENT_MAP, TAB_ORDER } from "./components/form-tab-nav";
+import { buildNewApiAccessTokenEditPayload, parseNewApiUserIdInput } from "./new-api-access";
 import { ProviderFormProvider, useProviderForm } from "./provider-form-context";
 import type { NavTargetId, SubTabId, TabId } from "./provider-form-types";
 import { BasicInfoSection } from "./sections/basic-info-section";
@@ -95,7 +94,6 @@ function ProviderFormContent({
     limit5hResetMode?: "fixed" | "rolling";
   };
   const [isPending, startTransition] = useTransition();
-  const [showOpenCodeGoConfirm, setShowOpenCodeGoConfirm] = useState(false);
   const isEdit = mode === "edit";
 
   const queryClient = useQueryClient();
@@ -278,6 +276,10 @@ function ProviderFormContent({
       return t("errors.keyRequired");
     }
 
+    if (mode !== "batch" && parseNewApiUserIdInput(state.basic.newApiUserId) === undefined) {
+      return t("errors.invalidNewApiUserId");
+    }
+
     // Custom headers JSON: parse-on-submit; invalid input maps to a localized message
     if (mode !== "batch") {
       const customHeadersResult = parseCustomHeadersJsonText(state.routing.customHeadersText);
@@ -300,14 +302,8 @@ function ProviderFormContent({
       : state.basic.url
     ).trim();
 
-  const needsOpenCodeGoPrompt = () => {
-    const customHeadersResult = parseCustomHeadersJsonText(state.routing.customHeadersText);
-    const customHeaders = customHeadersResult.ok ? customHeadersResult.value : null;
-    return shouldPromptOpenCodeGoAdapter(getEffectiveProviderUrl(), customHeaders);
-  };
-
   // Actual form submission
-  const performSubmit = (enableOpenCodeGo = false) => {
+  const performSubmit = () => {
     startTransition(async () => {
       try {
         // Convert duration from minutes to milliseconds
@@ -337,16 +333,9 @@ function ProviderFormContent({
         const parsedCustomHeadersResult = parseCustomHeadersJsonText(
           state.routing.customHeadersText
         );
-        let parsedCustomHeaders = parsedCustomHeadersResult.ok
+        const parsedCustomHeaders = parsedCustomHeadersResult.ok
           ? (parsedCustomHeadersResult.value ?? null)
           : null;
-        if (enableOpenCodeGo) {
-          parsedCustomHeaders = applyOpenCodeGoSessionHeader(parsedCustomHeaders);
-          dispatch({
-            type: "SET_CUSTOM_HEADERS_TEXT",
-            payload: stringifyCustomHeadersForTextarea(parsedCustomHeaders),
-          });
-        }
 
         // Base form data without key (for type safety)
         const effectiveProviderUrl = getEffectiveProviderUrl();
@@ -355,10 +344,15 @@ function ProviderFormContent({
         // Detect whether the provider originally had rules (loaded from DB)
         const hadRulesInitially = !!provider?.reasoningEffortOverrideRules;
 
+        // validateForm 已拒绝非法的用户 ID，这里只会得到数字或 null
+        const newApiUserId = parseNewApiUserIdInput(state.basic.newApiUserId) ?? null;
+        const trimmedNewApiAccessToken = state.basic.newApiAccessToken.trim();
+
         const baseFormData = {
           name: state.basic.name.trim(),
           url: effectiveProviderUrl,
           website_url: state.basic.websiteUrl?.trim() || null,
+          new_api_user_id: newApiUserId,
           provider_type: state.routing.providerType,
           preserve_client_ip: state.routing.preserveClientIp,
           disable_session_reuse: state.routing.disableSessionReuse,
@@ -438,7 +432,14 @@ function ProviderFormContent({
 
         if (isEdit && provider) {
           // For edit: only include key if user provided a new one
-          const editFormData = trimmedKey ? { ...submitFormData, key: trimmedKey } : submitFormData;
+          const editFormData = {
+            ...submitFormData,
+            ...(trimmedKey ? { key: trimmedKey } : {}),
+            ...buildNewApiAccessTokenEditPayload(
+              trimmedNewApiAccessToken,
+              state.basic.clearNewApiAccessToken
+            ),
+          };
           const res = await editProvider(provider.id, editFormData);
           if (!res.ok) {
             toast.error(res.error || t("errors.updateFailed"));
@@ -475,7 +476,11 @@ function ProviderFormContent({
           void doInvalidate();
         } else {
           // For create: key is required
-          const createFormData = { ...submitFormData, key: trimmedKey };
+          const createFormData = {
+            ...submitFormData,
+            key: trimmedKey,
+            new_api_access_token: trimmedNewApiAccessToken || null,
+          };
           const res = await addProvider(createFormData);
           if (!res.ok) {
             toast.error(res.error || t("errors.addFailed"));
@@ -511,11 +516,6 @@ function ProviderFormContent({
 
     if (needsFailureThresholdConfirm()) {
       dispatch({ type: "SET_SHOW_FAILURE_THRESHOLD_CONFIRM", payload: true });
-      return;
-    }
-
-    if (needsOpenCodeGoPrompt()) {
-      setShowOpenCodeGoConfirm(true);
       return;
     }
 
@@ -841,46 +841,10 @@ function ProviderFormContent({
             <AlertDialogAction
               onClick={() => {
                 dispatch({ type: "SET_SHOW_FAILURE_THRESHOLD_CONFIRM", payload: false });
-                if (needsOpenCodeGoPrompt()) {
-                  setShowOpenCodeGoConfirm(true);
-                  return;
-                }
                 performSubmit();
               }}
             >
               {t("failureThresholdConfirmDialog.confirm")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={showOpenCodeGoConfirm} onOpenChange={setShowOpenCodeGoConfirm}>
-        <AlertDialogContent>
-          <AlertHeader>
-            <AlertTitle>{t("openCodeGoConfirmDialog.title")}</AlertTitle>
-            <AlertDialogDescription>
-              {t("openCodeGoConfirmDialog.description")}
-            </AlertDialogDescription>
-          </AlertHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("openCodeGoConfirmDialog.cancel")}</AlertDialogCancel>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setShowOpenCodeGoConfirm(false);
-                performSubmit(false);
-              }}
-            >
-              {t("openCodeGoConfirmDialog.skip")}
-            </Button>
-            <AlertDialogAction
-              onClick={() => {
-                setShowOpenCodeGoConfirm(false);
-                performSubmit(true);
-              }}
-            >
-              {t("openCodeGoConfirmDialog.enable")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -165,6 +165,8 @@ function hasRequestInput(ctx: TraceContext): boolean {
 
 function isResponseMissing(ctx: TraceContext): boolean {
   if (ctx.responseText) return false;
+  // 流式请求不再携带 responseText，已还原出最终输出即视为有响应
+  if (ctx.finalResponseOutput?.kind === "final") return false;
   if (ctx.errorMessage) return true;
   if (!hasRequestInput(ctx)) return false;
   if (ctx.isStreaming) return ctx.sseEventCount === 0;
@@ -189,6 +191,28 @@ type ResponseCapture = {
     total_tokens?: number;
   };
 };
+
+/**
+ * Langfuse 把 usageDetails 的每个 key 当作互不重叠的计费桶，扁平 key 原样入库。
+ * Responses API 的 input/output_tokens 已包含缓存与推理明细，这里拆成互斥的桶。
+ */
+function toLangfuseResponseUsageDetails(
+  usage: NonNullable<ResponseCapture["usageDetails"]>
+): Record<string, number> {
+  const cachedTokens = usage.input_tokens_details?.cached_tokens;
+  const reasoningTokens = usage.output_tokens_details?.reasoning_tokens;
+  return {
+    ...(usage.input_tokens !== undefined
+      ? { input: Math.max(usage.input_tokens - (cachedTokens ?? 0), 0) }
+      : {}),
+    ...(cachedTokens !== undefined ? { input_cached_tokens: cachedTokens } : {}),
+    ...(usage.output_tokens !== undefined
+      ? { output: Math.max(usage.output_tokens - (reasoningTokens ?? 0), 0) }
+      : {}),
+    ...(reasoningTokens !== undefined ? { output_reasoning_tokens: reasoningTokens } : {}),
+    ...(usage.total_tokens !== undefined ? { total: usage.total_tokens } : {}),
+  };
+}
 
 const RESPONSE_TOOL_CALL_EXCLUDED_FIELDS: Record<string, true> = {
   id: true,
@@ -476,7 +500,7 @@ export async function traceProxyRequest(ctx: TraceContext): Promise<void> {
     // Responses API reports native Langfuse token dimensions from its own output.
     const usageDetails: Record<string, number> | undefined =
       responseUsageDetails !== undefined
-        ? (responseUsageDetails as unknown as Record<string, number>)
+        ? toLangfuseResponseUsageDetails(responseUsageDetails)
         : ctx.usageMetrics
           ? {
               ...(ctx.usageMetrics.input_tokens != null

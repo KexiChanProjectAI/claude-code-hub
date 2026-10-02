@@ -27,7 +27,12 @@ describe("内存租约与本地准入", () => {
       },
     });
     coordinator.attach(worker);
-    const governor = new MemoryGovernor({ processRef: child, remote: true, monitor: false });
+    const governor = new MemoryGovernor({
+      processRef: child,
+      remote: true,
+      monitor: false,
+      enabled: true,
+    });
     let admitted = false;
     const waiting = governor.acquire(128 * 1024).then((lease) => {
       admitted = true;
@@ -60,7 +65,12 @@ describe("内存租约与本地准入", () => {
   });
   it("20 秒拒绝，并移除等待者", async () => {
     vi.useFakeTimers();
-    const governor = new MemoryGovernor({ limit: 1024, remote: false, monitor: false });
+    const governor = new MemoryGovernor({
+      limit: 1024,
+      remote: false,
+      monitor: false,
+      enabled: true,
+    });
     const occupied = await governor.acquire(1024);
     const waiting = governor.acquire(1);
     const assertion = expect(waiting).rejects.toBeInstanceOf(LocalCapacityError);
@@ -72,7 +82,12 @@ describe("内存租约与本地准入", () => {
     expect(governor.snapshot().usedBytes).toBe(0);
   });
   it("扩容失败立即返回，不能持有部分工作集进入等待", async () => {
-    const governor = new MemoryGovernor({ limit: 1024, remote: false, monitor: false });
+    const governor = new MemoryGovernor({
+      limit: 1024,
+      remote: false,
+      monitor: false,
+      enabled: true,
+    });
     const first = await governor.acquire(512);
     const second = await governor.acquire(512);
     expect(first.tryGrow(1024)).toBe(false);
@@ -84,7 +99,7 @@ describe("内存租约与本地准入", () => {
     expect(first.tryGrow(1)).toBe(false);
   });
   it("客户端断开立即移除准入等待", async () => {
-    const governor = new MemoryGovernor({ limit: 0, remote: false, monitor: false });
+    const governor = new MemoryGovernor({ limit: 0, remote: false, monitor: false, enabled: true });
     const abort = new AbortController();
     const promise = governor.acquire(1, abort.signal);
     abort.abort(new Error("closed"));
@@ -132,7 +147,12 @@ describe("内存租约与本地准入", () => {
     });
     coordinator.resetBaseline();
     coordinator.attach(worker);
-    const governor = new MemoryGovernor({ processRef: child, remote: true, monitor: false });
+    const governor = new MemoryGovernor({
+      processRef: child,
+      remote: true,
+      monitor: false,
+      enabled: true,
+    });
     const acquiring = governor.acquire(128 * 1024);
     await vi.advanceTimersByTimeAsync(50);
     const lease = await acquiring;
@@ -147,6 +167,7 @@ describe("内存租约与本地准入", () => {
     worker.emit("exit");
   });
   it("IPC 发送失败或断开时停止取得新授权", async () => {
+    vi.useFakeTimers();
     const child = Object.assign(new EventEmitter(), {
       env: {},
       connected: true,
@@ -154,13 +175,22 @@ describe("内存租约与本地准入", () => {
         throw new Error("closed");
       }),
     });
-    const governor = new MemoryGovernor({ processRef: child, remote: true, monitor: false });
+    const governor = new MemoryGovernor({
+      processRef: child,
+      remote: true,
+      monitor: false,
+      enabled: true,
+    });
     await governor.requestCredits(100);
     expect(governor.snapshot().limitBytes).toBe(0);
     child.send.mockImplementation((_message: unknown, callback: (error?: Error) => void) =>
       callback(new Error("send failed"))
     );
-    await governor.requestCredits(100);
+    // 同一 ID 在 1 秒后重试，这次走 IPC 回调报错的路径。
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(child.send).toHaveBeenCalledTimes(2);
+    expect(child.send.mock.calls[1][0]).toMatchObject({ id: child.send.mock.calls[0][0].id });
+    expect(governor.snapshot().limitBytes).toBe(0);
     child.connected = false;
     child.emit("disconnect");
     await expect(governor.acquire(1, undefined, 0)).rejects.toBeInstanceOf(LocalCapacityError);
@@ -195,7 +225,12 @@ describe("内存租约与本地准入", () => {
       },
     });
     coordinator.attach(worker);
-    const governor = new MemoryGovernor({ processRef: child, remote: true, monitor: false });
+    const governor = new MemoryGovernor({
+      processRef: child,
+      remote: true,
+      monitor: false,
+      enabled: true,
+    });
     const acquiring = governor.acquire(capacity);
     await vi.advanceTimersByTimeAsync(50);
     expect(coordinator.snapshot().grantedBytes).toBe(capacity);
@@ -227,6 +262,7 @@ describe("内存租约与本地准入", () => {
     const governor = new MemoryGovernor({
       remote: false,
       monitor: false,
+      enabled: true,
       readSnapshot: () => ({
         availableRamBytes: ram,
         availableSwapBytes: 0,
@@ -275,6 +311,7 @@ describe("内存租约与本地准入", () => {
     const governor = new MemoryGovernor({
       remote: false,
       monitor: false,
+      enabled: true,
       readSnapshot: () => ({ availableRamBytes: ram, availableSwapBytes: 0, memoryPressure: 0 }),
     });
     const ceiling = governor.snapshot().limitBytes;
@@ -309,7 +346,12 @@ describe("内存租约与本地准入", () => {
   });
   it("租约台账按标签汇总在账量与最长持有时间，归还后移除", async () => {
     vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
-    const governor = new MemoryGovernor({ limit: 1000, remote: false, monitor: false });
+    const governor = new MemoryGovernor({
+      limit: 1000,
+      remote: false,
+      monitor: false,
+      enabled: true,
+    });
     const body = governor.tryLease(300, "body_materialize")!;
     vi.setSystemTime(new Date("2026-01-01T00:01:00Z"));
     const gate = await governor.acquire(100, undefined, undefined, "gate");

@@ -8,10 +8,10 @@
 
 ### 新增
 
-- 供应商自定义请求头支持动态模板：可用 `{{header.Name}}` 复制入站请求头，`{{session.id}}` 写入 Session ID，`{{session.client_id}}` 写入客户端 Session ID；来源缺失时跳过该头
-- 保存供应商时，若 API URL 为 `https://opencode.ai/*` 且尚未配置 `x-opencode-session`，弹出 OpenCode Go 适配确认；开启后写入 `{{session.id}}`
+- 供应商自定义请求头支持动态模板：可用 `{{header.Name}}` 复制非敏感入站请求头，`{{session.id}}` 写入 Session ID，`{{session.client_id}}` 写入客户端 Session ID；来源缺失时跳过该头，不允许读取凭据、Cookie 或内部传输头
+- 整合上游 v0.9.7：供应商列表新增按密钥查询余额及手动刷新，支持 New API 系统访问令牌和用户 ID；保留本地上游额度调度与探测配置
 - 供应商选项新增「复写响应模型 ID」：开启后把返回给客户端的 model 字段强制写成用户请求的模型 ID，用于隐藏上游映射
-- 按可用内存分配流门禁预算：128 KiB 起步增长、正文溢写磁盘、本地准入超时 429，避免 40 MiB 固定预占把首内容串行排队 (#1474)
+- 按可用内存分配流门禁预算：128 KiB 起步增长；内存准入默认关闭，只记账不限制、不溢写、不排队；开启后才执行正文溢写、本地容量排队与 429
 - Langfuse 流式请求还原完整最终输出（Claude / OpenAI Chat Completions / Responses / Gemini），避免把原始 SSE 文本当作 generation output
 - Langfuse 将客户端原始请求头写入 generation `client_metadata`（凭据中间打码）
 - 支持 `LANGFUSE_TRACING_ENVIRONMENT` / `LANGFUSE_RELEASE` 传入 LangfuseSpanProcessor
@@ -23,7 +23,8 @@
 - 客户端故障告警不再重复已发送内容：相同错误指纹在冷却期内不入桶、不重推，后续窗口只报新样本
 - Langfuse trace 名称改为 `user:shortModel`，去掉供应商前缀
 - 按 Langfuse JS SDK v5 在 `propagateAttributes` 内创建 observation
-- 大请求/响应体 1 MiB 截断，并在异步发送前快照，避免观测路径拖住完整 body
+- 保留本地 Langfuse 完整请求／响应及异步压缩保留策略，不引入上游 1 MiB 正文截断；合入 usage 互斥计费桶修正
+- 保留本地 edge 执行器、quota 调度、provider prefix、全局出站代理、Prometheus 与 ClickHouse；上游 hedge attempt ID 和错误诊断迁入共享重试 helper
 
 ### 修复
 
@@ -38,6 +39,13 @@
   write-behind backlog，Replay 失效后按断线起点恢复 60 秒 drain，并为 Redis session response body
   增加默认 5 MiB 的可配置存储上限，避免大 SSE 正文及 before/after 快照放大内存和持久化压力；
   三份 response body 的物理存储去重由 #1415 跟踪 (#1408)
+- 修复 Anthropic 请求级拒绝（`stop_reason=refusal` 且无内容块）被流式内容门控判为 `empty_stream` 并伪造 502、
+  重试切商并计入供应商熔断的问题：门控、Discovery 竞速、非流式空响应检测与 fake-streaming 校验统一把 refusal
+  视为可交付结果原样透传；门控本地错误体与日志新增上游真实状态 `upstream_status_code` 与熔断计入标记 (#1491)
+- Responses WebSocket 在首事件前收到请求过大错误时，在同一供应商回退 HTTP，不缓存为“不支持 WS”；Next 的自动 upgrade handler 绑定私有 loopback listener，避免与公网 Responses WS handler 争用连接
+- 历史 Drizzle 迁移编号与已应用 SQL 保持不变；生成 `0131_talented_adam_warlock` 添加余额凭据字段、内存准入开关及 session 前缀索引防阻塞升级，已有大表先走并发索引 preflight
+- 移除 OpenCode Go 保存适配弹窗及原始 Session ID 模板注入，保留转发阶段哈希 `x-opencode-session` 自动注入
+
 
 ---
 

@@ -22,7 +22,12 @@ const encoder = new TextEncoder();
 let governor: InstanceType<typeof MemoryGovernor>;
 
 function useGovernor(limitBytes: number): void {
-  governor = new MemoryGovernor({ limit: limitBytes, remote: false, monitor: false });
+  governor = new MemoryGovernor({
+    enabled: true,
+    limit: limitBytes,
+    remote: false,
+    monitor: false,
+  });
   vi.spyOn(getMemoryGovernor(), "tryLease").mockImplementation((bytes) => governor.tryLease(bytes));
 }
 

@@ -44,6 +44,10 @@ export const PROTECTED_AUTH_HEADER_NAMES: ReadonlySet<string> = new Set([
   "x-goog-api-key",
 ]);
 
+const SENSITIVE_TEMPLATE_SOURCE_HEADER_NAMES: ReadonlySet<string> = new Set([
+  ...PROTECTED_AUTH_HEADER_NAMES,
+  "cookie",
+]);
 export type CustomHeaderResolveContext = {
   getHeader: (name: string) => string | null | undefined;
   sessionId?: string | null;
@@ -67,6 +71,7 @@ function parseCustomHeaderExpr(raw: string): CustomHeaderExpr | null {
   if (lower.startsWith(HEADER_EXPR_PREFIX)) {
     const name = expr.slice(HEADER_EXPR_PREFIX.length).trim();
     if (!HTTP_TOKEN_NAME_REGEX.test(name)) return null;
+    if (SENSITIVE_TEMPLATE_SOURCE_HEADER_NAMES.has(name.toLowerCase())) return null;
     return { kind: "header", name };
   }
   return null;
@@ -104,6 +109,7 @@ function evalCustomHeaderExpr(
   ctx: CustomHeaderResolveContext
 ): string | null {
   if (expr.kind === "header") {
+    if (SENSITIVE_TEMPLATE_SOURCE_HEADER_NAMES.has(expr.name.toLowerCase())) return null;
     return nonempty(ctx.getHeader(expr.name));
   }
   if (expr.field === "id") {
@@ -117,7 +123,7 @@ export function resolveCustomHeaderValue(
   ctx: CustomHeaderResolveContext
 ): string | null {
   if (!value.includes("{{") && !value.includes("}}")) {
-    return value.length > 0 ? value : null;
+    return value;
   }
 
   let missing = false;

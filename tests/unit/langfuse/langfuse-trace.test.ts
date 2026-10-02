@@ -854,6 +854,25 @@ describe("traceProxyRequest", () => {
     expect(mockSetTraceIO).not.toHaveBeenCalled();
   });
 
+  test("should not mark a streaming response missing when its final output was reconstructed", async () => {
+    const { traceProxyRequest } = await import("@/lib/langfuse/trace-proxy-request");
+
+    await traceProxyRequest({
+      session: createMockSession(),
+      responseHeaders: new Headers(),
+      durationMs: 500,
+      statusCode: 200,
+      isStreaming: true,
+      sseEventCount: 6,
+      finalResponseOutput: { kind: "final", value: { id: "msg_1", content: [] } },
+      errorMessage: "client disconnected after completion",
+    });
+
+    const rootCall = mockStartObservation.mock.calls[0];
+    expect(rootCall[1].output).toEqual({ id: "msg_1", content: [] });
+    expect(rootCall[1].metadata.responseMissing).toBe(false);
+  });
+
   test("should mark missing non-stream output when request input exists", async () => {
     const { traceProxyRequest } = await import("@/lib/langfuse/trace-proxy-request");
 
@@ -1022,7 +1041,13 @@ describe("traceProxyRequest", () => {
     expect(rootCall[1].output).toEqual(expectedOutput);
     expect(llmCall?.[1]).toMatchObject({
       output: expectedOutput,
-      usageDetails: responseBody.usage,
+      usageDetails: {
+        input: 75,
+        input_cached_tokens: 25,
+        output: 40,
+        output_reasoning_tokens: 10,
+        total: 150,
+      },
       metadata: { response: { id: "resp_123", status: "completed", model: "gpt-5.6" } },
     });
     expect(mockSetTraceIO).not.toHaveBeenCalled();
@@ -1063,7 +1088,7 @@ describe("traceProxyRequest", () => {
 
     expect(llmCall?.[1]).toMatchObject({
       output: [{ type: "function_call", call_id: "call_123" }],
-      usageDetails: { input_tokens: 1, output_tokens: 2, total_tokens: 3 },
+      usageDetails: { input: 1, output: 2, total: 3 },
       metadata: { response: { id: "resp_stream", status: "completed", model: "gpt-5.6" } },
     });
   });

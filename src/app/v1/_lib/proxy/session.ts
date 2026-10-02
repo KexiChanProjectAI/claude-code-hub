@@ -1169,6 +1169,8 @@ export class ProxySession {
         | "prefix_affinity";
       circuitState?: "closed" | "open" | "half-open";
       attemptNumber?: number;
+      routingAttemptId?: string; // 对应路由追踪的 attemptId
+      routingRound?: number; // 对应路由追踪的 round
       errorMessage?: string; // 错误信息（失败时记录）
       endpointId?: number | null;
       endpointUrl?: string;
@@ -1204,6 +1206,8 @@ export class ProxySession {
       circuitState: metadata?.circuitState,
       timestamp: Date.now(),
       attemptNumber: metadata?.attemptNumber,
+      routingAttemptId: metadata?.routingAttemptId,
+      routingRound: metadata?.routingRound,
       errorMessage: metadata?.errorMessage, // 记录错误信息
       // 修复：记录新字段
       statusCode: metadata?.statusCode,
@@ -1221,13 +1225,16 @@ export class ProxySession {
     };
 
     // 避免重复添加同一个供应商
-    // 检查最后一条记录是否与当前记录完全相同（id + reason + attemptNumber）
+    // 检查最后一条记录是否与当前记录完全相同（id + reason + attemptNumber + routingAttemptId）
     const lastItem = this.providerChain[this.providerChain.length - 1];
     const shouldAdd =
       this.providerChain.length === 0 ||
       lastItem.id !== provider.id ||
       lastItem.reason !== metadata?.reason ||
-      (metadata?.attemptNumber !== undefined && lastItem.attemptNumber !== metadata.attemptNumber);
+      (metadata?.attemptNumber !== undefined &&
+        lastItem.attemptNumber !== metadata.attemptNumber) ||
+      (metadata?.routingAttemptId !== undefined &&
+        lastItem.routingAttemptId !== metadata.routingAttemptId);
 
     if (shouldAdd) {
       this.providerChain.push(item);
@@ -2157,6 +2164,7 @@ async function parseRequestBody(c: Context): Promise<RequestBodyResult> {
       ? getOpenAIImageMultipartSummary(imageRequestMetadata)
       : "(multipart image request)";
     requestBodyLogNote = "图片 multipart 请求已记录结构化摘要。";
+    loaded.lease.shrinkTo(loaded.retainedBytes);
 
     return {
       requestMessage,
@@ -2183,8 +2191,9 @@ async function parseRequestBody(c: Context): Promise<RequestBodyResult> {
     requestBodyLog = requestBodyText;
     requestBodyLogNote = "请求体不是合法 JSON，已记录原始文本。";
   }
-  // 保留按正文结构估算的工作集，覆盖后续过滤、重试和异步消费者；
-  // 不能只按字节数缩至固定倍数，密集小对象的 V8 开销可能更大。
+  // 解析峰值已结束。请求剩余生命周期（含长时间流式响应、过滤、重试与后台消费者）按正文结构
+  // 估算的实际持有量占用额度；密集小对象的 V8 开销计入 structureBytes，不能只按字节数估算。
+  loaded.lease.shrinkTo(loaded.retainedBytes);
 
   return {
     requestMessage,

@@ -132,6 +132,7 @@ export const DEFAULT_SETTINGS: Pick<
   | "upstreamQuotaSchedulingEnabled"
   | "upstreamQuotaThresholdPercent"
   | "upstreamQuotaProbeIntervalMinutes"
+  | "enableMemoryAdmission"
 > = {
   enableHttp2: false,
   enableOpenaiResponsesWebsocket: true,
@@ -177,6 +178,7 @@ export const DEFAULT_SETTINGS: Pick<
   upstreamQuotaSchedulingEnabled: false,
   upstreamQuotaThresholdPercent: 10,
   upstreamQuotaProbeIntervalMinutes: 10,
+  enableMemoryAdmission: false,
 };
 
 /**
@@ -272,6 +274,7 @@ export async function getCachedSystemSettings(): Promise<SystemSettings> {
       replayEnabled: null,
       replayCacheTtlMinutes: DEFAULT_SETTINGS.replayCacheTtlMinutes,
       cacheEffectivenessEnabled: null,
+      enableMemoryAdmission: DEFAULT_SETTINGS.enableMemoryAdmission,
       discoveryEnabled: DEFAULT_SETTINGS.discoveryEnabled,
       discoveryConcurrency: DEFAULT_SETTINGS.discoveryConcurrency,
       maxDiscoveryRounds: DEFAULT_SETTINGS.maxDiscoveryRounds,

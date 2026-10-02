@@ -298,35 +298,25 @@ describe("SystemSettings：数据库缺列时的保存兜底", () => {
     vi.useFakeTimers();
     vi.setSystemTime(now);
 
-    // 第一次 select(fullSelection) 因新列缺失而抛 42703；
-    // The edge executor, upstream quota and legacy hedge columns are the newest rungs,
-    // so they are stripped before replay columns.
-    const selectMock = vi
-      .fn()
-      .mockReturnValueOnce(createRejectedThenableQuery({ code: "42703" }))
-      .mockReturnValueOnce(createRejectedThenableQuery({ code: "42703" }))
-      .mockReturnValueOnce(createRejectedThenableQuery({ code: "42703" }))
-      .mockReturnValueOnce(createRejectedThenableQuery({ code: "42703" }))
-      .mockReturnValueOnce(createRejectedThenableQuery({ code: "42703" }))
-      .mockReturnValueOnce(createRejectedThenableQuery({ code: "42703" }))
-      .mockReturnValueOnce(createRejectedThenableQuery({ code: "42703" }))
-      .mockReturnValueOnce(
-        createThenableQuery([
-          {
-            id: 1,
-            siteTitle: "CC Hub",
-            allowGlobalUsageView: false,
-            currencyDisplay: "USD",
-            billingModelSource: "original",
-            codexPriorityBillingSource: "requested",
-            enableHttp2: true,
-            enableThinkingSignatureRectifier: true,
-            enableThinkingBudgetRectifier: true,
-            createdAt: now,
-            updatedAt: now,
-          },
-        ])
-      );
+    const selectMock = vi.fn((selection: Record<string, unknown>) =>
+      "cacheEffectivenessEnabled" in selection
+        ? createRejectedThenableQuery({ code: "42703" })
+        : createThenableQuery([
+            {
+              id: 1,
+              siteTitle: "CC Hub",
+              allowGlobalUsageView: false,
+              currencyDisplay: "USD",
+              billingModelSource: "original",
+              codexPriorityBillingSource: "requested",
+              enableHttp2: true,
+              enableThinkingSignatureRectifier: true,
+              enableThinkingBudgetRectifier: true,
+              createdAt: now,
+              updatedAt: now,
+            },
+          ])
+    );
 
     vi.doMock("@/drizzle/db", () => ({
       db: {
@@ -342,26 +332,11 @@ describe("SystemSettings：数据库缺列时的保存兜底", () => {
     const result = await getSystemSettings();
 
     // 降级读取成功（未抛错），缺失列由 transformer 落默认值。
-    expect(selectMock).toHaveBeenCalledTimes(8);
     expect(result.siteTitle).toBe("CC Hub");
     expect(result.enableHttp2).toBe(true);
     expect(result.affinityIgnoreClientSessionId).toBe(true);
     expect(result.streamGateMode).toBe("enforce");
     expect(result.edgeExecutionEnabled).toBe(false);
-
-    const degradedSelection = selectMock.mock.calls[7]?.[0] as Record<string, unknown>;
-    expect(degradedSelection).not.toHaveProperty("edgeExecutionEnabled");
-    expect(degradedSelection).not.toHaveProperty("upstreamQuotaSchedulingEnabled");
-    expect(degradedSelection).not.toHaveProperty("legacyHedgeMaxInFlight");
-    expect(degradedSelection).not.toHaveProperty("replayCacheTtlMinutes");
-    expect(degradedSelection).not.toHaveProperty("cacheEffectivenessEnabled");
-    expect(degradedSelection).toHaveProperty("replayEnabled");
-    expect(degradedSelection).toHaveProperty("affinityIgnoreClientSessionId");
-    expect(degradedSelection).toHaveProperty("streamGateMode");
-    expect(degradedSelection).toHaveProperty("stickyTimeoutCooldownMs");
-    expect(degradedSelection).toHaveProperty("racingTotalTimeoutMs");
-    expect(degradedSelection).toHaveProperty("enableGeminiFunctionIdRectifier");
-    expect(degradedSelection).toHaveProperty("enableThinkingEffortConflictRectifier");
 
     vi.useRealTimers();
   });

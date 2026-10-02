@@ -94,6 +94,20 @@ describe("custom header templates - parse", () => {
     });
   });
 
+  test("rejects sensitive inbound auth headers as template sources", () => {
+    for (const value of [
+      "{{header.Authorization}}",
+      "{{header.cookie}}",
+      "{{header.x-api-key}}",
+      "{{header.x-goog-api-key}}",
+    ]) {
+      expect(parseCustomHeadersJsonText(JSON.stringify({ "x-forwarded-auth": value }))).toEqual({
+        ok: false,
+        code: "invalid_template",
+        path: "x-forwarded-auth",
+      });
+    }
+  });
   test("placeholder remains parseable and includes a template example", () => {
     const result = parseCustomHeadersJsonText(CUSTOM_HEADERS_PLACEHOLDER);
     expect(result.ok).toBe(true);
@@ -108,6 +122,9 @@ describe("resolveCustomHeaderValue", () => {
     expect(resolveCustomHeaderValue("Bearer token", ctx())).toBe("Bearer token");
   });
 
+  test("keeps empty static header values", () => {
+    expect(resolveCustomHeaderValue("", ctx())).toBe("");
+  });
   test("copies inbound headers case-insensitively", () => {
     expect(
       resolveCustomHeaderValue(
@@ -193,5 +210,19 @@ describe("mergeResolvedCustomHeaders", () => {
     expect(overrides.host).toBe("upstream.example");
     expect(overrides["x-missing"]).toBeUndefined();
     expect(overrides["x-ua"]).toBe("Codex/1.0");
+  });
+
+  test("keeps empty static values and skips sensitive source templates", () => {
+    const overrides: Record<string, string> = {};
+    mergeResolvedCustomHeaders(
+      overrides,
+      {
+        "x-empty": "",
+        "x-forwarded-auth": "{{header.Authorization}}",
+      },
+      ctx({ headers: { Authorization: "Bearer secret" } })
+    );
+    expect(overrides["x-empty"]).toBe("");
+    expect(overrides["x-forwarded-auth"]).toBeUndefined();
   });
 });

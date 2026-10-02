@@ -2,6 +2,8 @@ import { z } from "@hono/zod-openapi";
 import { HIDDEN_PROVIDER_TYPES as HIDDEN_PROVIDER_TYPE_VALUES } from "@/lib/api/v1/_shared/constants";
 import {
   CODEX_IMAGE_GENERATION_PREFERENCE_VALUES,
+  NEW_API_ACCESS_TOKEN_MAX_LENGTH,
+  NEW_API_USER_ID_MAX,
   PROVIDER_KEY_MAX_LENGTH,
 } from "@/lib/constants/provider.constants";
 import {
@@ -14,12 +16,21 @@ import {
   REASONING_EFFORT_OVERRIDE_RULE_LIST_SCHEMA,
   REASONING_EFFORT_OVERRIDE_RULES_SCHEMA,
 } from "@/lib/validation/schemas";
+import {
+  PROVIDER_BALANCE_BATCH_LIMIT,
+  PROVIDER_BALANCE_SOURCES,
+  type ProviderBalanceSource,
+} from "@/types/provider-balance";
 import { UPSTREAM_QUOTA_PROBE_TYPES } from "@/types/upstream-quota";
 import { ProviderTypeSchema } from "./_common";
 
 export const HIDDEN_PROVIDER_TYPES = new Set(HIDDEN_PROVIDER_TYPE_VALUES);
 
 const NullableStringSchema = z.string().nullable();
+const PROVIDER_BALANCE_SOURCE_VALUES = Object.values(PROVIDER_BALANCE_SOURCES) as [
+  ProviderBalanceSource,
+  ...ProviderBalanceSource[],
+];
 const CodexImageGenerationPreferenceSchema = z.enum(CODEX_IMAGE_GENERATION_PREFERENCE_VALUES);
 
 const ReasoningEffortOverrideBatchPatchInputSchema = z.union([
@@ -133,6 +144,15 @@ export const ProviderSummarySchema = z
     name: z.string().describe("Provider display name."),
     url: z.string().url().describe("Provider upstream base URL."),
     maskedKey: z.string().describe("Masked provider API key."),
+    maskedNewApiAccessToken: NullableStringSchema.describe(
+      "Masked New API system access token used for account balance queries, or null when not configured."
+    ),
+    newApiUserId: z
+      .number()
+      .int()
+      .positive()
+      .nullable()
+      .describe("New API user id sent with the system access token."),
     isEnabled: z.boolean().describe("Whether the provider is enabled."),
     weight: z.number().describe("Provider routing weight."),
     priority: z.number().int().describe("Provider routing priority."),
@@ -326,6 +346,45 @@ export const ProviderIdsBodySchema = z
   })
   .strict();
 
+export const ProviderBalanceBatchBodySchema = z
+  .object({
+    providerIds: z
+      .array(z.number().int().positive())
+      .min(1)
+      .max(PROVIDER_BALANCE_BATCH_LIMIT)
+      .describe("Provider ids to query upstream balance for."),
+    refresh: z
+      .boolean()
+      .default(false)
+      .describe("Skip the cached snapshot and query upstream again."),
+  })
+  .strict();
+
+export const ProviderBalanceSnapshotSchema = z
+  .object({
+    providerId: z.number().int().positive().describe("Provider id."),
+    status: z
+      .enum(["ok", "unsupported", "error"])
+      .describe("Whether the upstream reported a usable balance."),
+    source: z
+      .enum(PROVIDER_BALANCE_SOURCE_VALUES)
+      .nullable()
+      .describe("Upstream protocol that produced the snapshot."),
+    balance: z.number().nullable().describe("Remaining balance in the reported currency."),
+    currency: z.string().describe("Currency the balance is denominated in."),
+    totalGranted: z.number().nullable().describe("Total granted amount."),
+    totalUsed: z.number().nullable().describe("Total consumed amount."),
+    unlimited: z.boolean().describe("Upstream reports an unlimited quota."),
+    expiresAt: z.string().nullable().describe("Key expiry time in ISO-8601."),
+    checkedAt: z.string().describe("Snapshot time in ISO-8601."),
+    errorCode: z.string().nullable().describe("Failure reason code."),
+  })
+  .describe("Upstream balance snapshot for one provider.");
+
+export const ProviderBalanceListResponseSchema = z.object({
+  items: z.array(ProviderBalanceSnapshotSchema).describe("Provider balance snapshots."),
+});
+
 const ProviderBatchUpdateFieldsSchema = z
   .object({
     is_enabled: z.boolean().optional().describe("Provider enabled state."),
@@ -493,6 +552,24 @@ const ProviderCreateObjectSchema = z
     name: z.string().trim().min(1).max(64).describe("Provider display name."),
     url: z.string().trim().url().max(255).describe("Provider upstream base URL."),
     key: z.string().min(1).max(PROVIDER_KEY_MAX_LENGTH).describe("Provider API key. Write-only."),
+    new_api_access_token: z
+      .string()
+      .max(NEW_API_ACCESS_TOKEN_MAX_LENGTH)
+      .nullable()
+      .optional()
+      .describe(
+        "New API system access token. When set, balance queries read the account balance instead of the key quota. Empty string or null clears it. Write-only."
+      ),
+    new_api_user_id: z
+      .number()
+      .int()
+      .min(1)
+      .max(NEW_API_USER_ID_MAX)
+      .nullable()
+      .optional()
+      .describe(
+        "New API user id sent with the system access token. Required by New API releases before 2026-07."
+      ),
     is_enabled: z.boolean().optional().describe("Whether the provider is enabled."),
     weight: z.number().int().min(1).max(100).optional().describe("Provider routing weight."),
     priority: z.number().int().min(0).optional().describe("Provider routing priority."),

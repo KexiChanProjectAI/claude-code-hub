@@ -612,6 +612,10 @@ export async function handleHedgeFailure(
     attemptSession: participantSession(rt, participant),
     provider,
     endpointAudit: endpointAudit(participant),
+    routingRef: {
+      routingAttemptId: participant.attemptId,
+      routingRound: HEDGE_TRACE_ROUND,
+    },
     sequence: participant.sequence,
     requestAttemptCount: participant.requestAttemptCount,
     reactiveRectifierRetryState: participant.reactiveRectifierRetryState,

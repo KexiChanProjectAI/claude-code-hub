@@ -57,6 +57,8 @@ async function flushMicrotasks(): Promise<void> {
 
 describe("model price lookup cache", () => {
   beforeEach(() => {
+    vi.stubEnv("CI", "false");
+    vi.stubEnv("NEXT_PHASE", "");
     envState.ENABLE_MODEL_PRICE_CACHE = true;
     repositoryMocks.queryLatestPriceByModel.mockReset();
     pubsubMocks.callbacks.clear();
@@ -67,6 +69,7 @@ describe("model price lookup cache", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllEnvs();
   });
 
   test("caches hits and misses by model name", async () => {
@@ -127,14 +130,18 @@ describe("model price lookup cache", () => {
   });
 
   test("invalidates when another process publishes a price change", async () => {
-    repositoryMocks.queryLatestPriceByModel.mockResolvedValue(makePrice("m", 1));
+    repositoryMocks.queryLatestPriceByModel
+      .mockResolvedValueOnce(makePrice("m", 1))
+      .mockResolvedValueOnce(makePrice("m", 2));
 
-    await findLatestPriceByModelCached("m");
+    await expect(findLatestPriceByModelCached("m")).resolves.toMatchObject({
+      priceData: { input_cost_per_token: 1 },
+    });
     await flushMicrotasks();
     pubsubMocks.callbacks.get("cch:cache:model_prices:updated")?.("1");
-    await findLatestPriceByModelCached("m");
-
-    expect(repositoryMocks.queryLatestPriceByModel).toHaveBeenCalledTimes(2);
+    await expect(findLatestPriceByModelCached("m")).resolves.toMatchObject({
+      priceData: { input_cost_per_token: 2 },
+    });
   });
 
   test("invalidateModelPriceCache clears entries locally", async () => {

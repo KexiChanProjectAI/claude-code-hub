@@ -2214,8 +2214,96 @@ describe("ProxyForwarder - first-byte hedge scheduling", () => {
       expect(error).toBeInstanceOf(UpstreamProxyError);
       expect(error.statusCode).toBe(503);
       expect(error.message).toBe("所有供应商暂时不可用，请稍后重试");
+      expect(session.getProviderChain()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: provider1.id,
+            reason: "endpoint_pool_exhausted",
+            errorMessage: "Redis connection lost",
+          }),
+        ])
+      );
+      expect(session.getRoutingTrace()?.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "attempt_finished",
+            attemptId: "legacy-hedge-1-setup-1",
+            outcome: "failed",
+          }),
+        ])
+      );
     } finally {
       vi.useRealTimers();
+    }
+  });
+
+  test("legacy Hedge keeps setup failures for different providers in separate trace attempts", async () => {
+    const first = createProvider({ id: 11, name: "first", providerVendorId: 123 });
+    const second = createProvider({ id: 12, name: "second", providerVendorId: 123 });
+    const session = createSession();
+    session.setProvider(first);
+    mocks.getPreferredProviderEndpoints
+      .mockRejectedValueOnce(new Error("first endpoint unavailable"))
+      .mockRejectedValueOnce(new Error("second endpoint unavailable"));
+    mocks.pickRandomProviderWithExclusion.mockResolvedValueOnce(second).mockResolvedValueOnce(null);
+
+    await ProxyForwarder.send(session).catch(() => undefined);
+
+    const setupFailures = session
+      .getRoutingTrace()
+      ?.events.filter(
+        (event) => event.type === "attempt_finished" && event.reason === "setup_failed"
+      );
+    expect(setupFailures?.map((event) => event.attemptId)).toEqual([
+      "legacy-hedge-1-setup-11",
+      "legacy-hedge-1-setup-12",
+    ]);
+    expect(setupFailures?.map((event) => event.provider?.id)).toEqual([11, 12]);
+    expect(session.getProviderChain().map((item) => item.errorMessage)).toContain(
+      "first endpoint unavailable"
+    );
+    expect(session.getProviderChain().map((item) => item.errorMessage)).toContain(
+      "second endpoint unavailable"
+    );
+  });
+
+  test("legacy Hedge records circuit state after provider failure accounting", async () => {
+    const provider = createProvider({ id: 13, name: "circuit-provider" });
+    const session = createSession();
+    session.setProvider(provider);
+    mocks.pickRandomProviderWithExclusion.mockResolvedValueOnce(null);
+    const upstreamError = new UpstreamProxyError("upstream unavailable", 502, {
+      body: '{"error":"upstream unavailable"}',
+      providerId: provider.id,
+      providerName: provider.name,
+    });
+    vi.spyOn(
+      ProxyForwarder as unknown as {
+        doForward: (...args: unknown[]) => Promise<Response>;
+      },
+      "doForward"
+    ).mockRejectedValueOnce(upstreamError);
+    let circuitOpen = false;
+    mocks.getCircuitState.mockImplementation(() => (circuitOpen ? "open" : "closed"));
+    mocks.recordFailure.mockImplementation(async () => {
+      circuitOpen = true;
+    });
+
+    try {
+      await ProxyForwarder.send(session).catch(() => undefined);
+      expect(session.getProviderChain()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: provider.id,
+            reason: "retry_failed",
+            circuitState: "open",
+            statusCode: 502,
+          }),
+        ])
+      );
+    } finally {
+      mocks.getCircuitState.mockImplementation(() => "closed");
+      mocks.recordFailure.mockImplementation(async () => {});
     }
   });
 
@@ -2400,6 +2488,21 @@ describe("ProxyForwarder - first-byte hedge scheduling", () => {
           new Set([1, 2]),
           null
         );
+        if (category === ProxyErrorCategory.PROVIDER_ERROR) {
+          expect(session.getProviderChain()).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                reason: "retry_failed",
+                statusCode: 401,
+                errorDetails: expect.objectContaining({
+                  provider: expect.objectContaining({
+                    upstreamBody: '{"error":"invalid_api_key"}',
+                  }),
+                }),
+              }),
+            ])
+          );
+        }
       } finally {
         vi.useRealTimers();
       }
@@ -2854,7 +2957,101 @@ describe("ProxyForwarder - first-byte hedge scheduling", () => {
           }),
         ])
       );
+      expect(
+        session
+          .getProviderChain()
+          .filter((item) => item.id === provider1.id && item.routingAttemptId)
+          .map((item) => [item.reason, item.routingAttemptId, item.routingRound])
+      ).toEqual([
+        ["hedge_triggered", "legacy-hedge-1-1", 1],
+        ["retry_failed", "legacy-hedge-1-1", 1],
+        ["hedge_winner", "legacy-hedge-1-2", 1],
+      ]);
     } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("keeps the terminal failure of a rectified hedge retry in the decision chain", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const provider1 = createProvider({ id: 1, name: "p1", firstByteTimeoutStreamingMs: 100 });
+      const session = createSession();
+      session.setProvider(provider1);
+      session.request.message = {
+        model: "claude-test",
+        stream: true,
+        max_tokens: 1000,
+        thinking: { type: "enabled", budget_tokens: 500 },
+        messages: [{ role: "user", content: "hi" }],
+      };
+
+      mocks.pickRandomProviderWithExclusion.mockResolvedValue(null);
+      mocks.categorizeErrorAsync
+        .mockResolvedValueOnce(ProxyErrorCategory.NON_RETRYABLE_CLIENT_ERROR)
+        .mockResolvedValueOnce(ProxyErrorCategory.PROVIDER_ERROR);
+
+      const doForward = vi.spyOn(
+        ProxyForwarder as unknown as {
+          doForward: (...args: unknown[]) => Promise<Response>;
+        },
+        "doForward"
+      );
+      const controllerFirst = new AbortController();
+      const controllerRetry = new AbortController();
+      doForward.mockImplementationOnce(async (attemptSession) => {
+        const runtime = attemptSession as ProxySession & AttemptRuntime;
+        runtime.responseController = controllerFirst;
+        runtime.clearResponseTimeout = vi.fn();
+        return createDelayedFailure({
+          delayMs: 20,
+          error: new UpstreamProxyError(
+            "thinking.enabled.budget_tokens: Input should be greater than or equal to 1024",
+            400,
+            {
+              body: '{"error":"budget_too_low"}',
+              providerId: provider1.id,
+              providerName: provider1.name,
+            }
+          ),
+          controller: controllerFirst,
+        });
+      });
+      doForward.mockImplementationOnce(async (attemptSession) => {
+        const runtime = attemptSession as ProxySession & AttemptRuntime;
+        runtime.responseController = controllerRetry;
+        runtime.clearResponseTimeout = vi.fn();
+        return createDelayedFailure({
+          delayMs: 20,
+          error: new UpstreamProxyError("Provider returned 502", 502, {
+            body: '{"error":"retry upstream failed"}',
+            providerId: provider1.id,
+            providerName: provider1.name,
+          }),
+          controller: controllerRetry,
+        });
+      });
+
+      const errorPromise = ProxyForwarder.send(session).catch(
+        (rejection) => rejection as UpstreamProxyError
+      );
+      await vi.runAllTimersAsync();
+      expect(await errorPromise).toBeInstanceOf(UpstreamProxyError);
+      expect(doForward).toHaveBeenCalledTimes(2);
+
+      const attemptEntries = session
+        .getProviderChain()
+        .filter((item) => item.id === provider1.id && item.reason === "retry_failed");
+      expect(attemptEntries.map((item) => [item.routingAttemptId, item.statusCode])).toEqual([
+        ["legacy-hedge-1-1", 400],
+        ["legacy-hedge-1-2", 502],
+      ]);
+      expect(attemptEntries[1].errorDetails?.provider?.upstreamBody).toBe(
+        '{"error":"retry upstream failed"}'
+      );
+    } finally {
+      mocks.pickRandomProviderWithExclusion.mockReset();
       vi.useRealTimers();
     }
   });
@@ -5203,6 +5400,24 @@ describe("ProxyForwarder - first-byte hedge scheduling", () => {
       expect(await response.text()).toContain('"alternative"');
       expect(doForward).toHaveBeenCalledTimes(1);
       expect(session.provider?.id).toBe(alternative.id);
+      expect(session.getProviderChain()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: initial.id,
+            reason: "system_error",
+            errorMessage: "initial endpoint setup failed",
+          }),
+        ])
+      );
+      expect(session.getRoutingTrace()?.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "attempt_finished",
+            provider: expect.objectContaining({ id: initial.id }),
+            reason: "setup_failed",
+          }),
+        ])
+      );
     } finally {
       endpointResolver.mockRestore();
     }
@@ -6362,7 +6577,11 @@ describe("ProxyForwarder - first-byte hedge scheduling", () => {
     });
     mocks.pickDiscoveryProviders.mockResolvedValueOnce([]);
     mocks.categorizeErrorAsync.mockResolvedValueOnce(ProxyErrorCategory.NON_RETRYABLE_CLIENT_ERROR);
-    const clientError = new UpstreamProxyError("invalid request", 400);
+    const clientError = new UpstreamProxyError("invalid request", 400, {
+      body: '{"error":"invalid_request"}',
+      providerId: provider.id,
+      providerName: provider.name,
+    });
     vi.spyOn(
       ProxyForwarder as unknown as {
         doForward: (...args: unknown[]) => Promise<Response>;
@@ -6371,9 +6590,82 @@ describe("ProxyForwarder - first-byte hedge scheduling", () => {
     ).mockRejectedValueOnce(clientError);
 
     await expect(ProxyForwarder.send(session)).rejects.toBe(clientError);
+    expect(session.getProviderChain()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          reason: "client_error_non_retryable",
+          statusCode: 400,
+          errorDetails: expect.objectContaining({
+            provider: expect.objectContaining({
+              upstreamBody: '{"error":"invalid_request"}',
+            }),
+          }),
+        }),
+      ])
+    );
     expect(mocks.clearVersionedSessionProvider).not.toHaveBeenCalled();
     expect(mocks.clearSessionProviders).not.toHaveBeenCalled();
     expect(mocks.releaseSessionDiscoveryLease).toHaveBeenCalled();
+  });
+
+  test("Discovery keeps an upstream provider error in the decision chain", async () => {
+    const provider = createProvider({ id: 1, name: "upstream" });
+    const session = createSession();
+    session.authState = {
+      success: true,
+      user: null,
+      key: { id: 13 },
+      apiKey: null,
+    } as typeof session.authState;
+    session.setProvider(provider);
+    mocks.getCachedSystemSettings.mockResolvedValue({
+      discoveryEnabled: true,
+      discoveryConcurrency: 2,
+      maxDiscoveryRounds: 1,
+      discoverySlaMs: 100,
+      stickySlaMs: 100,
+      racingTotalTimeoutMs: 500,
+    });
+    mocks.pickDiscoveryProviders.mockResolvedValueOnce([]);
+    mocks.categorizeErrorAsync.mockResolvedValueOnce(ProxyErrorCategory.PROVIDER_ERROR);
+    const upstreamError = new UpstreamProxyError("upstream unavailable", 502, {
+      body: '{"error":"backend unavailable"}',
+      providerId: provider.id,
+      providerName: provider.name,
+    });
+    vi.spyOn(
+      ProxyForwarder as unknown as {
+        doForward: (...args: unknown[]) => Promise<Response>;
+      },
+      "doForward"
+    ).mockRejectedValueOnce(upstreamError);
+
+    await ProxyForwarder.send(session).catch(() => undefined);
+    expect(session.getProviderChain()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: provider.id,
+          reason: "retry_failed",
+          statusCode: 502,
+          errorDetails: expect.objectContaining({
+            provider: expect.objectContaining({
+              upstreamBody: '{"error":"backend unavailable"}',
+            }),
+          }),
+        }),
+      ])
+    );
+    const finished = session
+      .getRoutingTrace()
+      ?.events.find(
+        (event) => event.type === "attempt_finished" && event.provider?.id === provider.id
+      );
+    const failedEntry = session
+      .getProviderChain()
+      .find((item) => item.id === provider.id && item.reason === "retry_failed");
+    expect(finished?.attemptId).toBeDefined();
+    expect(failedEntry?.routingAttemptId).toBe(finished?.attemptId);
+    expect(failedEntry?.routingRound).toBe(finished?.round);
   });
 
   test("removes streaming hedge client abort listener after winner response is returned", async () => {

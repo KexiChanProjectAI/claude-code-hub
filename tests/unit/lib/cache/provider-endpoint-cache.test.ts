@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { ProviderEndpoint } from "@/types/provider";
 
 const envState = vi.hoisted(() => ({ ENABLE_PROVIDER_CACHE: true }));
@@ -64,11 +64,15 @@ async function flushMicrotasks(): Promise<void> {
 
 describe("provider endpoint cache", () => {
   beforeEach(() => {
+    vi.stubEnv("CI", "false");
+    vi.stubEnv("NEXT_PHASE", "");
     envState.ENABLE_PROVIDER_CACHE = true;
     pubsubMocks.callbacks.clear();
     pubsubMocks.publishCacheInvalidation.mockClear();
     resetProviderEndpointCacheForTests();
   });
+
+  afterEach(() => vi.unstubAllEnvs());
 
   test("caches per vendor and provider type", async () => {
     const claudeFetcher = vi.fn(async () => [makeEndpoint(1)]);
@@ -95,16 +99,20 @@ describe("provider endpoint cache", () => {
   });
 
   test("invalidates on both the endpoint and provider channels", async () => {
-    const fetcher = vi.fn(async () => [makeEndpoint(1)]);
-    await getCachedProviderEndpoints(1, "claude", fetcher);
+    let endpoints = [makeEndpoint(1)];
+    const fetcher = vi.fn(async () => endpoints);
+    await expect(getCachedProviderEndpoints(1, "claude", fetcher)).resolves.toEqual(endpoints);
     await flushMicrotasks();
 
+    endpoints = [makeEndpoint(2)];
+    await expect(getCachedProviderEndpoints(1, "claude", fetcher)).resolves.toEqual([
+      makeEndpoint(1),
+    ]);
     pubsubMocks.callbacks.get("cch:cache:provider_endpoints:updated")?.("1");
-    await getCachedProviderEndpoints(1, "claude", fetcher);
+    await expect(getCachedProviderEndpoints(1, "claude", fetcher)).resolves.toEqual(endpoints);
+    endpoints = [makeEndpoint(3)];
     pubsubMocks.callbacks.get("cch:cache:providers:updated")?.("1");
-    await getCachedProviderEndpoints(1, "claude", fetcher);
-
-    expect(fetcher).toHaveBeenCalledTimes(3);
+    await expect(getCachedProviderEndpoints(1, "claude", fetcher)).resolves.toEqual(endpoints);
   });
 
   test("local and published invalidation clear the cache", async () => {

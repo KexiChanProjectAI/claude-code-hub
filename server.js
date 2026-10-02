@@ -1191,7 +1191,11 @@ async function main() {
     process.env[INTERNAL_SECRET_ENV] = randomUUID();
   }
 
-  const app = nextFactory({ dev, hostname, port });
+  // Next lazily installs its upgrade handler on the first HTTP request's server.
+  // Bind it to the private listener so it cannot close a Responses socket that
+  // the public listener has already accepted through our WebSocketServer.
+  const internalServer = http.createServer();
+  const app = nextFactory({ dev, hostname, port, httpServer: internalServer });
   const handler = app.getRequestHandler();
   await app.prepare();
   // `.env` 在 `node server.js` 路径下由 app.prepare() 加载（cluster.js 则更早用
@@ -1243,7 +1247,7 @@ async function main() {
 
   // WebSocket frame 必须重新进入持有客户端连接和持久上游会话的同一个 worker。
   // 私有独占 listener 无需经 IPC 复制请求正文即可保证这一不变量。
-  const internalServer = http.createServer(requestListener);
+  internalServer.on("request", requestListener);
   const internalHttpTarget = await listenOnPrivateLoopback(internalServer);
   const server = http.createServer(requestListener);
 

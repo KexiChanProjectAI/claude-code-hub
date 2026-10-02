@@ -114,6 +114,7 @@ export async function POST(req: Request) {
       streamGateMode: validated.streamGateMode,
       affinityIgnoreClientSessionId: validated.affinityIgnoreClientSessionId,
       edgeExecutionEnabled: validated.edgeExecutionEnabled,
+      enableMemoryAdmission: validated.enableMemoryAdmission,
       enableCodexSessionIdCompletion: validated.enableCodexSessionIdCompletion,
       enableClaudeMetadataUserIdInjection: validated.enableClaudeMetadataUserIdInjection,
       enableResponseFixer: validated.enableResponseFixer,

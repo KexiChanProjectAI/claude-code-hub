@@ -353,6 +353,10 @@ export async function getProviders(): Promise<ProviderDisplay[]> {
         name: provider.name,
         url: provider.url,
         maskedKey: maskKey(provider.key),
+        maskedNewApiAccessToken: provider.newApiAccessToken
+          ? maskKey(provider.newApiAccessToken)
+          : null,
+        newApiUserId: provider.newApiUserId,
         isEnabled: provider.isEnabled,
         weight: provider.weight,
         priority: provider.priority,
@@ -562,6 +566,8 @@ export async function addProvider(data: {
   name: string;
   url: string;
   key: string;
+  new_api_access_token?: string | null;
+  new_api_user_id?: number | null;
   is_enabled?: boolean;
   weight?: number;
   priority?: number;
@@ -793,6 +799,8 @@ export async function editProvider(
     name?: string;
     url?: string;
     key?: string;
+    new_api_access_token?: string | null;
+    new_api_user_id?: number | null;
     is_enabled?: boolean;
     weight?: number;
     priority?: number;
@@ -1054,7 +1062,13 @@ export async function editProvider(
       before: redactProviderUrlFields(preimageFields),
       after: redactProviderUrlFields(data),
       success: true,
-      redactExtraKeys: ["key", "custom_headers", "customHeaders"],
+      redactExtraKeys: [
+        "key",
+        "new_api_access_token",
+        "newApiAccessToken",
+        "custom_headers",
+        "customHeaders",
+      ],
     });
     return {
       ok: true,
@@ -1596,6 +1610,8 @@ const SINGLE_EDIT_PREIMAGE_FIELD_TO_PROVIDER_KEY: Record<
 > = {
   name: "name",
   url: "url",
+  new_api_access_token: "newApiAccessToken",
+  new_api_user_id: "newApiUserId",
   is_enabled: "isEnabled",
   weight: "weight",
   priority: "priority",
