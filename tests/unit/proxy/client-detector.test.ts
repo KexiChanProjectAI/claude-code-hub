@@ -750,6 +750,26 @@ describe("client-detector", () => {
       expect(result.matchedPattern).toBe("codex_exec");
     });
 
+    test("codex_python_sdk UA matches codex-cli allowlist", () => {
+      const session = createMockSession({ userAgent: "codex_python_sdk/0.1.0" });
+      const result = isClientAllowedDetailed(session, ["codex-cli"], []);
+      expect(result.allowed).toBe(true);
+      expect(result.matchedPattern).toBe("codex-cli");
+    });
+
+    test("codex_python_sdk UA matches codex_python_sdk child pattern", () => {
+      const session = createMockSession({ userAgent: "codex_python_sdk/0.1.0" });
+      const result = isClientAllowedDetailed(session, ["codex_python_sdk"], []);
+      expect(result.allowed).toBe(true);
+      expect(result.matchedPattern).toBe("codex_python_sdk");
+    });
+
+    test("codex-tui UA does NOT match codex_python_sdk pattern (isolation)", () => {
+      const session = createMockSession({ userAgent: "codex-tui/0.115.0" });
+      const result = isClientAllowedDetailed(session, ["codex_python_sdk"], []);
+      expect(result.allowed).toBe(false);
+    });
+
     test("codex_vscode UA matches codex_vscode child pattern", () => {
       const session = createMockSession({ userAgent: "codex_vscode/1.0.0" });
       const result = isClientAllowedDetailed(session, ["codex_vscode"], []);

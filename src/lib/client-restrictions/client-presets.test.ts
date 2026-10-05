@@ -57,7 +57,7 @@ describe("client restriction presets", () => {
       const codexPreset = CLIENT_RESTRICTION_PRESET_OPTIONS.find((p) => p.value === "codex-cli");
       expect(codexPreset).toBeDefined();
       expect(codexPreset!.children).toBeDefined();
-      expect(codexPreset!.children!.length).toBe(4);
+      expect(codexPreset!.children!.length).toBe(5);
     });
 
     test("codex-cli aliases include new values", () => {
@@ -66,11 +66,13 @@ describe("client restriction presets", () => {
       expect(codexPreset!.aliases).toContain("codex_exec");
       expect(codexPreset!.aliases).toContain("codex_vscode");
       expect(codexPreset!.aliases).toContain("Codex Desktop");
+      expect(codexPreset!.aliases).toContain("codex_python_sdk");
     });
 
     test("new codex aliases are recognized as preset values", () => {
       expect(isPresetClientValue("codex_cli_core")).toBe(true);
       expect(isPresetClientValue("codex_exec")).toBe(true);
+      expect(isPresetClientValue("codex_python_sdk")).toBe(true);
     });
 
     test("codex-cli is in second position (after claude-code)", () => {

@@ -34,12 +34,20 @@ export const CLIENT_RESTRICTION_PRESET_OPTIONS: readonly ClientRestrictionPreset
   },
   {
     value: "codex-cli",
-    aliases: ["codex-cli", "codex_cli_core", "codex_vscode", "Codex Desktop", "codex_exec"],
+    aliases: [
+      "codex-cli",
+      "codex_cli_core",
+      "codex_vscode",
+      "Codex Desktop",
+      "codex_exec",
+      "codex_python_sdk",
+    ],
     children: [
       { value: "codex_cli_core", labelKey: "codex-cli-core" },
       { value: "codex_vscode", labelKey: "vscode" },
       { value: "Codex Desktop", labelKey: "desktop" },
       { value: "codex_exec", labelKey: "exec" },
+      { value: "codex_python_sdk", labelKey: "python-sdk" },
     ],
   },
   { value: "gemini-cli", aliases: ["gemini-cli"] },

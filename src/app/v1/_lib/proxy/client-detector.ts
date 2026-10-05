@@ -57,6 +57,10 @@ const CODEX_FAMILY_RULES: Array<{ test: RegExp; matchValues: Set<string> }> = [
     test: /^codex[_-]?vscode\b/i,
     matchValues: new Set(["codex-cli", "codex_vscode"]),
   },
+  {
+    test: /^codex[_-]?python[_-]?sdk\b/i,
+    matchValues: new Set(["codex-cli", "codex_python_sdk"]),
+  },
 ];
 
 if (process.env.NODE_ENV !== "production") {
