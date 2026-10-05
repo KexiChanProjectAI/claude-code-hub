@@ -360,6 +360,7 @@ export function RoutingSection({ subSectionRefs }: RoutingSectionProps) {
                     ),
                     desktop: t("sections.routing.clientRestrictions.subClients.desktop"),
                     exec: t("sections.routing.clientRestrictions.subClients.exec"),
+                    "python-sdk": t("sections.routing.clientRestrictions.subClients.python-sdk"),
                   },
                   nSelected: t("sections.routing.clientRestrictions.nSelected", {
                     count: "{count}",

@@ -100,7 +100,8 @@
         "gh-action": "GitHub Action",
         "codex-cli-core": "CLI / TUI",
         "desktop": "Desktop",
-        "exec": "Exec"
+        "exec": "Exec",
+        "python-sdk": "Python SDK"
       },
       "nSelected": "已选 {count} 项"
     },

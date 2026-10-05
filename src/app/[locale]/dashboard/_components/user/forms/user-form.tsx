@@ -413,6 +413,7 @@ export function UserForm({ user, onSuccess, currentUser }: UserFormProps) {
                 "codex-cli-core": tUserEdit("subClients.codex-cli-core"),
                 desktop: tUserEdit("subClients.desktop"),
                 exec: tUserEdit("subClients.exec"),
+                "python-sdk": tUserEdit("subClients.python-sdk"),
               },
               nSelected: tUserEdit("nSelected", { count: "{count}" }),
             }}

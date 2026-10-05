@@ -273,6 +273,7 @@ export function useUserTranslations(
         "codex-cli-core": t("userEditSection.subClients.codex-cli-core"),
         desktop: t("userEditSection.subClients.desktop"),
         exec: t("userEditSection.subClients.exec"),
+        "python-sdk": t("userEditSection.subClients.python-sdk"),
       },
       nSelected: t("userEditSection.nSelected", { count: "{count}" }),
       limitRules: {
