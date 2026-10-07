@@ -4,10 +4,8 @@ import { normalizeAllowedModelRules } from "@/lib/allowed-model-rules";
 import { logger } from "@/lib/logger";
 import { applyProviderPrefix } from "@/lib/provider-prefix";
 import { createProxyAgentForProvider } from "@/lib/proxy-agent";
-import { ERROR_CODES, getErrorMessageServer } from "@/lib/utils/error-messages";
 import { isProviderActiveNow } from "@/lib/utils/provider-schedule";
 import { resolveSystemTimezone } from "@/lib/utils/timezone";
-import { resolveApiKeyAuthOutcome } from "@/repository/key";
 import { findAllProviders } from "@/repository/provider";
 import type {
   AnthropicModelsResponse,
@@ -15,9 +13,9 @@ import type {
   OpenAIModelsResponse,
 } from "@/types/models";
 import type { Provider } from "@/types/provider";
-import { extractApiKeyFromHeaders } from "../proxy/auth-guard";
 import type { ClientFormat } from "../proxy/format-mapper";
 import { checkProviderGroupMatch } from "../proxy/provider-selector";
+import { authenticateApiKeyRequest as authenticateRequest } from "./authenticate-request";
 
 type ResponseFormat = "openai" | "anthropic" | "gemini" | "codex";
 
@@ -50,95 +48,6 @@ function matchesIfNoneMatch(value: string | undefined, etag: string): boolean {
  */
 function getProviderTimeout(provider: Provider): number {
   return provider.requestTimeoutNonStreamingMs || DEFAULT_MODELS_TIMEOUT_MS;
-}
-
-/**
- * 从请求中提取 API Key（复用 auth-guard 的逻辑）
- */
-function extractApiKey(c: Context): string | null {
-  return extractApiKeyFromHeaders({
-    authorization: c.req.header("authorization"),
-    "x-api-key": c.req.header("x-api-key"),
-    "x-goog-api-key": c.req.header("x-goog-api-key"),
-  });
-}
-
-/**
- * 验证请求的 API Key 并返回用户信息
- *
- * @throws {Response} 401 错误响应（未提供凭据、无效 key、用户禁用、用户过期）
- */
-async function authenticateRequest(c: Context): Promise<{
-  user: {
-    id: number;
-    providerGroup: string | null;
-    isEnabled: boolean;
-    expiresAt?: Date | null;
-    allowedModels?: string[];
-  };
-  key: { providerGroup: string | null; name: string };
-}> {
-  const apiKey = extractApiKey(c);
-  if (!apiKey) {
-    throw c.json({ error: { message: "未提供认证凭据", type: "authentication_error" } }, 401);
-  }
-
-  const outcome = await resolveApiKeyAuthOutcome(apiKey);
-  if (!outcome.ok) {
-    // Exhaustive switch: see auth-guard.ts for rationale. Adding a new
-    // ApiKeyAuthFailureReason will produce a TypeScript error on the
-    // exhaustiveness fallthrough until this branch is handled explicitly.
-    const { getLocale } = await import("next-intl/server");
-    const locale = await getLocale();
-    switch (outcome.reason) {
-      case "key_disabled":
-        throw c.json(
-          {
-            error: {
-              message: await getErrorMessageServer(locale, ERROR_CODES.PROXY_API_KEY_DISABLED),
-              type: "key_disabled",
-            },
-          },
-          401
-        );
-      case "key_expired":
-        throw c.json(
-          {
-            error: {
-              message: await getErrorMessageServer(locale, ERROR_CODES.PROXY_API_KEY_EXPIRED),
-              type: "key_expired",
-            },
-          },
-          401
-        );
-      case "not_found":
-        throw c.json(
-          {
-            error: {
-              message: await getErrorMessageServer(locale, ERROR_CODES.PROXY_INVALID_API_KEY),
-              type: "invalid_api_key",
-            },
-          },
-          401
-        );
-      default: {
-        const _exhaustive: never = outcome.reason;
-        throw new Error(`Unhandled auth outcome reason: ${JSON.stringify(_exhaustive)}`);
-      }
-    }
-  }
-
-  const { user, key } = outcome;
-
-  if (!user.isEnabled) {
-    throw c.json({ error: { message: "用户账户已被禁用", type: "user_disabled" } }, 401);
-  }
-
-  if (user.expiresAt && user.expiresAt.getTime() <= Date.now()) {
-    throw c.json({ error: { message: "用户账户已过期", type: "user_expired" } }, 401);
-  }
-
-  return { user, key };
 }
 
 /**
@@ -470,21 +379,32 @@ export function filterModelsByUserAllowedModels(
   return models.filter((m) => allowedSet.has(m.id.toLowerCase()));
 }
 
+interface ModelsAuthState {
+  user: { id: number; providerGroup: string | null; allowedModels?: string[] | null };
+  key: { providerGroup: string | null };
+}
+
+/** 按 providerType 分组的模型列表 */
+export interface ModelsByProviderType {
+  providerType: Provider["providerType"];
+  models: FetchedModel[];
+}
+
 /**
- * 根据指定的 providerTypes 获取模型列表
+ * 根据指定的 providerTypes 获取模型列表，并按 providerType 分组返回
  *
  * 与代理请求不同，模型列表需要展示所有已启用 provider 的模型（不做健康检查），
  * 因为模型列表的职责是"告诉用户有哪些模型可用"，实时可用性由代理请求时的守卫链处理。
  *
+ * 每组内按模型 id 去重并按字典序排序，已应用用户级 allowedModels 过滤。
+ * 组的顺序与传入的 providerTypes 顺序一致，没有任何模型的类型不会出现在结果中。
+ *
  * Fix: #956 — 之前复用 selectProviderByType() 导致每种类型只选 1 个 provider
  */
-async function getAvailableModelsByProviderTypes(
-  authState: {
-    user: { id: number; providerGroup: string | null; allowedModels?: string[] | null };
-    key: { providerGroup: string | null };
-  },
+export async function getAvailableModelsGroupedByProviderType(
+  authState: ModelsAuthState,
   providerTypes: Provider["providerType"][]
-): Promise<{ models: FetchedModel[]; providerName?: string }> {
+): Promise<{ groups: ModelsByProviderType[]; providerName?: string }> {
   const allProviders = await findAllProviders();
 
   // 过滤出所有匹配的供应商
@@ -505,7 +425,7 @@ async function getAvailableModelsByProviderTypes(
       userId: authState.user.id,
       triedTypes: providerTypes,
     });
-    return { models: [] };
+    return { groups: [] };
   }
 
   logger.debug("[AvailableModels] Matched providers for models list", {
@@ -514,15 +434,60 @@ async function getAvailableModelsByProviderTypes(
     providers: matchedProviders.map((p) => ({ id: p.id, name: p.name, type: p.providerType })),
   });
 
-  const allModels: FetchedModel[] = [];
-  const seenIds = new Set<string>();
-
   const fetchResults = await Promise.all(
     matchedProviders.map((provider) => fetchModelsFromProvider(provider))
   );
 
-  for (const models of fetchResults) {
-    for (const model of models) {
+  const byType = new Map<Provider["providerType"], Map<string, FetchedModel>>();
+  matchedProviders.forEach((provider, index) => {
+    let bucket = byType.get(provider.providerType);
+    if (!bucket) {
+      bucket = new Map();
+      byType.set(provider.providerType, bucket);
+    }
+    for (const model of fetchResults[index] ?? []) {
+      if (!bucket.has(model.id)) {
+        bucket.set(model.id, model);
+      }
+    }
+  });
+
+  const groups: ModelsByProviderType[] = [];
+  for (const providerType of providerTypes) {
+    const bucket = byType.get(providerType);
+    if (!bucket) continue;
+    // 用户级模型白名单过滤（与代理链路的 ProxyModelGuard 语义一致）
+    const models = filterModelsByUserAllowedModels(
+      [...bucket.values()],
+      authState.user.allowedModels
+    ).sort((a, b) => a.id.localeCompare(b.id));
+    if (models.length > 0) {
+      groups.push({ providerType, models });
+    }
+  }
+
+  return {
+    groups,
+    providerName: matchedProviders.map((p) => p.name).join(", "),
+  };
+}
+
+/**
+ * 根据指定的 providerTypes 获取模型列表（跨类型合并去重）
+ */
+async function getAvailableModelsByProviderTypes(
+  authState: ModelsAuthState,
+  providerTypes: Provider["providerType"][]
+): Promise<{ models: FetchedModel[]; providerName?: string }> {
+  const { groups, providerName } = await getAvailableModelsGroupedByProviderType(
+    authState,
+    providerTypes
+  );
+
+  const allModels: FetchedModel[] = [];
+  const seenIds = new Set<string>();
+  for (const group of groups) {
+    for (const model of group.models) {
       if (!seenIds.has(model.id)) {
         seenIds.add(model.id);
         allModels.push(model);
@@ -530,19 +495,15 @@ async function getAvailableModelsByProviderTypes(
     }
   }
 
-  // 用户级模型白名单过滤（与代理链路的 ProxyModelGuard 语义一致）
-  const filteredModels = filterModelsByUserAllowedModels(allModels, authState.user.allowedModels);
-
   logger.info("[AvailableModels] Aggregated models", {
     userId: authState.user.id,
-    modelCount: filteredModels.length,
-    unfilteredModelCount: allModels.length,
-    providerCount: matchedProviders.length,
+    modelCount: allModels.length,
+    groupCount: groups.length,
   });
 
   return {
-    models: filteredModels.sort((a, b) => a.id.localeCompare(b.id)),
-    providerName: matchedProviders.map((p) => p.name).join(", "),
+    models: allModels.sort((a, b) => a.id.localeCompare(b.id)),
+    providerName,
   };
 }
 
