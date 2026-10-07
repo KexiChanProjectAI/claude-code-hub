@@ -846,6 +846,10 @@ export const modelPrices = pgTable('model_prices', {
   modelPricesLatestIdx: index('idx_model_prices_latest').on(table.modelName, table.createdAt.desc()),
   // 基础索引
   modelPricesModelNameIdx: index('idx_model_prices_model_name').on(table.modelName),
+  // 价格回退查询的大小写不敏感匹配（lower(model_name) = ANY(...)）
+  modelPricesModelNameLowerIdx: index('idx_model_prices_model_name_lower').on(
+    sql`lower(${table.modelName})`
+  ),
   modelPricesCreatedAtIdx: index('idx_model_prices_created_at').on(table.createdAt.desc()),
   // 按来源过滤的索引
   modelPricesSourceIdx: index('idx_model_prices_source').on(table.source),

@@ -49,7 +49,8 @@ describe("findLatestPriceByModel alias fallback", () => {
 
     await findLatestPriceByModel("anthropic/claude-sonnet-5");
 
-    expect(executedQueries).toHaveLength(1);
+    // indexed tiers first, then the case-insensitive alias scan when nothing matched
+    expect(executedQueries).toHaveLength(2);
     const query = dialect.sqlToQuery(executedQueries[0]);
 
     // tuple expansion is what PostgreSQL rejects
@@ -65,5 +66,56 @@ describe("findLatestPriceByModel alias fallback", () => {
     for (const param of arrayParams) {
       expect(param).toContain("claude-sonnet-5");
     }
+  });
+
+  it("matches model names case-insensitively after exact candidates", async () => {
+    const { findLatestPriceByModel } = await import("@/repository/model-price");
+
+    await findLatestPriceByModel("DeepSeek-V4-Flash");
+
+    const indexed = dialect.sqlToQuery(executedQueries[0]);
+    expect(indexed.sql).toMatch(/lower\(model_name\) = ANY\(\$\d+\)/);
+    // exact candidates rank above case-insensitive hits, which rank above aliases
+    expect(indexed.sql.indexOf("THEN 0")).toBeLessThan(indexed.sql.indexOf("THEN 1"));
+    const lowerParam = indexed.params.find(
+      (p) => Array.isArray(p) && (p as string[]).includes("deepseek-v4-flash")
+    ) as string[] | undefined;
+    expect(lowerParam).toBeDefined();
+    expect(lowerParam?.every((name) => name === name.toLowerCase())).toBe(true);
+  });
+
+  it("falls back to a case-insensitive alias scan only when indexed tiers miss", async () => {
+    const { findLatestPriceByModel } = await import("@/repository/model-price");
+
+    await findLatestPriceByModel("MiniMax-M2.7");
+
+    expect(executedQueries).toHaveLength(2);
+    const aliasScan = dialect.sqlToQuery(executedQueries[1]);
+    expect(aliasScan.sql).toContain("jsonb_array_elements_text");
+    expect(aliasScan.sql).toMatch(/lower\(alias\.name\) = ANY\(\$\d+\)/);
+    expect(aliasScan.params).toContainEqual(expect.arrayContaining(["minimax-m2.7"]));
+  });
+
+  it("skips the alias scan when an indexed tier matches", async () => {
+    const { db } = await import("@/drizzle/db");
+    vi.mocked(db.execute).mockImplementationOnce(((query: SQL) => {
+      executedQueries.push(query);
+      return Promise.resolve([
+        {
+          id: 9,
+          modelName: "minimax-m2.7",
+          priceData: { input_cost_per_token: 0.0000003 },
+          source: "cloud",
+          createdAt: new Date(0),
+          updatedAt: new Date(0),
+        },
+      ]);
+    }) as never);
+
+    const { findLatestPriceByModel } = await import("@/repository/model-price");
+    const result = await findLatestPriceByModel("MiniMax-M2.7");
+
+    expect(executedQueries).toHaveLength(1);
+    expect(result?.modelName).toBe("minimax-m2.7");
   });
 });

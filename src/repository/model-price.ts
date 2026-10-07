@@ -35,10 +35,10 @@ export interface PaginatedResult<T> {
 /**
  * 获取指定模型的最新价格。
  *
- * 精确名未命中时按以下顺序回退(用于带斜杠/区域前缀/日期后缀等调用名变体):
+ * 精确名(大小写敏感)未命中时按以下顺序回退(用于大小写不同、带斜杠/区域前缀/日期后缀等调用名变体):
  * 1. 归一化候选名(去托管商前缀、取最后一段、剥区域前缀等)的精确匹配
- * 2. 云端价格表 aliases 数组命中原名
- * 3. aliases 命中候选名
+ * 2. 原名/候选名的大小写不敏感匹配
+ * 3. 云端价格表 aliases 数组命中原名/候选名(先精确,再大小写不敏感)
  */
 export async function findLatestPriceByModel(modelName: string): Promise<ModelPrice | null> {
   try {
@@ -81,20 +81,34 @@ export async function queryLatestPriceByModel(modelName: string): Promise<ModelP
   return await findLatestPriceByModelFallback(modelName);
 }
 
-/** 精确名未命中后的候选名/别名回退查询 */
+const MAX_POSITION = 2147483647;
+
+/**
+ * 精确名未命中后的回退查询(模型名与别名均大小写不敏感)。
+ *
+ * 优先级(同级内 manual 优先、时间倒序):
+ * 0. 候选名精确命中
+ * 1. 原名/候选名大小写不敏感命中 model_name(走 idx_model_prices_model_name_lower)
+ * 2. 别名精确命中原名
+ * 3. 别名精确命中候选名(走 idx_model_prices_aliases GIN)
+ * 4. 以上均未命中时,别名大小写不敏感命中原名/候选名(需展开别名数组,仅在前几级落空时执行)
+ */
 async function findLatestPriceByModelFallback(modelName: string): Promise<ModelPrice | null> {
   const original = modelName.trim();
   if (!original) return null;
 
   const candidates = buildModelNameFallbackCandidates(original);
   const candidateArray = candidates.length > 0 ? candidates : [original];
+  const lowerCandidateArray = Array.from(
+    new Set([original, ...candidates].map((name) => name.toLowerCase()))
+  );
 
-  // 匹配优先级:候选名精确命中 > 别名命中原名 > 别名命中候选名;
-  // 同级内 manual 优先、时间倒序。别名查询命中 idx_model_prices_aliases(GIN)。
   // sql.param 将候选列表绑定为单个数组参数:直接内插会展开成 ($1,$2,...) 元组,
   // ANY()/?|/::text[] 都会被 PG 拒绝,导致回退查询必败
   const candidatesParam = sql.param(candidateArray);
-  const query = sql`
+  const lowerCandidatesParam = sql.param(lowerCandidateArray);
+
+  const indexedQuery = sql`
     SELECT
       id,
       model_name as "modelName",
@@ -104,25 +118,59 @@ async function findLatestPriceByModelFallback(modelName: string): Promise<ModelP
       updated_at as "updatedAt"
     FROM model_prices
     WHERE model_name = ANY(${candidatesParam})
+       OR lower(model_name) = ANY(${lowerCandidatesParam})
        OR price_data -> 'aliases' ? ${original}
        OR price_data -> 'aliases' ?| ${candidatesParam}
     ORDER BY
       CASE
         WHEN model_name = ANY(${candidatesParam}) THEN 0
-        WHEN price_data -> 'aliases' ? ${original} THEN 1
-        ELSE 2
+        WHEN lower(model_name) = ANY(${lowerCandidatesParam}) THEN 1
+        WHEN price_data -> 'aliases' ? ${original} THEN 2
+        ELSE 3
       END,
-      COALESCE(array_position(${candidatesParam}::text[], model_name), 2147483647),
+      COALESCE(
+        array_position(${candidatesParam}::text[], model_name),
+        array_position(${lowerCandidatesParam}::text[], lower(model_name)),
+        ${MAX_POSITION}
+      ),
       (source = 'manual') DESC,
       created_at DESC NULLS LAST,
       id DESC
     LIMIT 1
   `;
 
-  const result = await db.execute(query);
-  const rows = Array.from(result);
-  if (rows.length === 0) return null;
-  return toModelPrice(rows[0]);
+  const indexedRows = Array.from(await db.execute(indexedQuery));
+  if (indexedRows.length > 0) return toModelPrice(indexedRows[0]);
+
+  const caseInsensitiveAliasQuery = sql`
+    SELECT
+      id,
+      model_name as "modelName",
+      price_data as "priceData",
+      source,
+      created_at as "createdAt",
+      updated_at as "updatedAt"
+    FROM model_prices
+    WHERE jsonb_typeof(price_data -> 'aliases') = 'array'
+      AND EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements_text(price_data -> 'aliases') AS alias(name)
+        WHERE lower(alias.name) = ANY(${lowerCandidatesParam})
+      )
+    ORDER BY
+      (
+        SELECT MIN(array_position(${lowerCandidatesParam}::text[], lower(alias.name)))
+        FROM jsonb_array_elements_text(price_data -> 'aliases') AS alias(name)
+      ) ASC NULLS LAST,
+      (source = 'manual') DESC,
+      created_at DESC NULLS LAST,
+      id DESC
+    LIMIT 1
+  `;
+
+  const aliasRows = Array.from(await db.execute(caseInsensitiveAliasQuery));
+  if (aliasRows.length === 0) return null;
+  return toModelPrice(aliasRows[0]);
 }
 
 export async function findLatestPriceByModelAndSource(
