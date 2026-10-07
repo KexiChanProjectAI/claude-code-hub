@@ -1,0 +1,50 @@
+{
+  "pageTitle": "Каталог моделей",
+  "pageDescription": "Модели, доступные вашему API-ключу, протоколы, через которые их можно вызывать, а также лимиты, цены и возможности.",
+  "generatedAt": "Сформировано {time}. Обновляется не чаще раза в минуту.",
+  "searchPlaceholder": "Поиск моделей",
+  "tabs": {
+    "byModel": "По моделям",
+    "byProtocol": "По протоколам"
+  },
+  "columns": {
+    "model": "Модель",
+    "protocols": "Протоколы",
+    "contextWindow": "Контекст",
+    "maxOutput": "Макс. вывод",
+    "inputPrice": "Ввод",
+    "outputPrice": "Вывод",
+    "cacheRead": "Чтение кэша",
+    "cacheWrite": "Запись кэша",
+    "capabilities": "Возможности",
+    "modalities": "Модальности",
+    "knowledgeCutoff": "Срез знаний"
+  },
+  "capabilities": {
+    "vision": "Зрение",
+    "functionCalling": "Инструменты",
+    "reasoning": "Рассуждение",
+    "pdfInput": "PDF",
+    "promptCaching": "Кэш промптов"
+  },
+  "modalities": {
+    "input": "Вход",
+    "output": "Выход"
+  },
+  "status": {
+    "deprecated": "Устарела"
+  },
+  "priceUnit": "Цены в USD за 1 млн токенов, базовый тариф.",
+  "noPriceData": "Нет метаданных",
+  "empty": "Подходящих моделей нет.",
+  "protocolEmpty": "Через этот протокол модели недоступны.",
+  "protocolModelsCount": "{count, plural, one {# модель} few {# модели} many {# моделей} other {# модели}}",
+  "machineReadable": {
+    "title": "Для агентов и скриптов",
+    "description": "Вызывайте эти URL с вашим API-ключом в виде Bearer-токена. По умолчанию возвращается JSON. Добавьте ?format=md, чтобы получить Markdown, который LLM читает напрямую.",
+    "copy": "Копировать URL"
+  },
+  "notes": {
+    "title": "Заметки администратора"
+  }
+}

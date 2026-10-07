@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, LogOut } from "lucide-react";
+import { BookOpen, Boxes, LogOut } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Link, useRouter } from "@/i18n/routing";
@@ -50,6 +50,12 @@ export function MyUsageHeader({ onLogout, keyName, userName }: MyUsageHeaderProp
           <Link href="/usage-doc">
             <BookOpen className="h-4 w-4" />
             {t("documentation")}
+          </Link>
+        </Button>
+        <Button asChild variant="outline" size="sm" className="gap-2">
+          <Link href="/models">
+            <Boxes className="h-4 w-4" />
+            {t("modelCatalog")}
           </Link>
         </Button>
         <Button variant="outline" size="sm" onClick={handleLogout} className="gap-2">

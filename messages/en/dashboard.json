@@ -1020,6 +1020,7 @@
     "providers": "Providers",
     "auditLogs": "Audit logs",
     "documentation": "Docs",
+    "models": "Models",
     "systemSettings": "Settings",
     "feedback": "Feedback",
     "login": "Login",

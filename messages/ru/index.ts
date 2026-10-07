@@ -8,6 +8,7 @@ import errors from "./errors.json";
 import forms from "./forms.json";
 import internal from "./internal.json";
 import ipDetails from "./ipDetails.json";
+import modelCatalog from "./modelCatalog.json";
 import myUsage from "./myUsage.json";
 import notifications from "./notifications.json";
 import providerChain from "./provider-chain.json";
@@ -29,6 +30,7 @@ export default {
   errors,
   forms,
   ipDetails,
+  modelCatalog,
   notifications,
   "provider-chain": providerChain,
   providers,

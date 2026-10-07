@@ -1,0 +1,50 @@
+{
+  "pageTitle": "模型目录",
+  "pageDescription": "当前 API Key 可用的模型、每个模型支持的调用协议，以及上下文、价格与能力信息。",
+  "generatedAt": "生成于 {time}，最多每分钟刷新一次。",
+  "searchPlaceholder": "搜索模型",
+  "tabs": {
+    "byModel": "按模型",
+    "byProtocol": "按协议"
+  },
+  "columns": {
+    "model": "模型",
+    "protocols": "协议",
+    "contextWindow": "上下文",
+    "maxOutput": "最大输出",
+    "inputPrice": "输入",
+    "outputPrice": "输出",
+    "cacheRead": "缓存读取",
+    "cacheWrite": "缓存写入",
+    "capabilities": "能力",
+    "modalities": "模态",
+    "knowledgeCutoff": "知识截止"
+  },
+  "capabilities": {
+    "vision": "视觉",
+    "functionCalling": "工具调用",
+    "reasoning": "推理",
+    "pdfInput": "PDF",
+    "promptCaching": "提示缓存"
+  },
+  "modalities": {
+    "input": "输入",
+    "output": "输出"
+  },
+  "status": {
+    "deprecated": "已弃用"
+  },
+  "priceUnit": "价格单位为 USD / 每百万 tokens（基础档位）。",
+  "noPriceData": "暂无元数据",
+  "empty": "没有匹配的模型。",
+  "protocolEmpty": "该协议下没有可用模型。",
+  "protocolModelsCount": "{count} 个模型",
+  "machineReadable": {
+    "title": "供 agent 与脚本使用",
+    "description": "使用你的 API Key 作为 Bearer token 请求以下地址。默认返回 JSON，追加 ?format=md 可获得 LLM 可直接阅读的 Markdown。",
+    "copy": "复制地址"
+  },
+  "notes": {
+    "title": "管理员说明"
+  }
+}

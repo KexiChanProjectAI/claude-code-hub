@@ -19,6 +19,7 @@ export async function DashboardHeader({ session, locale }: DashboardHeaderProps)
   const isAdmin = session?.user.role === "admin";
   const canUseDashboard = !!session && (isAdmin || session.key.canLoginWebUi);
   const documentationItem = { href: "/usage-doc", label: t("documentation") };
+  const modelsItem = { href: "/models", label: t("models") };
 
   const NAV_ITEMS: (DashboardNavItem & { adminOnly?: boolean })[] = [
     { href: "/dashboard", label: t("dashboard") },
@@ -31,12 +32,13 @@ export async function DashboardHeader({ session, locale }: DashboardHeaderProps)
       : [{ href: "/dashboard/my-quota", label: t("myQuota") }]),
     { href: "/dashboard/users", label: t("userManagement") },
     documentationItem,
+    modelsItem,
     { href: "/settings", label: t("systemSettings"), adminOnly: true },
   ];
 
   const items =
     session && !canUseDashboard
-      ? [documentationItem]
+      ? [documentationItem, modelsItem]
       : NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin);
 
   return (

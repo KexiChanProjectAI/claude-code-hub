@@ -1018,6 +1018,7 @@
     "providers": "供應商管理",
     "auditLogs": "稽核日誌",
     "documentation": "文件",
+    "models": "模型目錄",
     "systemSettings": "系統設定",
     "feedback": "意見回饋",
     "login": "登入",

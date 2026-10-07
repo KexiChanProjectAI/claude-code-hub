@@ -1,0 +1,50 @@
+{
+  "pageTitle": "モデルカタログ",
+  "pageDescription": "この API キーで利用できるモデル、各モデルが対応する呼び出しプロトコル、コンテキスト長・価格・機能の一覧です。",
+  "generatedAt": "{time} に生成。更新は最大で 1 分に 1 回です。",
+  "searchPlaceholder": "モデルを検索",
+  "tabs": {
+    "byModel": "モデル別",
+    "byProtocol": "プロトコル別"
+  },
+  "columns": {
+    "model": "モデル",
+    "protocols": "プロトコル",
+    "contextWindow": "コンテキスト",
+    "maxOutput": "最大出力",
+    "inputPrice": "入力",
+    "outputPrice": "出力",
+    "cacheRead": "キャッシュ読み取り",
+    "cacheWrite": "キャッシュ書き込み",
+    "capabilities": "機能",
+    "modalities": "モダリティ",
+    "knowledgeCutoff": "知識カットオフ"
+  },
+  "capabilities": {
+    "vision": "画像認識",
+    "functionCalling": "ツール",
+    "reasoning": "推論",
+    "pdfInput": "PDF",
+    "promptCaching": "プロンプトキャッシュ"
+  },
+  "modalities": {
+    "input": "入力",
+    "output": "出力"
+  },
+  "status": {
+    "deprecated": "非推奨"
+  },
+  "priceUnit": "価格は 100 万トークンあたりの USD（基本料金）です。",
+  "noPriceData": "メタデータなし",
+  "empty": "一致するモデルはありません。",
+  "protocolEmpty": "このプロトコルで利用できるモデルはありません。",
+  "protocolModelsCount": "{count} モデル",
+  "machineReadable": {
+    "title": "エージェント・スクリプト向け",
+    "description": "API キーを Bearer トークンとして以下の URL を呼び出してください。既定は JSON で、?format=md を付けると LLM がそのまま読める Markdown を返します。",
+    "copy": "URL をコピー"
+  },
+  "notes": {
+    "title": "管理者からのメモ"
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "pageTitle": "模型目錄",
+  "pageDescription": "目前 API Key 可用的模型、每個模型支援的呼叫協定，以及上下文、價格與能力資訊。",
+  "generatedAt": "產生於 {time}，最多每分鐘更新一次。",
+  "searchPlaceholder": "搜尋模型",
+  "tabs": {
+    "byModel": "依模型",
+    "byProtocol": "依協定"
+  },
+  "columns": {
+    "model": "模型",
+    "protocols": "協定",
+    "contextWindow": "上下文",
+    "maxOutput": "最大輸出",
+    "inputPrice": "輸入",
+    "outputPrice": "輸出",
+    "cacheRead": "快取讀取",
+    "cacheWrite": "快取寫入",
+    "capabilities": "能力",
+    "modalities": "模態",
+    "knowledgeCutoff": "知識截止"
+  },
+  "capabilities": {
+    "vision": "視覺",
+    "functionCalling": "工具呼叫",
+    "reasoning": "推理",
+    "pdfInput": "PDF",
+    "promptCaching": "提示快取"
+  },
+  "modalities": {
+    "input": "輸入",
+    "output": "輸出"
+  },
+  "status": {
+    "deprecated": "已棄用"
+  },
+  "priceUnit": "價格單位為 USD / 每百萬 tokens（基礎檔位）。",
+  "noPriceData": "暫無中繼資料",
+  "empty": "沒有符合的模型。",
+  "protocolEmpty": "此協定下沒有可用模型。",
+  "protocolModelsCount": "{count} 個模型",
+  "machineReadable": {
+    "title": "供 agent 與腳本使用",
+    "description": "使用你的 API Key 作為 Bearer token 請求以下位址。預設回傳 JSON，加上 ?format=md 可取得 LLM 可直接閱讀的 Markdown。",
+    "copy": "複製位址"
+  },
+  "notes": {
+    "title": "管理員說明"
+  }
+}

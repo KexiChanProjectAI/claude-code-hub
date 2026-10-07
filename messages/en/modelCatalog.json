@@ -1,0 +1,50 @@
+{
+  "pageTitle": "Model Catalog",
+  "pageDescription": "Models your API key can use, the protocols each one is served through, and their limits, prices and capabilities.",
+  "generatedAt": "Generated at {time}. Refreshes at most once a minute.",
+  "searchPlaceholder": "Search models",
+  "tabs": {
+    "byModel": "By model",
+    "byProtocol": "By protocol"
+  },
+  "columns": {
+    "model": "Model",
+    "protocols": "Protocols",
+    "contextWindow": "Context",
+    "maxOutput": "Max output",
+    "inputPrice": "Input",
+    "outputPrice": "Output",
+    "cacheRead": "Cache read",
+    "cacheWrite": "Cache write",
+    "capabilities": "Capabilities",
+    "modalities": "Modalities",
+    "knowledgeCutoff": "Knowledge cutoff"
+  },
+  "capabilities": {
+    "vision": "Vision",
+    "functionCalling": "Tools",
+    "reasoning": "Reasoning",
+    "pdfInput": "PDF",
+    "promptCaching": "Prompt caching"
+  },
+  "modalities": {
+    "input": "In",
+    "output": "Out"
+  },
+  "status": {
+    "deprecated": "Deprecated"
+  },
+  "priceUnit": "Prices are in USD per 1M tokens, base tier.",
+  "noPriceData": "No metadata",
+  "empty": "No models match.",
+  "protocolEmpty": "No models available through this protocol.",
+  "protocolModelsCount": "{count, plural, one {# model} other {# models}}",
+  "machineReadable": {
+    "title": "For agents and scripts",
+    "description": "Call these URLs with your API key as a Bearer token. The default response is JSON. Add ?format=md for Markdown that LLMs can read directly.",
+    "copy": "Copy URL"
+  },
+  "notes": {
+    "title": "Notes from the administrator"
+  }
+}
