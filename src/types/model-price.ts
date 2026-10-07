@@ -106,6 +106,12 @@ export interface ModelPriceData {
   supports_response_schema?: boolean;
   supports_tool_choice?: boolean;
   supports_vision?: boolean;
+  supports_audio_input?: boolean;
+  supports_audio_output?: boolean;
+  supports_video_input?: boolean;
+
+  // 输入/输出模态(云端价格表 modalities,例如 ["text", "image"])
+  modalities?: { input?: string[]; output?: string[] };
 
   // 其他字段
   tool_use_system_prompt_tokens?: number;

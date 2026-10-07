@@ -332,6 +332,28 @@ describe("convertCptModelEntry", () => {
     expect(priceData?.model_family).toBe("claude-sonnet");
   });
 
+  it("carries input/output modalities as string arrays", () => {
+    const priceData = convertCptModelEntry(
+      claudeEntry({
+        modalities: {
+          input: ["text", "image", 3 as unknown as string, " "],
+          output: ["text"],
+        },
+      }),
+      PROVIDERS
+    );
+    expect(priceData?.modalities).toEqual({ input: ["text", "image"], output: ["text"] });
+  });
+
+  it("omits modalities when the cloud entry has none or only invalid values", () => {
+    expect(convertCptModelEntry(claudeEntry(), PROVIDERS)?.modalities).toBeUndefined();
+    const invalid = convertCptModelEntry(
+      claudeEntry({ modalities: { input: "text" as unknown as string[] } }),
+      PROVIDERS
+    );
+    expect(invalid?.modalities).toBeUndefined();
+  });
+
   it("falls back to the first variant when no official variant exists", () => {
     const entry = claudeEntry({
       pricing: [

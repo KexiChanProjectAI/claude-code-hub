@@ -463,6 +463,18 @@ export function convertCptModelEntry(
     priceData.knowledge_cutoff = entry.knowledge_cutoff;
   }
 
+  if (entry.modalities && typeof entry.modalities === "object") {
+    const pickStrings = (value: unknown): string[] =>
+      Array.isArray(value)
+        ? value.filter((item): item is string => typeof item === "string" && item.trim() !== "")
+        : [];
+    const input = pickStrings(entry.modalities.input);
+    const output = pickStrings(entry.modalities.output);
+    if (input.length > 0 || output.length > 0) {
+      priceData.modalities = { input, output };
+    }
+  }
+
   if (entry.capabilities && typeof entry.capabilities === "object") {
     for (const [capability, fields] of Object.entries(CAPABILITY_FIELD_MAP)) {
       if (entry.capabilities[capability] === true) {
