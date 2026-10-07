@@ -1,6 +1,7 @@
 import "@/lib/polyfills/file";
 import { Hono } from "hono";
 import { handle } from "hono/vercel";
+import { handleModelCatalog } from "@/app/v1/_lib/catalog/handle-catalog";
 import { registerCors } from "@/app/v1/_lib/cors";
 import {
   handleAvailableModels,
@@ -39,6 +40,9 @@ if (hasDsn) {
 const app = new Hono().basePath("/v1");
 
 registerCors(app);
+
+// 模型目录（人类与 LLM 可读，需 API Key；必须先于 /models 下的其他路由注册）
+app.get("/models/catalog", handleModelCatalog);
 
 // 模型列表端点
 app.get("/models", handleAvailableModels); // 聚合式，返回用户可用的所有模型
