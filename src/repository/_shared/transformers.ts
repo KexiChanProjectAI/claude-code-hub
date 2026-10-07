@@ -360,6 +360,7 @@ export function toSystemSettings(dbSettings: any): SystemSettings {
     replayCacheTtlMinutes: normalizedReplayCacheTtlMinutes,
     cacheEffectivenessEnabled: dbSettings?.cacheEffectivenessEnabled ?? null,
     enableMemoryAdmission: dbSettings?.enableMemoryAdmission ?? false,
+    agentCatalogNotes: dbSettings?.agentCatalogNotes ?? null,
     createdAt: dbSettings?.createdAt ? new Date(dbSettings.createdAt) : new Date(),
     updatedAt: dbSettings?.updatedAt ? new Date(dbSettings.updatedAt) : new Date(),
   };

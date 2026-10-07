@@ -212,6 +212,7 @@ function createFallbackSettings(): SystemSettings {
     replayCacheTtlMinutes: REPLAY_CACHE_TTL_MINUTES_DEFAULT,
     cacheEffectivenessEnabled: null,
     enableMemoryAdmission: false,
+    agentCatalogNotes: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -293,6 +294,12 @@ const RECENT_COLUMN_LADDER: ReadonlyArray<{
   // 本层更新失败（仍有列缺失）时记录的告警
   updateWarn: string;
 }> = [
+  {
+    key: "agentCatalogNotes",
+    column: systemSettings.agentCatalogNotes,
+    selectWarn: "system_settings 缺少 agentCatalogNotes，回退到上一代字段集。",
+    updateWarn: "system_settings 缺少 agentCatalogNotes，继续降级更新。",
+  },
   {
     key: "enableMemoryAdmission",
     column: systemSettings.enableMemoryAdmission,
@@ -988,6 +995,13 @@ export async function updateSystemSettings(
     // 内存准入开关（如果提供）
     if (payload.enableMemoryAdmission !== undefined) {
       updates.enableMemoryAdmission = payload.enableMemoryAdmission;
+    }
+
+    // 模型目录附加文档（如果提供；空字符串归一为 null）
+    if (payload.agentCatalogNotes !== undefined) {
+      updates.agentCatalogNotes = payload.agentCatalogNotes?.trim()
+        ? payload.agentCatalogNotes
+        : null;
     }
 
     let updated;

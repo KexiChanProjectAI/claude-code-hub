@@ -53,6 +53,83 @@ describe("SystemSettings missing-column compatibility", () => {
     expect(result.enableMemoryAdmission).toBe(false);
   });
 
+  test("preserves existing settings when only the agent catalog notes column is absent", async () => {
+    vi.resetModules();
+    mockDatabase(
+      vi.fn((selection: Record<string, unknown>) =>
+        "agentCatalogNotes" in selection
+          ? queryRows([], { code: "42703" })
+          : queryRows([{ ...row, enableMemoryAdmission: true }])
+      )
+    );
+    const { getSystemSettings } = await import("@/repository/system-config");
+    const result = await getSystemSettings();
+    expect(result.siteTitle).toBe(row.siteTitle);
+    expect(result.enableMemoryAdmission).toBe(true);
+    expect(result.agentCatalogNotes).toBeNull();
+  });
+
+  test("reads and normalizes agent catalog notes", async () => {
+    vi.resetModules();
+    let written: Record<string, unknown> = {};
+    const update = vi.fn(() => {
+      const query = {
+        set: vi.fn((input: Record<string, unknown>) => {
+          written = input;
+          return query;
+        }),
+        where: vi.fn(() => query),
+        returning: vi.fn(() => Promise.resolve([{ ...row, ...written }])),
+      };
+      return query;
+    });
+    mockDatabase(
+      vi.fn(() => queryRows([{ ...row, agentCatalogNotes: "## Notes" }])),
+      update
+    );
+    const { getSystemSettings, updateSystemSettings } = await import("@/repository/system-config");
+    expect((await getSystemSettings()).agentCatalogNotes).toBe("## Notes");
+
+    const saved = await updateSystemSettings({ agentCatalogNotes: "Prefer Sonnet." });
+    expect(written.agentCatalogNotes).toBe("Prefer Sonnet.");
+    expect(saved.agentCatalogNotes).toBe("Prefer Sonnet.");
+
+    const cleared = await updateSystemSettings({ agentCatalogNotes: "   " });
+    expect(written.agentCatalogNotes).toBeNull();
+    expect(cleared.agentCatalogNotes).toBeNull();
+  });
+
+  test("updates existing fields when the agent catalog notes column is absent", async () => {
+    vi.resetModules();
+    const update = vi.fn(() => {
+      let values: Record<string, unknown> = {};
+      const query = {
+        set: vi.fn((input: Record<string, unknown>) => {
+          values = input;
+          return query;
+        }),
+        where: vi.fn(() => query),
+        returning: vi.fn((selection: Record<string, unknown>) =>
+          "agentCatalogNotes" in selection
+            ? Promise.reject({ code: "42703" })
+            : Promise.resolve([{ ...row, ...values }])
+        ),
+      };
+      return query;
+    });
+    mockDatabase(
+      vi.fn(() => queryRows([row])),
+      update
+    );
+    const { updateSystemSettings } = await import("@/repository/system-config");
+    const result = await updateSystemSettings({
+      siteTitle: "Changed",
+      agentCatalogNotes: "dropped on old schema",
+    });
+    expect(result.siteTitle).toBe("Changed");
+    expect(result.agentCatalogNotes).toBeNull();
+  });
+
   test("reports a migration requirement when no writable schema remains", async () => {
     vi.resetModules();
     const update = vi.fn(() => {

@@ -265,6 +265,13 @@ export const SystemSettingsSchema = z
       .describe(
         "Whether local memory admission is enabled. When enabled, request bodies and stream gate prefixes are admitted against the available memory budget, spill to disk, and return a local 429 when capacity runs out. When disabled, they stay in memory without queuing or local 429."
       ),
+    agentCatalogNotes: z
+      .string()
+      .max(20000)
+      .nullable()
+      .describe(
+        "Admin-authored Markdown appended to the model catalog (GET /v1/models/catalog) and the /models page. Null when unset."
+      ),
     replayEnabled: z
       .boolean()
       .nullable()

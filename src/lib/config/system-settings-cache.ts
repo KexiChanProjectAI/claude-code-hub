@@ -275,6 +275,7 @@ export async function getCachedSystemSettings(): Promise<SystemSettings> {
       replayCacheTtlMinutes: DEFAULT_SETTINGS.replayCacheTtlMinutes,
       cacheEffectivenessEnabled: null,
       enableMemoryAdmission: DEFAULT_SETTINGS.enableMemoryAdmission,
+      agentCatalogNotes: null,
       discoveryEnabled: DEFAULT_SETTINGS.discoveryEnabled,
       discoveryConcurrency: DEFAULT_SETTINGS.discoveryConcurrency,
       maxDiscoveryRounds: DEFAULT_SETTINGS.maxDiscoveryRounds,

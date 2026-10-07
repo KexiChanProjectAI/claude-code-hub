@@ -179,6 +179,9 @@ export interface SystemSettings {
   // 开启后：请求正文与流式门控前缀按可用内存预算准入，超出时落盘或返回本地 429
   enableMemoryAdmission: boolean;
 
+  // 模型目录附加文档（Markdown；null = 未设置）
+  agentCatalogNotes: string | null;
+
   /** Bounded streaming Discovery settings. */
   discoveryEnabled: boolean;
   discoveryConcurrency: number;
@@ -331,4 +334,7 @@ export interface UpdateSystemSettingsInput {
 
   // 内存准入开关（可选）
   enableMemoryAdmission?: boolean;
+
+  // 模型目录附加文档（可选；null 或空字符串 = 清除）
+  agentCatalogNotes?: string | null;
 }

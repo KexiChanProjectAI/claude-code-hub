@@ -925,6 +925,13 @@
       "when": 1790963726152,
       "tag": "0131_talented_adam_warlock",
       "breakpoints": true
+    },
+    {
+      "idx": 132,
+      "version": "7",
+      "when": 1791395724171,
+      "tag": "0132_aspiring_hellcat",
+      "breakpoints": true
     }
   ]
 }

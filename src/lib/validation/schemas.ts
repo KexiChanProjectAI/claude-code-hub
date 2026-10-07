@@ -1319,6 +1319,12 @@ export const UpdateSystemSettingsSchema = z
     edgeExecutionEnabled: z.boolean().optional(),
     // 内存准入（可选）
     enableMemoryAdmission: z.boolean().optional(),
+    // 模型目录附加文档（可选；Markdown，null 或空字符串 = 清除）
+    agentCatalogNotes: z
+      .string()
+      .max(20000, { message: "模型目录附加文档不能超过 20000 个字符" })
+      .nullable()
+      .optional(),
     // F2 Replay 响应缓存与复用（可选；null = 跟随环境变量）
     replayEnabled: z.boolean().nullable().optional(),
     // F2 Replay 完成 payload 可重放窗口(分钟)

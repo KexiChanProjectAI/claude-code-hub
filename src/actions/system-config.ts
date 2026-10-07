@@ -122,6 +122,7 @@ export async function saveSystemSettings(formData: {
   replayCacheTtlMinutes?: number;
   cacheEffectivenessEnabled?: boolean | null;
   enableMemoryAdmission?: boolean;
+  agentCatalogNotes?: string | null;
   enableCodexSessionIdCompletion?: boolean;
   enableClaudeMetadataUserIdInjection?: boolean;
   enableResponseFixer?: boolean;
@@ -219,6 +220,7 @@ export async function saveSystemSettings(formData: {
       replayCacheTtlMinutes: validated.replayCacheTtlMinutes,
       cacheEffectivenessEnabled: validated.cacheEffectivenessEnabled,
       enableMemoryAdmission: validated.enableMemoryAdmission,
+      agentCatalogNotes: validated.agentCatalogNotes,
       enableCodexSessionIdCompletion: validated.enableCodexSessionIdCompletion,
       enableClaudeMetadataUserIdInjection: validated.enableClaudeMetadataUserIdInjection,
       enableResponseFixer: validated.enableResponseFixer,

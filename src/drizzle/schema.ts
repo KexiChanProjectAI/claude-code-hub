@@ -1169,6 +1169,10 @@ export const systemSettings = pgTable('system_settings', {
   // 开启后：请求正文与流式门控前缀按可用内存预算准入，超出时落盘或返回本地 429
   enableMemoryAdmission: boolean('enable_memory_admission').notNull().default(false),
 
+  // 模型目录附加文档（Markdown，可空）
+  // 管理员撰写，附加在 /v1/models/catalog 的 LLM 可读输出与 /models 页面末尾
+  agentCatalogNotes: text('agent_catalog_notes'),
+
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({

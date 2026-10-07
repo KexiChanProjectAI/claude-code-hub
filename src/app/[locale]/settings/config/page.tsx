@@ -75,6 +75,7 @@ async function SettingsConfigContent({ locale }: { locale: string }) {
             enableOpenaiResponsesWebsocket: settings.enableOpenaiResponsesWebsocket,
             enableHighConcurrencyMode: settings.enableHighConcurrencyMode,
             enableMemoryAdmission: settings.enableMemoryAdmission,
+            agentCatalogNotes: settings.agentCatalogNotes,
             interceptAnthropicWarmupRequests: settings.interceptAnthropicWarmupRequests,
             enableThinkingSignatureRectifier: settings.enableThinkingSignatureRectifier,
             enableThinkingBudgetRectifier: settings.enableThinkingBudgetRectifier,

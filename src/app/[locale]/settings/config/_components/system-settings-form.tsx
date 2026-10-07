@@ -2,6 +2,7 @@
 
 import {
   AlertTriangle,
+  BookOpenText,
   ChevronDown,
   CircleHelp,
   Clock,
@@ -134,6 +135,7 @@ interface SystemSettingsFormProps {
     | "quotaLeaseCapUsd"
     | "ipGeoLookupEnabled"
     | "ipExtractionConfig"
+    | "agentCatalogNotes"
   >;
 }
 
@@ -319,6 +321,9 @@ export function SystemSettingsForm({
   const [ipExtractionConfigText, setIpExtractionConfigText] = useState<string>(
     formatIpExtractionConfig(initialSettings.ipExtractionConfig ?? DEFAULT_IP_EXTRACTION_CONFIG)
   );
+  const [agentCatalogNotes, setAgentCatalogNotes] = useState<string>(
+    initialSettings.agentCatalogNotes ?? ""
+  );
   const [isPending, startTransition] = useTransition();
   const [responseFixerOpen, setResponseFixerOpen] = useState(false);
   const [quotaLeaseOpen, setQuotaLeaseOpen] = useState(false);
@@ -502,6 +507,7 @@ export function SystemSettingsForm({
         quotaLeaseCapUsd: quotaLeaseCapUsd.trim() === "" ? null : parseFloat(quotaLeaseCapUsd),
         ipGeoLookupEnabled,
         ipExtractionConfig: ipExtractionConfigToSave,
+        agentCatalogNotes: agentCatalogNotes.trim() ? agentCatalogNotes : null,
       });
 
       if (!result.ok) {
@@ -588,6 +594,7 @@ export function SystemSettingsForm({
         setIpExtractionConfigText(
           formatIpExtractionConfig(result.data.ipExtractionConfig ?? DEFAULT_IP_EXTRACTION_CONFIG)
         );
+        setAgentCatalogNotes(result.data.agentCatalogNotes ?? "");
       }
 
       toast.success(t("configUpdated"));
@@ -1942,6 +1949,34 @@ export function SystemSettingsForm({
               </Button>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Model catalog notes for agents */}
+      <div className="p-4 rounded-xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-colors space-y-3">
+        <div className="flex items-start gap-3">
+          <div className="w-8 h-8 flex items-center justify-center rounded-lg bg-sky-500/10 text-sky-400 shrink-0">
+            <BookOpenText className="h-4 w-4" />
+          </div>
+          <div>
+            <Label htmlFor="agent-catalog-notes" className="text-sm font-medium text-foreground">
+              {t("agentCatalogNotes")}
+            </Label>
+            <p className="text-xs text-muted-foreground mt-0.5">{t("agentCatalogNotesDesc")}</p>
+          </div>
+        </div>
+        <div className="pl-11">
+          <Textarea
+            id="agent-catalog-notes"
+            value={agentCatalogNotes}
+            onChange={(event) => setAgentCatalogNotes(event.target.value)}
+            placeholder={t("agentCatalogNotesPlaceholder")}
+            disabled={isPending}
+            rows={10}
+            maxLength={20000}
+            spellCheck={false}
+            className={`${inputClassName} font-mono text-xs`}
+          />
         </div>
       </div>
 
