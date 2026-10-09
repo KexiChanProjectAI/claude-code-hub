@@ -17,6 +17,7 @@ import type {
   ProviderDisplay,
   ProviderModelRedirectRule,
   ReasoningEffortOverrideRule,
+  ServiceTierOverrideRule,
 } from "@/types/provider";
 import type { UpstreamQuotaProbeType } from "@/types/upstream-quota";
 import { deepEquals } from "./deep-equals";
@@ -54,6 +55,7 @@ export interface BatchSettingsAnalysis {
     anthropicThinkingBudgetPreference: FieldAnalysisResult<AnthropicThinkingBudgetPreference>;
     anthropicAdaptiveThinking: FieldAnalysisResult<AnthropicAdaptiveThinkingConfig | null>;
     reasoningEffortOverrideRules: FieldAnalysisResult<ReasoningEffortOverrideRule[] | null>;
+    serviceTierOverrideRules: FieldAnalysisResult<ServiceTierOverrideRule[] | null>;
     geminiGoogleSearchPreference: FieldAnalysisResult<GeminiGoogleSearchPreference>;
     activeTimeStart: FieldAnalysisResult<string | null>;
     activeTimeEnd: FieldAnalysisResult<string | null>;
@@ -184,6 +186,7 @@ export function analyzeBatchProviderSettings(providers: ProviderDisplay[]): Batc
         providers,
         (p) => p.reasoningEffortOverrideRules ?? null
       ),
+      serviceTierOverrideRules: analyzeField(providers, (p) => p.serviceTierOverrideRules ?? null),
       geminiGoogleSearchPreference: analyzeField(
         providers,
         (p) => p.geminiGoogleSearchPreference ?? "inherit"

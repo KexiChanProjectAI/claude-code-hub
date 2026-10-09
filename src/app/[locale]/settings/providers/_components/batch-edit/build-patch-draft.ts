@@ -160,7 +160,11 @@ export function buildPatchDraftFromFormState(
       };
     }
   }
-  if (dirtyFields.has("routing.codexServiceTierPreference")) {
+  // Skip legacy service tier patch when rules are dirty (server rejects co-emission)
+  if (
+    dirtyFields.has("routing.codexServiceTierPreference") &&
+    !dirtyFields.has("routing.serviceTierOverrideRules")
+  ) {
     if (state.routing.codexServiceTierPreference === "inherit") {
       draft.codex_service_tier_preference = { clear: true };
     } else {
@@ -204,6 +208,16 @@ export function buildPatchDraftFromFormState(
       d.reasoning_effort_override_rules = { clear: true };
     } else {
       d.reasoning_effort_override_rules = { set: rules };
+    }
+  }
+  // Conditional service tier override rules (codex only)
+  if (dirtyFields.has("routing.serviceTierOverrideRules")) {
+    const rules = state.routing.serviceTierOverrideRules;
+    const d = draft as ProviderBatchPatchDraft & Record<string, unknown>;
+    if (rules === null) {
+      d.service_tier_override_rules = { clear: true };
+    } else {
+      d.service_tier_override_rules = { set: rules };
     }
   }
 

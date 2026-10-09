@@ -20,11 +20,11 @@ import type {
   CodexImageGenerationPreference,
   CodexParallelToolCallsPreference,
   CodexReasoningSummaryPreference,
-  CodexServiceTierPreference,
   CodexTextVerbosityPreference,
   GeminiGoogleSearchPreference,
 } from "@/types/provider";
 import { ReasoningEffortRuleEditor } from "../../../reasoning-effort-rule-editor";
+import { ServiceTierRuleEditor } from "../../../service-tier-rule-editor";
 import { ThinkingBudgetEditor } from "../../../thinking-budget-editor";
 import { SectionCard, SmartInputWrapper, ToggleRow } from "../components/section-card";
 import { useProviderForm } from "../provider-form-context";
@@ -343,48 +343,31 @@ export function OptionsSection({ subSectionRefs }: OptionsSectionProps) {
                   </Tooltip>
                 </SmartInputWrapper>
 
-                <SmartInputWrapper label={t("sections.routing.codexOverrides.serviceTier.label")}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="relative">
-                        <Select
-                          value={state.routing.codexServiceTierPreference}
-                          onValueChange={(val) =>
-                            dispatch({
-                              type: "SET_CODEX_SERVICE_TIER",
-                              payload: val as CodexServiceTierPreference,
-                            })
-                          }
-                          disabled={state.ui.isPending}
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue
-                              placeholder={t(
-                                "sections.routing.codexOverrides.serviceTier.options.inherit"
-                              )}
-                            />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {["inherit", "auto", "default", "flex", "priority"].map((val) => (
-                              <SelectItem key={val} value={val}>
-                                {t(`sections.routing.codexOverrides.serviceTier.options.${val}`)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Info
-                          aria-hidden="true"
-                          className="pointer-events-none absolute right-10 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
-                        />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="max-w-xs">
-                      <p className="text-sm">
-                        {t("sections.routing.codexOverrides.serviceTier.help")}
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                </SmartInputWrapper>
+                <ToggleRow
+                  label={t("sections.routing.codexOverrides.serviceTier.label")}
+                  description={t("sections.routing.codexOverrides.serviceTier.help")}
+                >
+                  <Switch
+                    checked={(state.routing.serviceTierOverrideRules?.length ?? 0) > 0}
+                    onCheckedChange={(checked) =>
+                      dispatch({
+                        type: "SET_SERVICE_TIER_RULES",
+                        payload: checked ? [{ when: {}, overrideServiceTier: "" }] : [],
+                      })
+                    }
+                    disabled={state.ui.isPending}
+                    aria-label={t("sections.routing.codexOverrides.serviceTier.label")}
+                  />
+                </ToggleRow>
+                {(state.routing.serviceTierOverrideRules?.length ?? 0) > 0 && (
+                  <ServiceTierRuleEditor
+                    rules={state.routing.serviceTierOverrideRules}
+                    onChange={(rules) =>
+                      dispatch({ type: "SET_SERVICE_TIER_RULES", payload: rules })
+                    }
+                    disabled={state.ui.isPending}
+                  />
+                )}
               </div>
             </SectionCard>
           )}

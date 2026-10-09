@@ -34,6 +34,23 @@ vi.mock("@/app/[locale]/settings/providers/_components/reasoning-effort-rule-edi
     </div>
   ),
 }));
+vi.mock("@/app/[locale]/settings/providers/_components/service-tier-rule-editor", () => ({
+  ServiceTierRuleEditor: ({
+    rules,
+    onChange,
+  }: {
+    rules: unknown;
+    onChange: (rules: unknown[]) => void;
+  }) => (
+    <button
+      type="button"
+      data-testid="service-tier-rule-editor"
+      onClick={() => onChange([{ when: {}, overrideServiceTier: null }])}
+    >
+      Service Tier Rules ({Array.isArray(rules) ? rules.length : "null"})
+    </button>
+  ),
+}));
 vi.mock("@/app/[locale]/settings/providers/_components/thinking-budget-editor", () => ({
   ThinkingBudgetEditor: (_props: any) => <div data-testid="thinking-budget-editor" />,
 }));
@@ -127,6 +144,7 @@ function createMockState(
       codexParallelToolCallsPreference: "inherit",
       codexImageGenerationPreference: "inherit",
       codexServiceTierPreference: "inherit",
+      serviceTierOverrideRules: null,
       anthropicMaxTokensPreference: "inherit",
       anthropicThinkingBudgetPreference: "inherit",
       anthropicAdaptiveThinking: null,
@@ -706,6 +724,66 @@ describe("OptionsSection - ReasoningEffortRuleEditor integration", () => {
     const allText = container.textContent ?? "";
     expect(allText).toContain("sections.routing.codexOverrides.reasoningEffort.label");
 
+    unmount();
+  });
+});
+
+describe("OptionsSection - ServiceTierRuleEditor integration", () => {
+  const findServiceTierToggle = (container: HTMLElement) =>
+    Array.from(container.querySelectorAll('[role="switch"]')).find((element) =>
+      element.parentElement?.textContent?.includes(
+        "sections.routing.codexOverrides.serviceTier.label"
+      )
+    ) as HTMLButtonElement | undefined;
+
+  it("keeps service tier rules hidden until enabled, then adds one draft rule", () => {
+    const { container, unmount } = renderSection({
+      state: createMockState({ routing: { providerType: "codex" } }),
+    });
+
+    expect(container.querySelector("[data-testid='service-tier-rule-editor']")).toBeNull();
+    const toggle = findServiceTierToggle(container);
+    expect(toggle?.getAttribute("aria-checked")).toBe("false");
+    act(() => toggle?.click());
+    expect(mockDispatch).toHaveBeenCalledWith({
+      type: "SET_SERVICE_TIER_RULES",
+      payload: [{ when: {}, overrideServiceTier: "" }],
+    });
+    unmount();
+  });
+
+  it("shows configured rules, forwards edits, and disables with an empty list", () => {
+    const { container, unmount } = renderSection({
+      state: createMockState({
+        routing: {
+          providerType: "codex",
+          serviceTierOverrideRules: [{ when: {}, overrideServiceTier: "priority" }],
+        },
+      }),
+    });
+
+    const editor = container.querySelector(
+      "[data-testid='service-tier-rule-editor']"
+    ) as HTMLButtonElement | null;
+    expect(editor?.textContent).toContain("(1)");
+    act(() => editor?.click());
+    expect(mockDispatch).toHaveBeenCalledWith({
+      type: "SET_SERVICE_TIER_RULES",
+      payload: [{ when: {}, overrideServiceTier: null }],
+    });
+
+    const toggle = findServiceTierToggle(container);
+    expect(toggle?.getAttribute("aria-checked")).toBe("true");
+    act(() => toggle?.click());
+    expect(mockDispatch).toHaveBeenCalledWith({ type: "SET_SERVICE_TIER_RULES", payload: [] });
+    unmount();
+  });
+
+  it("does not render the service tier rules for claude providers", () => {
+    const { container, unmount } = renderSection({
+      state: createMockState({ routing: { providerType: "claude" } }),
+    });
+    expect(findServiceTierToggle(container)).toBeUndefined();
     unmount();
   });
 });

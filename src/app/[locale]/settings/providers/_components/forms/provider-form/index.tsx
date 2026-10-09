@@ -343,6 +343,8 @@ function ProviderFormContent({
         const hasRules = state.routing.reasoningEffortOverrideRules !== null;
         // Detect whether the provider originally had rules (loaded from DB)
         const hadRulesInitially = !!provider?.reasoningEffortOverrideRules;
+        const hasServiceTierRules = state.routing.serviceTierOverrideRules !== null;
+        const hadServiceTierRulesInitially = !!provider?.serviceTierOverrideRules;
 
         // validateForm 已拒绝非法的用户 ID，这里只会得到数字或 null
         const newApiUserId = parseNewApiUserIdInput(state.basic.newApiUserId) ?? null;
@@ -379,7 +381,6 @@ function ProviderFormContent({
           codex_text_verbosity_preference: state.routing.codexTextVerbosityPreference,
           codex_parallel_tool_calls_preference: state.routing.codexParallelToolCallsPreference,
           codex_image_generation_preference: state.routing.codexImageGenerationPreference,
-          codex_service_tier_preference: state.routing.codexServiceTierPreference,
           anthropic_max_tokens_preference: state.routing.anthropicMaxTokensPreference,
           anthropic_thinking_budget_preference: state.routing.anthropicThinkingBudgetPreference,
           gemini_google_search_preference: state.routing.geminiGoogleSearchPreference,
@@ -428,7 +429,13 @@ function ProviderFormContent({
                 codex_reasoning_effort_preference: state.routing.codexReasoningEffortPreference,
                 anthropic_adaptive_thinking: state.routing.anthropicAdaptiveThinking,
               };
-        const submitFormData = { ...baseFormData, ...effortPayload };
+        // Same three-way rule for service tier: rules supersede codex_service_tier_preference.
+        const serviceTierPayload = hasServiceTierRules
+          ? { service_tier_override_rules: state.routing.serviceTierOverrideRules }
+          : hadServiceTierRulesInitially
+            ? { service_tier_override_rules: null }
+            : { codex_service_tier_preference: state.routing.codexServiceTierPreference };
+        const submitFormData = { ...baseFormData, ...effortPayload, ...serviceTierPayload };
 
         if (isEdit && provider) {
           // For edit: only include key if user provided a new one
@@ -599,6 +606,7 @@ function ProviderFormContent({
       state.routing.anthropicAdaptiveThinking !== null ||
       // Conditional reasoning effort override rules
       state.routing.reasoningEffortOverrideRules !== null ||
+      state.routing.serviceTierOverrideRules !== null ||
       // Gemini overrides
       state.routing.geminiGoogleSearchPreference !== "inherit" ||
       // Active time

@@ -18,9 +18,18 @@ import type {
   ProviderModelRedirectRule,
   ProviderType,
   ReasoningEffortOverrideRule,
+  ServiceTierOverrideRule,
 } from "@/types/provider";
 import type { UpstreamQuotaProbeType } from "@/types/upstream-quota";
 import type { BatchSettingsAnalysis } from "../../batch-edit/analyze-batch-settings";
+
+/**
+ * Service tier rule as edited in the form. An empty-string target means "not chosen yet"
+ * (the server rejects it on submit); null means "unset" (remove service_tier upstream).
+ */
+export type ServiceTierOverrideRuleDraft = Omit<ServiceTierOverrideRule, "overrideServiceTier"> & {
+  readonly overrideServiceTier: ServiceTierOverrideRule["overrideServiceTier"] | "";
+};
 
 // Form mode
 export type FormMode = "create" | "edit" | "batch";
@@ -87,6 +96,8 @@ export interface RoutingState {
   geminiGoogleSearchPreference: GeminiGoogleSearchPreference;
   // Conditional reasoning effort override rules (null = use legacy fallback, [] = explicitly disable legacy override)
   reasoningEffortOverrideRules: ReasoningEffortOverrideRule[] | null;
+  // Conditional service tier override rules (null = use legacy fallback, [] = explicitly disable legacy override)
+  serviceTierOverrideRules: ServiceTierOverrideRuleDraft[] | null;
   // Scheduled active time window (HH:mm format, null = always active)
   activeTimeStart: string | null;
   activeTimeEnd: string | null;
@@ -200,6 +211,7 @@ export type ProviderFormAction =
   | { type: "SET_ACTIVE_TIME_END"; payload: string | null }
   | { type: "SET_CUSTOM_HEADERS_TEXT"; payload: string }
   | { type: "SET_REASONING_EFFORT_RULES"; payload: ReasoningEffortOverrideRule[] | null }
+  | { type: "SET_SERVICE_TIER_RULES"; payload: ServiceTierOverrideRuleDraft[] | null }
   // Rate limit actions
   | { type: "SET_LIMIT_5H_USD"; payload: number | null }
   | { type: "SET_LIMIT_DAILY_USD"; payload: number | null }

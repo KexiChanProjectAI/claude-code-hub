@@ -278,6 +278,45 @@
         "max": "max"
       }
     },
+    "serviceTierRules": {
+      "title": "Conditional Service Tier Rules",
+      "description": "Rules are evaluated in order. The first matching rule decides the upstream service_tier. If no rule matches, the client value is passed through unchanged.",
+      "noRules": "No rules configured. Add a rule to enable conditional service tier overrides.",
+      "addRule": "Add Rule",
+      "removeRule": "Remove rule",
+      "moveUp": "Move up",
+      "moveDown": "Move down",
+      "ruleLabel": "Rule {number}",
+      "targetServiceTier": "Target service tier",
+      "selectTarget": "Select target service tier",
+      "originalModelCondition": "When original model...",
+      "executionModelCondition": "When execution model...",
+      "removeCondition": "remove",
+      "addCondition": "add",
+      "matchModes": {
+        "exact": "exact",
+        "prefix": "prefix",
+        "suffix": "suffix",
+        "contains": "contains",
+        "regex": "regex"
+      },
+      "patternPlaceholder": "e.g. gpt-5-codex",
+      "originalServiceTierCondition": "When original service tier...",
+      "serviceTierMode": {
+        "any": "Any (omit condition)",
+        "missing": "Missing (client sent none)",
+        "specific": "Specific value"
+      },
+      "originalServiceTierPlaceholder": "e.g. priority",
+      "maxRulesReached": "Maximum {max} rules reached",
+      "serviceTierValues": {
+        "auto": "auto (project default)",
+        "default": "default (standard)",
+        "flex": "flex (best-effort)",
+        "priority": "priority (fast)",
+        "unset": "Unset (remove service_tier)"
+      }
+    },
     "codexOverrides": {
       "title": "Codex Parameter Overrides",
       "desc": "Override Codex (Responses API) request parameters at the provider level",
@@ -300,7 +339,7 @@
         }
       },
       "serviceTier": {
-        "help": "Controls the OpenAI service_tier for Codex (Responses API) requests. \"priority\" corresponds to fast mode. \"inherit\" follows the client request; other values force override service_tier. Unsupported tiers may cause upstream errors.",
+        "help": "Controls the OpenAI service_tier for Codex (Responses API) requests. When enabled, rules are matched by original model, execution model and the client's service_tier; the first match wins. \"priority\" corresponds to fast mode. \"Unset\" removes service_tier from the upstream request even if the client sent priority; with the \"Requested Service Tier\" billing source such requests are billed at the standard rate. Unsupported tiers may cause upstream errors.",
         "label": "Service Tier Override",
         "options": {
           "auto": "auto (project default)",

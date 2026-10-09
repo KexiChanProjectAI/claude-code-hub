@@ -36,6 +36,7 @@ function createBatchState(): ProviderFormState {
       anthropicAdaptiveThinking: null,
       geminiGoogleSearchPreference: "inherit",
       reasoningEffortOverrideRules: null,
+      serviceTierOverrideRules: null,
     },
     rateLimit: {
       limit5hUsd: null,
@@ -949,5 +950,65 @@ describe("Server validator regression - form payloads must pass", () => {
       existingRules: [{ when: {}, overrideEffort: "high" }],
     });
     expect(result.ok).toBe(false);
+  });
+});
+
+describe("buildPatchDraftFromFormState - service tier override rules", () => {
+  type DraftWithServiceTierRules = ReturnType<typeof buildPatchDraftFromFormState> & {
+    service_tier_override_rules?: unknown;
+  };
+
+  it("sets rules (including an unset target) when dirty", () => {
+    const state = createBatchState();
+    state.routing.serviceTierOverrideRules = [
+      { when: { originalServiceTier: "priority" }, overrideServiceTier: null },
+    ];
+    const draft = buildPatchDraftFromFormState(
+      state,
+      new Set(["routing.serviceTierOverrideRules"])
+    ) as DraftWithServiceTierRules;
+
+    expect(draft.service_tier_override_rules).toEqual({
+      set: [{ when: { originalServiceTier: "priority" }, overrideServiceTier: null }],
+    });
+  });
+
+  it("clears rules when dirty and null, and keeps an empty list as set", () => {
+    const state = createBatchState();
+    state.routing.serviceTierOverrideRules = null;
+    const cleared = buildPatchDraftFromFormState(
+      state,
+      new Set(["routing.serviceTierOverrideRules"])
+    ) as DraftWithServiceTierRules;
+    expect(cleared.service_tier_override_rules).toEqual({ clear: true });
+
+    state.routing.serviceTierOverrideRules = [];
+    const empty = buildPatchDraftFromFormState(
+      state,
+      new Set(["routing.serviceTierOverrideRules"])
+    ) as DraftWithServiceTierRules;
+    expect(empty.service_tier_override_rules).toEqual({ set: [] });
+  });
+
+  it("omits rules when not dirty", () => {
+    const state = createBatchState();
+    state.routing.serviceTierOverrideRules = [{ when: {}, overrideServiceTier: "flex" }];
+    const draft = buildPatchDraftFromFormState(state, new Set()) as DraftWithServiceTierRules;
+    expect(draft.service_tier_override_rules).toBeUndefined();
+  });
+
+  it("suppresses the legacy service tier field when rules are dirty", () => {
+    const state = createBatchState();
+    state.routing.codexServiceTierPreference = "priority";
+    state.routing.serviceTierOverrideRules = [{ when: {}, overrideServiceTier: "flex" }];
+    const draft = buildPatchDraftFromFormState(
+      state,
+      new Set(["routing.codexServiceTierPreference", "routing.serviceTierOverrideRules"])
+    ) as DraftWithServiceTierRules;
+
+    expect(draft.codex_service_tier_preference).toBeUndefined();
+    expect(draft.service_tier_override_rules).toEqual({
+      set: [{ when: {}, overrideServiceTier: "flex" }],
+    });
   });
 });

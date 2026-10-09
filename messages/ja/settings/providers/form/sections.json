@@ -278,6 +278,45 @@
         "max": "max"
       }
     },
+    "serviceTierRules": {
+      "title": "条件付き Service Tier ルール",
+      "description": "ルールは順番に評価されます。最初に一致したルールが上流の service_tier を決定します。一致するルールがない場合、クライアントの値をそのまま渡します。",
+      "noRules": "ルールが設定されていません。ルールを追加して条件付き Service Tier オーバーライドを有効にします。",
+      "addRule": "ルールを追加",
+      "removeRule": "ルールを削除",
+      "moveUp": "上に移動",
+      "moveDown": "下に移動",
+      "ruleLabel": "ルール {number}",
+      "targetServiceTier": "対象 Service Tier",
+      "selectTarget": "対象 Service Tier を選択",
+      "originalModelCondition": "元のモデルが一致する場合...",
+      "executionModelCondition": "実行モデルが一致する場合...",
+      "removeCondition": "削除",
+      "addCondition": "追加",
+      "matchModes": {
+        "exact": "完全一致",
+        "prefix": "前方一致",
+        "suffix": "後方一致",
+        "contains": "部分一致",
+        "regex": "正規表現"
+      },
+      "patternPlaceholder": "例: gpt-5-codex",
+      "originalServiceTierCondition": "元の Service Tier が一致する場合...",
+      "serviceTierMode": {
+        "any": "すべて（条件を省略）",
+        "missing": "未設定（クライアント未送信）",
+        "specific": "特定の値"
+      },
+      "originalServiceTierPlaceholder": "例: priority",
+      "maxRulesReached": "最大 {max} パスのルールに達しました",
+      "serviceTierValues": {
+        "auto": "auto（プロジェクト既定）",
+        "default": "default（標準）",
+        "flex": "flex（ベストエフォート）",
+        "priority": "priority（fast）",
+        "unset": "クリア（service_tier を削除）"
+      }
+    },
     "codexOverrides": {
       "title": "Codex パラメータオーバーライド",
       "desc": "プロバイダーレベルで Codex (Responses API) リクエストパラメータをオーバーライド",
@@ -300,7 +339,7 @@
         }
       },
       "serviceTier": {
-        "help": "Codex（Responses API）リクエストの OpenAI service_tier を制御します。priority は fast モードに相当します。「クライアントに従う」は service_tier を上書きせず、その他の値は強制上書きします。上流が未対応の tier ではエラーになる場合があります。",
+        "help": "Codex（Responses API）リクエストの OpenAI service_tier を制御します。有効にすると、元のモデル、実行モデル、クライアントの service_tier でルールを照合し、最初に一致したルールが適用されます。priority は fast モードに相当します。「クリア」はクライアントが priority を送信していても上流リクエストから service_tier を削除します。課金ソースが Requested Service Tier の場合、これらのリクエストは標準料金で課金されます。上流が未対応の tier ではエラーになる場合があります。",
         "label": "Service Tier オーバーライド",
         "options": {
           "auto": "auto（プロジェクト既定）",

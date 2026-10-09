@@ -278,6 +278,45 @@
         "max": "max"
       }
     },
+    "serviceTierRules": {
+      "title": "Условные правила Service Tier",
+      "description": "Правила проверяются по порядку. Первое подходящее правило определяет service_tier для upstream. Если ни одно правило не подходит, значение клиента передается без изменений.",
+      "noRules": "Правила не настроены. Добавьте правило для включения условных переопределений Service Tier.",
+      "addRule": "Добавить правило",
+      "removeRule": "Удалить правило",
+      "moveUp": "Переместить вверх",
+      "moveDown": "Переместить вниз",
+      "ruleLabel": "Правило {number}",
+      "targetServiceTier": "Целевой Service Tier",
+      "selectTarget": "Выберите целевой Service Tier",
+      "originalModelCondition": "Когда исходная модель...",
+      "executionModelCondition": "Когда модель выполнения...",
+      "removeCondition": "убрать",
+      "addCondition": "добавить",
+      "matchModes": {
+        "exact": "точное совпадение",
+        "prefix": "начало строки",
+        "suffix": "конец строки",
+        "contains": "содержит",
+        "regex": "регулярное выражение"
+      },
+      "patternPlaceholder": "например, gpt-5-codex",
+      "originalServiceTierCondition": "Когда исходный Service Tier...",
+      "serviceTierMode": {
+        "any": "Любой (опустить условие)",
+        "missing": "Отсутствует (клиент не передал)",
+        "specific": "Конкретное значение"
+      },
+      "originalServiceTierPlaceholder": "например, priority",
+      "maxRulesReached": "Достигнут максимум из {max} правил",
+      "serviceTierValues": {
+        "auto": "auto (по умолчанию проекта)",
+        "default": "default (стандартный)",
+        "flex": "flex (best-effort)",
+        "priority": "priority (fast)",
+        "unset": "Сбросить (удалить service_tier)"
+      }
+    },
     "codexOverrides": {
       "title": "Переопределение параметров Codex",
       "desc": "Переопределение параметров запросов Codex (Responses API) на уровне провайдера",
@@ -300,7 +339,7 @@
         }
       },
       "serviceTier": {
-        "help": "Управляет OpenAI service_tier для запросов Codex (Responses API). Значение priority соответствует fast mode. Режим \"следовать клиенту\" не переписывает service_tier, остальные значения принудительно его переопределяют. Неподдерживаемый tier может вызвать ошибку upstream.",
+        "help": "Управляет OpenAI service_tier для запросов Codex (Responses API). При включении правила сопоставляются по исходной модели, модели выполнения и service_tier клиента; применяется первое совпадение. Значение priority соответствует fast mode. \"Сбросить\" удаляет service_tier из запроса к upstream, даже если клиент передал priority; при источнике тарификации Requested Service Tier такие запросы тарифицируются по стандартной ставке. Неподдерживаемый tier может вызвать ошибку upstream.",
         "label": "Переопределение Service Tier",
         "options": {
           "auto": "auto (по умолчанию проекта)",

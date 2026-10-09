@@ -278,6 +278,45 @@
         "max": "max"
       }
     },
+    "serviceTierRules": {
+      "title": "條件 Service Tier 規則",
+      "description": "規則依序評估，第一條匹配的規則決定上游 service_tier。如果沒有匹配的規則，則原樣透傳客戶端的值。",
+      "noRules": "未設定規則。新增規則以啟用條件 Service Tier 覆寫。",
+      "addRule": "新增規則",
+      "removeRule": "刪除規則",
+      "moveUp": "上移",
+      "moveDown": "下移",
+      "ruleLabel": "規則 {number}",
+      "targetServiceTier": "目標 Service Tier",
+      "selectTarget": "選擇目標 Service Tier",
+      "originalModelCondition": "當原始模型匹配時...",
+      "executionModelCondition": "當執行模型匹配時...",
+      "removeCondition": "移除",
+      "addCondition": "新增",
+      "matchModes": {
+        "exact": "完全匹配",
+        "prefix": "前綴匹配",
+        "suffix": "後綴匹配",
+        "contains": "包含匹配",
+        "regex": "正規表達式"
+      },
+      "patternPlaceholder": "例如 gpt-5-codex",
+      "originalServiceTierCondition": "當原始 Service Tier 匹配時...",
+      "serviceTierMode": {
+        "any": "任意（省略條件）",
+        "missing": "缺失（客戶端未傳）",
+        "specific": "特定值"
+      },
+      "originalServiceTierPlaceholder": "例如 priority",
+      "maxRulesReached": "已達到最大 {max} 條規則",
+      "serviceTierValues": {
+        "auto": "auto（專案預設）",
+        "default": "default（標準檔）",
+        "flex": "flex（彈性）",
+        "priority": "priority（fast）",
+        "unset": "清除（移除 service_tier）"
+      }
+    },
     "codexOverrides": {
       "title": "Codex 參數覆寫",
       "desc": "在供應商級別覆寫 Codex (Responses API) 請求參數",
@@ -300,7 +339,7 @@
         }
       },
       "serviceTier": {
-        "help": "控制 Codex（Responses API）請求的 OpenAI service_tier。priority 對應 fast 模式；「跟隨客戶端」不改寫 service_tier，其他值會強制覆寫。若上游不支援所選檔位，可能返回錯誤。",
+        "help": "控制 Codex（Responses API）請求的 OpenAI service_tier。啟用後依原始模型、執行模型與客戶端 service_tier 匹配規則，第一條命中的規則生效。priority 對應 fast 模式；「清除」會從上游請求中移除 service_tier，即使客戶端傳了 priority；在計費來源為 Requested Service Tier 時此類請求按標準檔計費。若上游不支援所選檔位，可能返回錯誤。",
         "label": "Service Tier 覆寫",
         "options": {
           "auto": "auto（專案預設）",

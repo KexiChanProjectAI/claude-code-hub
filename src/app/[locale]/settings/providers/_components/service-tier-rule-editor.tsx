@@ -2,7 +2,7 @@
 
 import { useTranslations } from "next-intl";
 import { useCallback, useMemo } from "react";
-import type { ProviderType, ReasoningEffortOverrideRule } from "@/types/provider";
+import { CODEX_SERVICE_TIER_OVERRIDE_TARGETS } from "@/lib/service-tier-override";
 import {
   type ConditionalEditorRule,
   ConditionalOverrideRuleEditor,
@@ -12,49 +12,46 @@ import {
   fromConditionalEditorRule,
   toConditionalEditorRules,
 } from "./conditional-override-rule-editor";
-
-const CODEX_EFFORT_TARGETS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
-const CLAUDE_EFFORT_TARGETS = ["low", "medium", "high", "xhigh", "max"] as const;
+import type { ServiceTierOverrideRuleDraft } from "./forms/provider-form/provider-form-types";
 
 const RULE_SHAPE: ConditionalRuleShapeSpec = {
-  originalValueKey: "originalReasoningEffort",
-  targetKey: "overrideEffort",
+  originalValueKey: "originalServiceTier",
+  targetKey: "overrideServiceTier",
 };
 
 const TEST_IDS: ConditionalRuleEditorTestIds = {
-  target: "target-effort-",
-  originalModelMatch: "original-model-match-",
-  originalModelPattern: "original-model-pattern-",
-  executionModelMatch: "execution-model-match-",
-  executionModelPattern: "execution-model-pattern-",
-  originalValueMode: "effort-mode-",
-  originalValue: "original-effort-value-",
+  target: "target-service-tier-",
+  originalModelMatch: "service-tier-original-model-match-",
+  originalModelPattern: "service-tier-original-model-pattern-",
+  executionModelMatch: "service-tier-execution-model-match-",
+  executionModelPattern: "service-tier-execution-model-pattern-",
+  originalValueMode: "service-tier-mode-",
+  originalValue: "original-service-tier-value-",
 };
 
-interface ReasoningEffortRuleEditorProps {
-  rules: ReasoningEffortOverrideRule[] | null;
-  onChange: (rules: ReasoningEffortOverrideRule[] | null) => void;
-  providerType: ProviderType;
+interface ServiceTierRuleEditorProps {
+  rules: ServiceTierOverrideRuleDraft[] | null;
+  onChange: (rules: ServiceTierOverrideRuleDraft[]) => void;
   disabled?: boolean;
 }
 
-export function ReasoningEffortRuleEditor({
+export function ServiceTierRuleEditor({
   rules,
   onChange,
-  providerType,
   disabled = false,
-}: ReasoningEffortRuleEditorProps) {
+}: ServiceTierRuleEditorProps) {
   const t = useTranslations("settings.providers.form");
-  const prefix = "sections.routing.effortRules";
+  const prefix = "sections.routing.serviceTierRules";
 
-  const validTargets = providerType === "codex" ? CODEX_EFFORT_TARGETS : CLAUDE_EFFORT_TARGETS;
   const targets = useMemo(
-    () =>
-      validTargets.map((effort) => ({
-        value: effort,
-        label: t(`${prefix}.effortValues.${effort}`),
+    () => [
+      ...CODEX_SERVICE_TIER_OVERRIDE_TARGETS.map((tier) => ({
+        value: tier as string | null,
+        label: t(`${prefix}.serviceTierValues.${tier}`),
       })),
-    [validTargets, t]
+      { value: null, label: t(`${prefix}.serviceTierValues.unset`) },
+    ],
+    [t]
   );
 
   const labels = useMemo<ConditionalRuleEditorLabels>(
@@ -67,7 +64,7 @@ export function ReasoningEffortRuleEditor({
       moveUp: t(`${prefix}.moveUp`),
       moveDown: t(`${prefix}.moveDown`),
       ruleLabel: (number) => t(`${prefix}.ruleLabel`, { number }),
-      target: t(`${prefix}.targetEffort`),
+      target: t(`${prefix}.targetServiceTier`),
       selectTarget: t(`${prefix}.selectTarget`),
       originalModelCondition: t(`${prefix}.originalModelCondition`),
       executionModelCondition: t(`${prefix}.executionModelCondition`),
@@ -75,13 +72,13 @@ export function ReasoningEffortRuleEditor({
       addCondition: t(`${prefix}.addCondition`),
       matchMode: (mode) => t(`${prefix}.matchModes.${mode}`),
       patternPlaceholder: t(`${prefix}.patternPlaceholder`),
-      originalValueCondition: t(`${prefix}.originalEffortCondition`),
+      originalValueCondition: t(`${prefix}.originalServiceTierCondition`),
       originalValueMode: {
-        any: t(`${prefix}.effortMode.any`),
-        missing: t(`${prefix}.effortMode.missing`),
-        specific: t(`${prefix}.effortMode.specific`),
+        any: t(`${prefix}.serviceTierMode.any`),
+        missing: t(`${prefix}.serviceTierMode.missing`),
+        specific: t(`${prefix}.serviceTierMode.specific`),
       },
-      originalValuePlaceholder: t(`${prefix}.originalEffortPlaceholder`),
+      originalValuePlaceholder: t(`${prefix}.originalServiceTierPlaceholder`),
       maxRulesReached: (max) => t(`${prefix}.maxRulesReached`, { max }),
     }),
     [t]
@@ -91,11 +88,9 @@ export function ReasoningEffortRuleEditor({
   const handleChange = useCallback(
     (next: ConditionalEditorRule[]) => {
       onChange(
-        next.map((rule) => {
-          const domain = fromConditionalEditorRule(rule, RULE_SHAPE);
-          // Reasoning targets are always strings; "" marks a target not chosen yet.
-          return { ...domain, overrideEffort: rule.target ?? "" } as ReasoningEffortOverrideRule;
-        })
+        next.map(
+          (rule) => fromConditionalEditorRule(rule, RULE_SHAPE) as ServiceTierOverrideRuleDraft
+        )
       );
     },
     [onChange]

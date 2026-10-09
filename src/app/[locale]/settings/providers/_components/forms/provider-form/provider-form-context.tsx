@@ -14,6 +14,7 @@ import { normalizeAllowedModelRules } from "@/lib/allowed-model-rules";
 import { stringifyCustomHeadersForTextarea } from "@/lib/custom-headers";
 import { normalizeProviderModelRedirectRules } from "@/lib/provider-model-redirects";
 import { convertLegacyCodexReasoningEffortToRules } from "@/lib/reasoning-effort-override";
+import { convertLegacyCodexServiceTierToRules } from "@/lib/service-tier-override";
 import { parseProviderGroups } from "@/lib/utils/provider-group";
 import type { ProviderDisplay, ProviderType } from "@/types/provider";
 import { analyzeBatchProviderSettings } from "../../batch-edit/analyze-batch-settings";
@@ -105,6 +106,7 @@ const ACTION_TO_FIELD_PATH: Partial<Record<ProviderFormActionWith5hResetMode["ty
   SET_ACTIVE_TIME_END: "routing.activeTimeEnd",
   SET_CUSTOM_HEADERS_TEXT: "routing.customHeadersText",
   SET_REASONING_EFFORT_RULES: "routing.reasoningEffortOverrideRules",
+  SET_SERVICE_TIER_RULES: "routing.serviceTierOverrideRules",
   SET_LIMIT_5H_USD: "rateLimit.limit5hUsd",
   SET_LIMIT_5H_RESET_MODE: "rateLimit.limit5hResetMode",
   SET_LIMIT_DAILY_USD: "rateLimit.limitDailyUsd",
@@ -269,6 +271,10 @@ export function createInitialState(
           analysis.routing.reasoningEffortOverrideRules.status === "uniform"
             ? analysis.routing.reasoningEffortOverrideRules.value
             : null,
+        serviceTierOverrideRules:
+          analysis.routing.serviceTierOverrideRules.status === "uniform"
+            ? analysis.routing.serviceTierOverrideRules.value
+            : null,
         // Batch mode does not support customHeaders edits; always start empty
         customHeadersText: "",
       },
@@ -418,6 +424,7 @@ export function createInitialState(
         anthropicAdaptiveThinking: null,
         geminiGoogleSearchPreference: "inherit",
         reasoningEffortOverrideRules: null,
+        serviceTierOverrideRules: null,
         activeTimeStart: null,
         activeTimeEnd: null,
         customHeadersText: "",
@@ -515,6 +522,11 @@ export function createInitialState(
         sourceProvider?.reasoningEffortOverrideRules ??
         (sourceProvider?.providerType === "codex"
           ? convertLegacyCodexReasoningEffortToRules(sourceProvider.codexReasoningEffortPreference)
+          : null),
+      serviceTierOverrideRules:
+        sourceProvider?.serviceTierOverrideRules ??
+        (sourceProvider?.providerType === "codex"
+          ? convertLegacyCodexServiceTierToRules(sourceProvider.codexServiceTierPreference)
           : null),
       activeTimeStart: sourceProvider?.activeTimeStart ?? null,
       activeTimeEnd: sourceProvider?.activeTimeEnd ?? null,
@@ -766,6 +778,11 @@ export function providerFormReducer(
       return {
         ...state,
         routing: { ...state.routing, reasoningEffortOverrideRules: action.payload },
+      };
+    case "SET_SERVICE_TIER_RULES":
+      return {
+        ...state,
+        routing: { ...state.routing, serviceTierOverrideRules: action.payload },
       };
 
     // Rate limit
