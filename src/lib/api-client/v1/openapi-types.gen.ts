@@ -4620,6 +4620,24 @@ export interface operations {
                                 };
                                 overrideEffort: string;
                             }[] | null;
+                            /** @description Ordered conditional Codex service tier override rules. A null target removes service_tier. Null preserves legacy fallback; an empty list disables it. */
+                            serviceTierOverrideRules: {
+                                when: {
+                                    originalModel?: {
+                                        /** @enum {string} */
+                                        matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                        pattern: string;
+                                    };
+                                    executionModel?: {
+                                        /** @enum {string} */
+                                        matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                        pattern: string;
+                                    };
+                                    originalServiceTier?: string | null;
+                                };
+                                /** @enum {string|null} */
+                                overrideServiceTier: "auto" | "default" | "flex" | "priority" | null;
+                            }[] | null;
                             /** @description Gemini Google Search preference. */
                             geminiGoogleSearchPreference: string | null;
                             /** @description Deprecated. Mirrors statistics.todayCost when include=statistics is requested; otherwise defaults to '0'. */
@@ -4986,6 +5004,24 @@ export interface operations {
                         };
                         overrideEffort: string;
                     }[] | null;
+                    /** @description Ordered conditional Codex service tier override rules. A null target removes service_tier. Null preserves legacy fallback; an empty list disables it. */
+                    service_tier_override_rules?: {
+                        when: {
+                            originalModel?: {
+                                /** @enum {string} */
+                                matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                pattern: string;
+                            };
+                            executionModel?: {
+                                /** @enum {string} */
+                                matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                pattern: string;
+                            };
+                            originalServiceTier?: string | null;
+                        };
+                        /** @enum {string|null} */
+                        overrideServiceTier: "auto" | "default" | "flex" | "priority" | null;
+                    }[] | null;
                     /** @description Gemini Google Search preference. */
                     gemini_google_search_preference?: string;
                 };
@@ -5162,6 +5198,24 @@ export interface operations {
                                 originalReasoningEffort?: string | null;
                             };
                             overrideEffort: string;
+                        }[] | null;
+                        /** @description Ordered conditional Codex service tier override rules. A null target removes service_tier. Null preserves legacy fallback; an empty list disables it. */
+                        serviceTierOverrideRules: {
+                            when: {
+                                originalModel?: {
+                                    /** @enum {string} */
+                                    matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                    pattern: string;
+                                };
+                                executionModel?: {
+                                    /** @enum {string} */
+                                    matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                    pattern: string;
+                                };
+                                originalServiceTier?: string | null;
+                            };
+                            /** @enum {string|null} */
+                            overrideServiceTier: "auto" | "default" | "flex" | "priority" | null;
                         }[] | null;
                         /** @description Gemini Google Search preference. */
                         geminiGoogleSearchPreference: string | null;
@@ -5523,6 +5577,24 @@ export interface operations {
                                 originalReasoningEffort?: string | null;
                             };
                             overrideEffort: string;
+                        }[] | null;
+                        /** @description Ordered conditional Codex service tier override rules. A null target removes service_tier. Null preserves legacy fallback; an empty list disables it. */
+                        serviceTierOverrideRules: {
+                            when: {
+                                originalModel?: {
+                                    /** @enum {string} */
+                                    matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                    pattern: string;
+                                };
+                                executionModel?: {
+                                    /** @enum {string} */
+                                    matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                    pattern: string;
+                                };
+                                originalServiceTier?: string | null;
+                            };
+                            /** @enum {string|null} */
+                            overrideServiceTier: "auto" | "default" | "flex" | "priority" | null;
                         }[] | null;
                         /** @description Gemini Google Search preference. */
                         geminiGoogleSearchPreference: string | null;
@@ -6065,6 +6137,24 @@ export interface operations {
                         };
                         overrideEffort: string;
                     }[] | null;
+                    /** @description Ordered conditional Codex service tier override rules. A null target removes service_tier. Null preserves legacy fallback; an empty list disables it. */
+                    service_tier_override_rules?: {
+                        when: {
+                            originalModel?: {
+                                /** @enum {string} */
+                                matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                pattern: string;
+                            };
+                            executionModel?: {
+                                /** @enum {string} */
+                                matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                pattern: string;
+                            };
+                            originalServiceTier?: string | null;
+                        };
+                        /** @enum {string|null} */
+                        overrideServiceTier: "auto" | "default" | "flex" | "priority" | null;
+                    }[] | null;
                     /** @description Gemini Google Search preference. */
                     gemini_google_search_preference?: string;
                     /** @description Provider API key. Write-only. */
@@ -6247,6 +6337,24 @@ export interface operations {
                                 originalReasoningEffort?: string | null;
                             };
                             overrideEffort: string;
+                        }[] | null;
+                        /** @description Ordered conditional Codex service tier override rules. A null target removes service_tier. Null preserves legacy fallback; an empty list disables it. */
+                        serviceTierOverrideRules: {
+                            when: {
+                                originalModel?: {
+                                    /** @enum {string} */
+                                    matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                    pattern: string;
+                                };
+                                executionModel?: {
+                                    /** @enum {string} */
+                                    matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                    pattern: string;
+                                };
+                                originalServiceTier?: string | null;
+                            };
+                            /** @enum {string|null} */
+                            overrideServiceTier: "auto" | "default" | "flex" | "priority" | null;
                         }[] | null;
                         /** @description Gemini Google Search preference. */
                         geminiGoogleSearchPreference: string | null;
@@ -9076,6 +9184,24 @@ export interface operations {
                             };
                             overrideEffort: string;
                         }[] | null;
+                        /** @description Ordered conditional Codex service tier override rules. Null clears to legacy fallback. */
+                        service_tier_override_rules?: {
+                            when: {
+                                originalModel?: {
+                                    /** @enum {string} */
+                                    matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                    pattern: string;
+                                };
+                                executionModel?: {
+                                    /** @enum {string} */
+                                    matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                    pattern: string;
+                                };
+                                originalServiceTier?: string | null;
+                            };
+                            /** @enum {string|null} */
+                            overrideServiceTier: "auto" | "default" | "flex" | "priority" | null;
+                        }[] | null;
                     };
                 };
             };
@@ -9649,6 +9775,32 @@ export interface operations {
                             /** @enum {boolean} */
                             no_change: true;
                         };
+                        /** @description Conditional Codex service tier rules patch. Use set, clear, or no_change. */
+                        service_tier_override_rules?: {
+                            set: {
+                                when: {
+                                    originalModel?: {
+                                        /** @enum {string} */
+                                        matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                        pattern: string;
+                                    };
+                                    executionModel?: {
+                                        /** @enum {string} */
+                                        matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                        pattern: string;
+                                    };
+                                    originalServiceTier?: string | null;
+                                };
+                                /** @enum {string|null} */
+                                overrideServiceTier: "auto" | "default" | "flex" | "priority" | null;
+                            }[];
+                        } | {
+                            /** @enum {boolean} */
+                            clear: true;
+                        } | {
+                            /** @enum {boolean} */
+                            no_change: true;
+                        };
                     } & {
                         [key: string]: unknown;
                     };
@@ -9858,6 +10010,32 @@ export interface operations {
                                     originalReasoningEffort?: string | null;
                                 };
                                 overrideEffort: string;
+                            }[];
+                        } | {
+                            /** @enum {boolean} */
+                            clear: true;
+                        } | {
+                            /** @enum {boolean} */
+                            no_change: true;
+                        };
+                        /** @description Conditional Codex service tier rules patch. Use set, clear, or no_change. */
+                        service_tier_override_rules?: {
+                            set: {
+                                when: {
+                                    originalModel?: {
+                                        /** @enum {string} */
+                                        matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                        pattern: string;
+                                    };
+                                    executionModel?: {
+                                        /** @enum {string} */
+                                        matchType: "exact" | "prefix" | "suffix" | "contains" | "regex";
+                                        pattern: string;
+                                    };
+                                    originalServiceTier?: string | null;
+                                };
+                                /** @enum {string|null} */
+                                overrideServiceTier: "auto" | "default" | "flex" | "priority" | null;
                             }[];
                         } | {
                             /** @enum {boolean} */

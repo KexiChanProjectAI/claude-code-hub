@@ -1,5 +1,9 @@
+import { isServiceTierOverrideRuleTarget } from "@/lib/service-tier-override";
 import { normalizeProviderGroupTag } from "@/lib/utils/provider-group";
-import { REASONING_EFFORT_OVERRIDE_RULE_LIST_SCHEMA } from "@/lib/validation/schemas";
+import {
+  REASONING_EFFORT_OVERRIDE_RULE_LIST_SCHEMA,
+  SERVICE_TIER_OVERRIDE_RULE_LIST_SCHEMA,
+} from "@/lib/validation/schemas";
 import type {
   ProviderBatchApplyUpdates,
   ProviderBatchPatch,
@@ -9,6 +13,7 @@ import type {
   ProviderPatchOperation,
   ProviderType,
   ReasoningEffortOverrideRule,
+  ServiceTierOverrideRule,
 } from "@/types/provider";
 import { UPSTREAM_QUOTA_PROBE_TYPES } from "@/types/upstream-quota";
 import { PROVIDER_ALLOWED_MODEL_RULE_INPUT_LIST_SCHEMA } from "./provider-allowed-model-schema";
@@ -23,7 +28,8 @@ export type ProviderPatchErrorCode =
 
 type ProviderBatchPatchFieldWithReasoningEffortRules =
   | ProviderBatchPatchField
-  | "reasoning_effort_override_rules";
+  | "reasoning_effort_override_rules"
+  | "service_tier_override_rules";
 
 interface ProviderPatchError {
   code: ProviderPatchErrorCode;
@@ -35,14 +41,17 @@ type ProviderPatchResult<T> = { ok: true; data: T } | { ok: false; error: Provid
 
 export type ProviderBatchPatchWithReasoningEffortRules = ProviderBatchPatch & {
   reasoning_effort_override_rules: ProviderPatchOperation<ReasoningEffortOverrideRule[]>;
+  service_tier_override_rules: ProviderPatchOperation<ServiceTierOverrideRule[]>;
 };
 
 type ProviderBatchPatchDraftWithReasoningEffortRules = ProviderBatchPatchDraft & {
   reasoning_effort_override_rules?: ProviderPatchDraftInput<ReasoningEffortOverrideRule[]>;
+  service_tier_override_rules?: ProviderPatchDraftInput<ServiceTierOverrideRule[]>;
 };
 
 export type ProviderBatchApplyUpdatesWithReasoningEffortRules = ProviderBatchApplyUpdates & {
   reasoning_effort_override_rules?: ReasoningEffortOverrideRule[] | null;
+  service_tier_override_rules?: ServiceTierOverrideRule[] | null;
 };
 
 export type ProviderReasoningEffortOverrideMutationInput = {
@@ -171,6 +180,109 @@ export function validateProviderReasoningEffortOverrideBatch(input: {
   return { ok: true };
 }
 
+export type ProviderServiceTierOverrideMutationInput = {
+  providerType: ProviderType;
+  hasRulesField: boolean;
+  rules: ServiceTierOverrideRule[] | null | undefined;
+  hasLegacyFields: boolean;
+  existingRules: ServiceTierOverrideRule[] | null | undefined;
+};
+
+export type ProviderServiceTierOverrideBatchProvider = {
+  providerType: ProviderType;
+  serviceTierOverrideRules: ServiceTierOverrideRule[] | null;
+};
+
+export function hasProviderServiceTierOverrideRulesField(input: object): boolean {
+  return (
+    Object.hasOwn(input, "service_tier_override_rules") &&
+    Reflect.get(input, "service_tier_override_rules") !== undefined
+  );
+}
+
+export function hasLegacyServiceTierOverrideFields(input: object): boolean {
+  return (
+    Object.hasOwn(input, "codex_service_tier_preference") &&
+    Reflect.get(input, "codex_service_tier_preference") !== undefined
+  );
+}
+
+/**
+ * service_tier_override_rules supersedes codex_service_tier_preference:
+ * - both in one payload is rejected
+ * - legacy-only writes cannot overwrite an existing rules configuration
+ * - rules are codex-only; targets must be a known tier or null (unset)
+ */
+export function validateProviderServiceTierOverrideMutation(
+  input: ProviderServiceTierOverrideMutationInput
+): ProviderReasoningEffortOverrideValidationResult {
+  if (input.hasRulesField && input.hasLegacyFields) {
+    return {
+      ok: false,
+      error: "service_tier_override_rules cannot be combined with codex_service_tier_preference",
+    };
+  }
+
+  if (!input.hasRulesField && input.hasLegacyFields && input.existingRules != null) {
+    return {
+      ok: false,
+      error:
+        "Legacy codex_service_tier_preference cannot overwrite an existing service_tier_override_rules configuration",
+    };
+  }
+
+  if (!input.hasRulesField) {
+    return { ok: true };
+  }
+
+  if (input.providerType !== "codex") {
+    return {
+      ok: false,
+      error: "service_tier_override_rules is only supported for codex providers",
+    };
+  }
+
+  if (input.rules) {
+    const invalidTarget = input.rules.find(
+      (rule) => !isServiceTierOverrideRuleTarget(rule.overrideServiceTier)
+    );
+    if (invalidTarget) {
+      return {
+        ok: false,
+        error: `Invalid service tier override target: ${String(invalidTarget.overrideServiceTier)}`,
+      };
+    }
+  }
+
+  return { ok: true };
+}
+
+export function validateProviderServiceTierOverrideBatch(input: {
+  patch: ProviderBatchPatchWithReasoningEffortRules;
+  providers: readonly ProviderServiceTierOverrideBatchProvider[];
+}): ProviderReasoningEffortOverrideValidationResult {
+  const rulesOperation = input.patch.service_tier_override_rules;
+  const hasRulesField = rulesOperation.mode !== "no_change";
+  const rules = rulesOperation.mode === "set" ? rulesOperation.value : null;
+  const hasLegacyFields = input.patch.codex_service_tier_preference.mode !== "no_change";
+
+  for (const provider of input.providers) {
+    // Codex-only fields are filtered out for other provider types when a patch is applied,
+    // so only codex providers can receive (and must satisfy) these constraints.
+    if (provider.providerType !== "codex") continue;
+    const result = validateProviderServiceTierOverrideMutation({
+      providerType: provider.providerType,
+      hasRulesField,
+      rules,
+      hasLegacyFields,
+      existingRules: provider.serviceTierOverrideRules,
+    });
+    if (!result.ok) return result;
+  }
+
+  return { ok: true };
+}
+
 const PATCH_INPUT_KEYS = new Set(["set", "clear", "no_change"]);
 const PATCH_FIELDS: ProviderBatchPatchFieldWithReasoningEffortRules[] = [
   "is_enabled",
@@ -185,6 +297,7 @@ const PATCH_FIELDS: ProviderBatchPatchFieldWithReasoningEffortRules[] = [
   "anthropic_thinking_budget_preference",
   "anthropic_adaptive_thinking",
   "reasoning_effort_override_rules",
+  "service_tier_override_rules",
   // Routing
   "active_time_start",
   "active_time_end",
@@ -246,6 +359,7 @@ const CLEARABLE_FIELDS: Record<ProviderBatchPatchFieldWithReasoningEffortRules, 
   anthropic_thinking_budget_preference: true,
   anthropic_adaptive_thinking: true,
   reasoning_effort_override_rules: true,
+  service_tier_override_rules: true,
   // Routing
   active_time_start: true,
   active_time_end: true,
@@ -464,6 +578,8 @@ function isValidSetValue(
       return isAdaptiveThinkingConfig(value);
     case "reasoning_effort_override_rules":
       return REASONING_EFFORT_OVERRIDE_RULE_LIST_SCHEMA.safeParse(value).success;
+    case "service_tier_override_rules":
+      return SERVICE_TIER_OVERRIDE_RULE_LIST_SCHEMA.safeParse(value).success;
     default:
       return false;
   }
@@ -563,6 +679,14 @@ function normalizePatchField<T>(
       return { ok: true, data: { mode: "set", value: parsedRules.data as T } };
     }
 
+    if (field === "service_tier_override_rules") {
+      const parsedRules = SERVICE_TIER_OVERRIDE_RULE_LIST_SCHEMA.safeParse(input.set);
+      if (!parsedRules.success) {
+        return createInvalidPatchShapeError(field, "set mode value is invalid for this field");
+      }
+      return { ok: true, data: { mode: "set", value: parsedRules.data as T } };
+    }
+
     return { ok: true, data: { mode: "set", value: input.set as T } };
   }
 
@@ -639,6 +763,12 @@ export function normalizeProviderBatchPatchDraft(
     typedDraft.reasoning_effort_override_rules
   );
   if (!reasoningEffortOverrideRules.ok) return reasoningEffortOverrideRules;
+
+  const serviceTierOverrideRules = normalizePatchField(
+    "service_tier_override_rules",
+    typedDraft.service_tier_override_rules
+  );
+  if (!serviceTierOverrideRules.ok) return serviceTierOverrideRules;
 
   // Routing
   const activeTimeStart = normalizePatchField("active_time_start", typedDraft.active_time_start);
@@ -853,6 +983,7 @@ export function normalizeProviderBatchPatchDraft(
       anthropic_thinking_budget_preference: thinkingBudget.data,
       anthropic_adaptive_thinking: adaptiveThinking.data,
       reasoning_effort_override_rules: reasoningEffortOverrideRules.data,
+      service_tier_override_rules: serviceTierOverrideRules.data,
       // Routing
       active_time_start: activeTimeStart.data,
       active_time_end: activeTimeEnd.data,
@@ -954,6 +1085,9 @@ function applyPatchField<T>(
         return { ok: true, data: undefined };
       case "reasoning_effort_override_rules":
         updates.reasoning_effort_override_rules = patch.value as ReasoningEffortOverrideRule[];
+        return { ok: true, data: undefined };
+      case "service_tier_override_rules":
+        updates.service_tier_override_rules = patch.value as ServiceTierOverrideRule[];
         return { ok: true, data: undefined };
       // Routing
       case "active_time_start":
@@ -1135,6 +1269,9 @@ function applyPatchField<T>(
     case "reasoning_effort_override_rules":
       updates.reasoning_effort_override_rules = null;
       return { ok: true, data: undefined };
+    case "service_tier_override_rules":
+      updates.service_tier_override_rules = null;
+      return { ok: true, data: undefined };
     // Routing - active time clear to null
     case "active_time_start":
       updates.active_time_start = null;
@@ -1234,6 +1371,7 @@ export function buildProviderBatchApplyUpdates(
     ["anthropic_thinking_budget_preference", patch.anthropic_thinking_budget_preference],
     ["anthropic_adaptive_thinking", patch.anthropic_adaptive_thinking],
     ["reasoning_effort_override_rules", patch.reasoning_effort_override_rules],
+    ["service_tier_override_rules", patch.service_tier_override_rules],
     // Routing
     ["active_time_start", patch.active_time_start],
     ["active_time_end", patch.active_time_end],
@@ -1310,6 +1448,7 @@ export function hasProviderBatchPatchChanges(
     patch.anthropic_thinking_budget_preference.mode !== "no_change" ||
     patch.anthropic_adaptive_thinking.mode !== "no_change" ||
     patch.reasoning_effort_override_rules.mode !== "no_change" ||
+    patch.service_tier_override_rules.mode !== "no_change" ||
     // Routing
     patch.active_time_start.mode !== "no_change" ||
     patch.active_time_end.mode !== "no_change" ||

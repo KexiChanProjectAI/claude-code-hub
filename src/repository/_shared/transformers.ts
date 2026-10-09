@@ -174,6 +174,7 @@ export function toProvider(dbProvider: any): ProviderWithReasoningEffortOverride
     anthropicThinkingBudgetPreference: dbProvider?.anthropicThinkingBudgetPreference ?? null,
     anthropicAdaptiveThinking: dbProvider?.anthropicAdaptiveThinking ?? null,
     reasoningEffortOverrideRules: dbProvider?.reasoningEffortOverrideRules ?? null,
+    serviceTierOverrideRules: dbProvider?.serviceTierOverrideRules ?? null,
     geminiGoogleSearchPreference: dbProvider?.geminiGoogleSearchPreference ?? null,
     tpm: dbProvider?.tpm ?? null,
     rpm: dbProvider?.rpm ?? null,

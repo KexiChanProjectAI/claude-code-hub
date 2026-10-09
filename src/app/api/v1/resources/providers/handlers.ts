@@ -48,17 +48,25 @@ import {
 } from "@/lib/api/v1/schemas/providers";
 import {
   hasLegacyReasoningEffortOverrideFields,
+  hasLegacyServiceTierOverrideFields,
   hasProviderReasoningEffortOverrideRulesField,
+  hasProviderServiceTierOverrideRulesField,
   normalizeProviderBatchPatchDraft,
   validateProviderReasoningEffortOverrideBatch,
   validateProviderReasoningEffortOverrideMutation,
+  validateProviderServiceTierOverrideBatch,
+  validateProviderServiceTierOverrideMutation,
 } from "@/lib/provider-patch-contract";
-import { REASONING_EFFORT_OVERRIDE_RULE_LIST_SCHEMA } from "@/lib/validation/schemas";
+import {
+  REASONING_EFFORT_OVERRIDE_RULE_LIST_SCHEMA,
+  SERVICE_TIER_OVERRIDE_RULE_LIST_SCHEMA,
+} from "@/lib/validation/schemas";
 import type {
   ProviderDisplay,
   ProviderStatistics,
   ProviderStatisticsMap,
   ReasoningEffortOverrideRule,
+  ServiceTierOverrideRule,
 } from "@/types/provider";
 
 const InternalProviderTypeSchema = z.enum(INTERNAL_PROVIDER_TYPE_VALUES);
@@ -77,6 +85,15 @@ function getProviderReasoningEffortOverrideRules(
   const value = Reflect.get(provider, "reasoningEffortOverrideRules");
   if (value === null) return null;
   const parsed = REASONING_EFFORT_OVERRIDE_RULE_LIST_SCHEMA.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+function getProviderServiceTierOverrideRules(
+  provider: ProviderDisplay
+): ServiceTierOverrideRule[] | null {
+  const value = Reflect.get(provider, "serviceTierOverrideRules");
+  if (value === null || value === undefined) return null;
+  const parsed = SERVICE_TIER_OVERRIDE_RULE_LIST_SCHEMA.safeParse(value);
   return parsed.success ? parsed.data : null;
 }
 
@@ -161,6 +178,16 @@ export async function createProvider(c: Context): Promise<Response> {
     existingRules: null,
   });
   if (!reasoningValidation.ok) return reasoningEffortValidationError(c, reasoningValidation.error);
+  const serviceTierValidation = validateProviderServiceTierOverrideMutation({
+    providerType: body.data.provider_type ?? "claude",
+    hasRulesField: hasProviderServiceTierOverrideRulesField(body.data),
+    rules: body.data.service_tier_override_rules,
+    hasLegacyFields: hasLegacyServiceTierOverrideFields(body.data),
+    existingRules: null,
+  });
+  if (!serviceTierValidation.ok) {
+    return reasoningEffortValidationError(c, serviceTierValidation.error);
+  }
   const providerActions = await import("@/actions/providers");
   const result = await callAction(
     c,
@@ -204,6 +231,16 @@ export async function updateProvider(c: Context): Promise<Response> {
     existingRules: getProviderReasoningEffortOverrideRules(existing),
   });
   if (!reasoningValidation.ok) return reasoningEffortValidationError(c, reasoningValidation.error);
+  const serviceTierValidation = validateProviderServiceTierOverrideMutation({
+    providerType: body.data.provider_type ?? existing.providerType,
+    hasRulesField: hasProviderServiceTierOverrideRulesField(body.data),
+    rules: body.data.service_tier_override_rules,
+    hasLegacyFields: hasLegacyServiceTierOverrideFields(body.data),
+    existingRules: getProviderServiceTierOverrideRules(existing),
+  });
+  if (!serviceTierValidation.ok) {
+    return reasoningEffortValidationError(c, serviceTierValidation.error);
+  }
   if (body.data.key !== undefined && hasLegacyRedactedWritePlaceholders(body.data.key)) {
     return createProblemResponse({
       status: 422,
@@ -516,6 +553,9 @@ export async function batchUpdateProviders(c: Context): Promise<Response> {
       hasRulesField: hasProviderReasoningEffortOverrideRulesField(body.updates),
       rules: body.updates.reasoning_effort_override_rules,
       hasLegacyFields: hasLegacyReasoningEffortOverrideFields(body.updates),
+      hasServiceTierRulesField: hasProviderServiceTierOverrideRulesField(body.updates),
+      serviceTierRules: body.updates.service_tier_override_rules,
+      hasLegacyServiceTierFields: hasLegacyServiceTierOverrideFields(body.updates),
     }
   );
   if (reasoningValidationErrorResponse) return reasoningValidationErrorResponse;
@@ -744,6 +784,9 @@ async function validateDirectBatchReasoningEffortMutation(
     hasRulesField: boolean;
     rules: ReasoningEffortOverrideRule[] | null | undefined;
     hasLegacyFields: boolean;
+    hasServiceTierRulesField: boolean;
+    serviceTierRules: ServiceTierOverrideRule[] | null | undefined;
+    hasLegacyServiceTierFields: boolean;
   }
 ): Promise<Response | null> {
   const providers = await loadVisibleProviders(c);
@@ -760,6 +803,16 @@ async function validateDirectBatchReasoningEffortMutation(
       existingRules: getProviderReasoningEffortOverrideRules(provider),
     });
     if (!result.ok) return reasoningEffortValidationError(c, result.error);
+    if (input.hasServiceTierRulesField || input.hasLegacyServiceTierFields) {
+      const serviceTierResult = validateProviderServiceTierOverrideMutation({
+        providerType: provider.providerType,
+        hasRulesField: input.hasServiceTierRulesField,
+        rules: input.serviceTierRules,
+        hasLegacyFields: input.hasLegacyServiceTierFields,
+        existingRules: getProviderServiceTierOverrideRules(provider),
+      });
+      if (!serviceTierResult.ok) return reasoningEffortValidationError(c, serviceTierResult.error);
+    }
   }
 
   return null;
@@ -782,12 +835,18 @@ async function validatePatchBatchReasoningEffortMutation(
     .map((provider) => ({
       providerType: provider.providerType,
       reasoningEffortOverrideRules: getProviderReasoningEffortOverrideRules(provider),
+      serviceTierOverrideRules: getProviderServiceTierOverrideRules(provider),
     }));
   const result = validateProviderReasoningEffortOverrideBatch({
     patch: normalized.data,
     providers: candidates,
   });
-  return result.ok ? null : reasoningEffortValidationError(c, result.error);
+  if (!result.ok) return reasoningEffortValidationError(c, result.error);
+  const serviceTierResult = validateProviderServiceTierOverrideBatch({
+    patch: normalized.data,
+    providers: candidates,
+  });
+  return serviceTierResult.ok ? null : reasoningEffortValidationError(c, serviceTierResult.error);
 }
 
 async function findCreatedProvider(
@@ -903,6 +962,7 @@ function sanitizeProvider(
     anthropicThinkingBudgetPreference: provider.anthropicThinkingBudgetPreference,
     anthropicAdaptiveThinking: provider.anthropicAdaptiveThinking,
     reasoningEffortOverrideRules: getProviderReasoningEffortOverrideRules(provider),
+    serviceTierOverrideRules: getProviderServiceTierOverrideRules(provider),
     geminiGoogleSearchPreference: provider.geminiGoogleSearchPreference,
     todayTotalCostUsd: statistics?.todayCost ?? provider.todayTotalCostUsd,
     todayCallCount: statistics?.todayCalls ?? provider.todayCallCount,

@@ -8,13 +8,18 @@ import {
 } from "@/lib/constants/provider.constants";
 import {
   hasLegacyReasoningEffortOverrideFields,
+  hasLegacyServiceTierOverrideFields,
   hasProviderReasoningEffortOverrideRulesField,
+  hasProviderServiceTierOverrideRulesField,
   validateProviderReasoningEffortOverrideMutation,
+  validateProviderServiceTierOverrideMutation,
 } from "@/lib/provider-patch-contract";
 import { UPSTREAM_QUOTA_THRESHOLD_PERCENT_RANGE } from "@/lib/provider-upstream-quota/constants";
 import {
   REASONING_EFFORT_OVERRIDE_RULE_LIST_SCHEMA,
   REASONING_EFFORT_OVERRIDE_RULES_SCHEMA,
+  SERVICE_TIER_OVERRIDE_RULE_LIST_SCHEMA,
+  SERVICE_TIER_OVERRIDE_RULES_SCHEMA,
 } from "@/lib/validation/schemas";
 import {
   PROVIDER_BALANCE_BATCH_LIMIT,
@@ -39,12 +44,21 @@ const ReasoningEffortOverrideBatchPatchInputSchema = z.union([
   z.object({ no_change: z.literal(true) }).strict(),
 ]);
 
+const ServiceTierOverrideBatchPatchInputSchema = z.union([
+  z.object({ set: SERVICE_TIER_OVERRIDE_RULE_LIST_SCHEMA }).strict(),
+  z.object({ clear: z.literal(true) }).strict(),
+  z.object({ no_change: z.literal(true) }).strict(),
+]);
+
 const ProviderBatchPatchDraftSchema = z
   .object({
     reasoning_effort_override_rules:
       ReasoningEffortOverrideBatchPatchInputSchema.optional().describe(
         "Conditional reasoning effort rules patch. Use set, clear, or no_change."
       ),
+    service_tier_override_rules: ServiceTierOverrideBatchPatchInputSchema.optional().describe(
+      "Conditional Codex service tier rules patch. Use set, clear, or no_change."
+    ),
   })
   .catchall(z.unknown())
   .default({});
@@ -104,6 +118,62 @@ function validateReasoningEffortOverrideSchemaMutation(
       path: ["reasoning_effort_override_rules"],
     });
   }
+}
+
+function validateServiceTierOverrideSchemaMutation(
+  data: {
+    provider_type?: unknown;
+    service_tier_override_rules?: unknown;
+    codex_service_tier_preference?: unknown;
+  },
+  ctx: z.RefinementCtx
+): void {
+  const hasRulesField = hasProviderServiceTierOverrideRulesField(data);
+  const hasLegacyFields = hasLegacyServiceTierOverrideFields(data);
+  if (!hasRulesField && !hasLegacyFields) return;
+
+  const providerType = data.provider_type;
+  if (typeof providerType !== "string") {
+    // Provider type unknown here (partial update): only the co-emission rule can be checked.
+    if (hasRulesField && hasLegacyFields) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "service_tier_override_rules cannot be combined with codex_service_tier_preference",
+        path: ["service_tier_override_rules"],
+      });
+    }
+    return;
+  }
+
+  const parsedRules = SERVICE_TIER_OVERRIDE_RULE_LIST_SCHEMA.safeParse(
+    data.service_tier_override_rules
+  );
+  const result = validateProviderServiceTierOverrideMutation({
+    providerType: providerType as Parameters<
+      typeof validateProviderServiceTierOverrideMutation
+    >[0]["providerType"],
+    hasRulesField,
+    rules: parsedRules.success ? parsedRules.data : null,
+    hasLegacyFields,
+    existingRules: null,
+  });
+  if (!result.ok) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: result.error,
+      path: ["service_tier_override_rules"],
+    });
+  }
+}
+
+function validateProviderOverrideRulesSchemaMutation(
+  data: Parameters<typeof validateReasoningEffortOverrideSchemaMutation>[0] &
+    Parameters<typeof validateServiceTierOverrideSchemaMutation>[0],
+  ctx: z.RefinementCtx
+): void {
+  validateReasoningEffortOverrideSchemaMutation(data, ctx);
+  validateServiceTierOverrideSchemaMutation(data, ctx);
 }
 
 export const ProviderListQuerySchema = z.object({
@@ -276,6 +346,9 @@ export const ProviderSummarySchema = z
     reasoningEffortOverrideRules: REASONING_EFFORT_OVERRIDE_RULE_LIST_SCHEMA.nullable().describe(
       "Ordered conditional reasoning effort override rules. Null preserves legacy fallback; an empty list disables it."
     ),
+    serviceTierOverrideRules: SERVICE_TIER_OVERRIDE_RULE_LIST_SCHEMA.nullable().describe(
+      "Ordered conditional Codex service tier override rules. A null target removes service_tier. Null preserves legacy fallback; an empty list disables it."
+    ),
     geminiGoogleSearchPreference: z
       .string()
       .nullable()
@@ -421,6 +494,9 @@ const ProviderBatchUpdateFieldsSchema = z
       .describe("Anthropic adaptive thinking config."),
     reasoning_effort_override_rules: REASONING_EFFORT_OVERRIDE_RULES_SCHEMA.describe(
       "Ordered conditional reasoning effort override rules. Null clears to legacy fallback."
+    ),
+    service_tier_override_rules: SERVICE_TIER_OVERRIDE_RULES_SCHEMA.describe(
+      "Ordered conditional Codex service tier override rules. Null clears to legacy fallback."
     ),
   })
   .strict();
@@ -751,6 +827,9 @@ const ProviderCreateObjectSchema = z
     reasoning_effort_override_rules: REASONING_EFFORT_OVERRIDE_RULES_SCHEMA.describe(
       "Ordered conditional reasoning effort override rules. Null preserves legacy fallback; an empty list disables it."
     ),
+    service_tier_override_rules: SERVICE_TIER_OVERRIDE_RULES_SCHEMA.describe(
+      "Ordered conditional Codex service tier override rules. A null target removes service_tier. Null preserves legacy fallback; an empty list disables it."
+    ),
     gemini_google_search_preference: z
       .string()
       .optional()
@@ -763,7 +842,7 @@ export const ProviderCreateSchema = ProviderCreateObjectSchema.extend({
   provider_type: ProviderTypeSchema.default("claude"),
 })
   .strict()
-  .superRefine(validateReasoningEffortOverrideSchemaMutation)
+  .superRefine(validateProviderOverrideRulesSchemaMutation)
   .describe("Provider create request. Hidden provider types and deprecated fields are rejected.");
 
 export const ProviderUpdateObjectSchema = ProviderCreateObjectSchema.omit({ key: true })
@@ -780,7 +859,7 @@ export const ProviderUpdateObjectSchema = ProviderCreateObjectSchema.omit({ key:
   .strict();
 
 export const ProviderUpdateSchema = ProviderUpdateObjectSchema.superRefine(
-  validateReasoningEffortOverrideSchemaMutation
+  validateProviderOverrideRulesSchemaMutation
 ).describe("Provider update request. Hidden provider types and deprecated fields are rejected.");
 
 export type ProviderSummaryResponse = z.infer<typeof ProviderSummarySchema>;

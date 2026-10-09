@@ -29,6 +29,7 @@ import type {
   Provider,
   ProviderModelRedirectRule,
   ReasoningEffortOverrideRule,
+  ServiceTierOverrideRule,
   UpdateProviderData,
 } from "@/types/provider";
 import { type ProviderWithReasoningEffortOverrideRules, toProvider } from "./_shared/transformers";
@@ -43,6 +44,7 @@ type ProviderTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 type ProviderReasoningEffortOverrideInput = {
   reasoning_effort_override_rules?: ReasoningEffortOverrideRule[] | null;
+  service_tier_override_rules?: ServiceTierOverrideRule[] | null;
 };
 
 type CreateProviderInput = CreateProviderData & ProviderReasoningEffortOverrideInput;
@@ -286,6 +288,7 @@ export async function createProvider(
     anthropicThinkingBudgetPreference: providerData.anthropic_thinking_budget_preference ?? null,
     anthropicAdaptiveThinking: providerData.anthropic_adaptive_thinking ?? null,
     reasoningEffortOverrideRules: providerData.reasoning_effort_override_rules ?? null,
+    serviceTierOverrideRules: providerData.service_tier_override_rules ?? null,
     geminiGoogleSearchPreference: providerData.gemini_google_search_preference ?? null,
     tpm: providerData.tpm,
     rpm: providerData.rpm,
@@ -374,6 +377,7 @@ export async function createProvider(
         anthropicThinkingBudgetPreference: providers.anthropicThinkingBudgetPreference,
         anthropicAdaptiveThinking: providers.anthropicAdaptiveThinking,
         reasoningEffortOverrideRules: providers.reasoningEffortOverrideRules,
+        serviceTierOverrideRules: providers.serviceTierOverrideRules,
         geminiGoogleSearchPreference: providers.geminiGoogleSearchPreference,
         tpm: providers.tpm,
         rpm: providers.rpm,
@@ -471,6 +475,7 @@ export async function findProviderList(
       anthropicThinkingBudgetPreference: providers.anthropicThinkingBudgetPreference,
       anthropicAdaptiveThinking: providers.anthropicAdaptiveThinking,
       reasoningEffortOverrideRules: providers.reasoningEffortOverrideRules,
+      serviceTierOverrideRules: providers.serviceTierOverrideRules,
       geminiGoogleSearchPreference: providers.geminiGoogleSearchPreference,
       tpm: providers.tpm,
       rpm: providers.rpm,
@@ -568,6 +573,7 @@ export async function findAllProvidersFresh(): Promise<ProviderWithReasoningEffo
       anthropicThinkingBudgetPreference: providers.anthropicThinkingBudgetPreference,
       anthropicAdaptiveThinking: providers.anthropicAdaptiveThinking,
       reasoningEffortOverrideRules: providers.reasoningEffortOverrideRules,
+      serviceTierOverrideRules: providers.serviceTierOverrideRules,
       geminiGoogleSearchPreference: providers.geminiGoogleSearchPreference,
       tpm: providers.tpm,
       rpm: providers.rpm,
@@ -671,6 +677,7 @@ export async function findProviderById(
       anthropicThinkingBudgetPreference: providers.anthropicThinkingBudgetPreference,
       anthropicAdaptiveThinking: providers.anthropicAdaptiveThinking,
       reasoningEffortOverrideRules: providers.reasoningEffortOverrideRules,
+      serviceTierOverrideRules: providers.serviceTierOverrideRules,
       geminiGoogleSearchPreference: providers.geminiGoogleSearchPreference,
       tpm: providers.tpm,
       rpm: providers.rpm,
@@ -821,6 +828,8 @@ export async function updateProvider(
     dbData.anthropicAdaptiveThinking = providerData.anthropic_adaptive_thinking ?? null;
   if (providerData.reasoning_effort_override_rules !== undefined)
     dbData.reasoningEffortOverrideRules = providerData.reasoning_effort_override_rules ?? null;
+  if (providerData.service_tier_override_rules !== undefined)
+    dbData.serviceTierOverrideRules = providerData.service_tier_override_rules ?? null;
   if (providerData.gemini_google_search_preference !== undefined)
     dbData.geminiGoogleSearchPreference = providerData.gemini_google_search_preference ?? null;
   if (providerData.tpm !== undefined) dbData.tpm = providerData.tpm;
@@ -947,6 +956,7 @@ export async function updateProvider(
         anthropicThinkingBudgetPreference: providers.anthropicThinkingBudgetPreference,
         anthropicAdaptiveThinking: providers.anthropicAdaptiveThinking,
         reasoningEffortOverrideRules: providers.reasoningEffortOverrideRules,
+        serviceTierOverrideRules: providers.serviceTierOverrideRules,
         geminiGoogleSearchPreference: providers.geminiGoogleSearchPreference,
         tpm: providers.tpm,
         rpm: providers.rpm,
@@ -1169,6 +1179,7 @@ export interface BatchProviderUpdates {
   anthropicThinkingBudgetPreference?: string | null;
   anthropicAdaptiveThinking?: AnthropicAdaptiveThinkingConfig | null;
   reasoningEffortOverrideRules?: ReasoningEffortOverrideRule[] | null;
+  serviceTierOverrideRules?: ServiceTierOverrideRule[] | null;
   // Routing
   preserveClientIp?: boolean;
   disableSessionReuse?: boolean;
@@ -1351,6 +1362,9 @@ export async function updateProvidersBatch(
   }
   if (updates.reasoningEffortOverrideRules !== undefined) {
     setClauses.reasoningEffortOverrideRules = updates.reasoningEffortOverrideRules;
+  }
+  if (updates.serviceTierOverrideRules !== undefined) {
+    setClauses.serviceTierOverrideRules = updates.serviceTierOverrideRules;
   }
   // Routing
   if (updates.preserveClientIp !== undefined) {

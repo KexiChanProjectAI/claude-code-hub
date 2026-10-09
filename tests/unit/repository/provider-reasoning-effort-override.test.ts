@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { ReasoningEffortOverrideRule } from "@/types/provider";
+import type { ReasoningEffortOverrideRule, ServiceTierOverrideRule } from "@/types/provider";
 import { toProvider } from "@/repository/_shared/transformers";
 
 const orderedRules: ReasoningEffortOverrideRule[] = [
@@ -41,5 +41,37 @@ describe("toProvider reasoning effort override rules", () => {
     const provider = toProvider({});
 
     expect(provider.reasoningEffortOverrideRules).toBeNull();
+  });
+});
+
+describe("toProvider service tier override rules", () => {
+  const serviceTierRules: ServiceTierOverrideRule[] = [
+    { when: { originalServiceTier: null }, overrideServiceTier: "flex" },
+    {
+      when: { originalModel: { matchType: "prefix", pattern: "gpt-5" } },
+      overrideServiceTier: null,
+    },
+  ];
+
+  test.each([
+    ["null", null],
+    ["empty", []],
+    ["ordered", serviceTierRules],
+  ] satisfies Array<[string, ServiceTierOverrideRule[] | null]>)(
+    "round-trips the %s stored rule list faithfully",
+    (_name, rules) => {
+      expect(
+        toProvider({ serviceTierOverrideRules: rules }).serviceTierOverrideRules
+      ).toStrictEqual(rules);
+    }
+  );
+
+  test("preserves a null (unset) target", () => {
+    const provider = toProvider({ serviceTierOverrideRules: serviceTierRules });
+    expect(provider.serviceTierOverrideRules?.[1]).toHaveProperty("overrideServiceTier", null);
+  });
+
+  test("maps an omitted column to null for legacy fallback", () => {
+    expect(toProvider({}).serviceTierOverrideRules).toBeNull();
   });
 });
