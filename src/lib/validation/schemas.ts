@@ -197,6 +197,31 @@ export const REASONING_EFFORT_OVERRIDE_RULE_LIST_SCHEMA = z
 export const REASONING_EFFORT_OVERRIDE_RULES_SCHEMA =
   REASONING_EFFORT_OVERRIDE_RULE_LIST_SCHEMA.nullable().optional();
 
+const CODEX_SERVICE_TIER_OVERRIDE_TARGET = z.enum(["auto", "default", "flex", "priority"]);
+
+export const SERVICE_TIER_OVERRIDE_RULE_WHEN_SCHEMA = z
+  .object({
+    originalModel: REASONING_EFFORT_OVERRIDE_MODEL_PREDICATE_SCHEMA.optional(),
+    executionModel: REASONING_EFFORT_OVERRIDE_MODEL_PREDICATE_SCHEMA.optional(),
+    originalServiceTier: z.string().max(PROVIDER_RULE_LIMITS.MAX_TEXT_LENGTH).nullable().optional(),
+  })
+  .strict();
+
+// overrideServiceTier: null means "unset" (remove service_tier from the upstream request)
+export const SERVICE_TIER_OVERRIDE_RULE_SCHEMA = z
+  .object({
+    when: SERVICE_TIER_OVERRIDE_RULE_WHEN_SCHEMA,
+    overrideServiceTier: CODEX_SERVICE_TIER_OVERRIDE_TARGET.nullable(),
+  })
+  .strict();
+
+export const SERVICE_TIER_OVERRIDE_RULE_LIST_SCHEMA = z
+  .array(SERVICE_TIER_OVERRIDE_RULE_SCHEMA)
+  .max(50, "Service tier override rules cannot exceed 50 entries");
+
+export const SERVICE_TIER_OVERRIDE_RULES_SCHEMA =
+  SERVICE_TIER_OVERRIDE_RULE_LIST_SCHEMA.nullable().optional();
+
 // Gemini (generateContent API) Google Search preference
 // - 'inherit': follow client request (default)
 // - 'enabled': force inject googleSearch tool
@@ -752,6 +777,7 @@ export const CreateProviderSchema = z
       ANTHROPIC_THINKING_BUDGET_PREFERENCE.optional().default("inherit"),
     anthropic_adaptive_thinking: ANTHROPIC_ADAPTIVE_THINKING_CONFIG,
     reasoning_effort_override_rules: REASONING_EFFORT_OVERRIDE_RULES_SCHEMA,
+    service_tier_override_rules: SERVICE_TIER_OVERRIDE_RULES_SCHEMA,
     gemini_google_search_preference: GEMINI_GOOGLE_SEARCH_PREFERENCE.optional().default("inherit"),
     max_retry_attempts: z.coerce
       .number()
@@ -1000,6 +1026,7 @@ export const UpdateProviderSchema = z
     anthropic_thinking_budget_preference: ANTHROPIC_THINKING_BUDGET_PREFERENCE.optional(),
     anthropic_adaptive_thinking: ANTHROPIC_ADAPTIVE_THINKING_CONFIG,
     reasoning_effort_override_rules: REASONING_EFFORT_OVERRIDE_RULES_SCHEMA,
+    service_tier_override_rules: SERVICE_TIER_OVERRIDE_RULES_SCHEMA,
     gemini_google_search_preference: GEMINI_GOOGLE_SEARCH_PREFERENCE.optional(),
     max_retry_attempts: z.coerce
       .number()

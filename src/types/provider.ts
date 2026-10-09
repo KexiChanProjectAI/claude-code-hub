@@ -94,6 +94,42 @@ export type ReasoningEffortOverrideResult =
   | ReasoningEffortOverrideNoMatchResult
   | ReasoningEffortOverrideMatchResult;
 
+// Conditional service tier override rules (Codex / Responses API only)
+// - overrideServiceTier = null means "unset": remove service_tier from the upstream request
+export type CodexServiceTierOverrideTarget = Exclude<CodexServiceTierPreference, "inherit">;
+
+export type ServiceTierOverrideRuleWhen = {
+  readonly originalModel?: ReasoningEffortOverrideModelPredicate;
+  readonly executionModel?: ReasoningEffortOverrideModelPredicate;
+  readonly originalServiceTier?: string | null;
+};
+
+export type ServiceTierOverrideRule = {
+  readonly when: ServiceTierOverrideRuleWhen;
+  readonly overrideServiceTier: CodexServiceTierOverrideTarget | null;
+};
+
+export type ServiceTierOverrideInput = {
+  readonly originalModel: string | null;
+  readonly executionModel: string | null;
+  readonly originalServiceTier: string | null;
+};
+
+export type ServiceTierOverrideNoMatchResult = {
+  readonly shouldOverride: false;
+  readonly overriddenServiceTier: null;
+};
+
+export type ServiceTierOverrideMatchResult = {
+  readonly shouldOverride: true;
+  readonly overriddenServiceTier: CodexServiceTierOverrideTarget | null;
+  readonly matchedIndex: number;
+};
+
+export type ServiceTierOverrideResult =
+  | ServiceTierOverrideNoMatchResult
+  | ServiceTierOverrideMatchResult;
+
 export interface ProviderModelRedirectRule {
   matchType: ProviderModelRedirectMatchType;
   source: string;
@@ -496,6 +532,9 @@ export interface Provider {
   // Conditional reasoning effort override rules
   reasoningEffortOverrideRules: ReasoningEffortOverrideRule[] | null;
 
+  // Conditional service tier override rules (codex only)
+  serviceTierOverrideRules: ServiceTierOverrideRule[] | null;
+
   // 废弃（保留向后兼容，但不再使用）
   // TPM (Tokens Per Minute): 每分钟可处理的文本总量
   tpm: number | null;
@@ -596,6 +635,7 @@ export interface ProviderDisplay {
   anthropicAdaptiveThinking: AnthropicAdaptiveThinkingConfig | null;
   geminiGoogleSearchPreference: GeminiGoogleSearchPreference | null;
   reasoningEffortOverrideRules: ReasoningEffortOverrideRule[] | null;
+  serviceTierOverrideRules: ServiceTierOverrideRule[] | null;
   // 废弃字段（保留向后兼容）
   tpm: number | null;
   rpm: number | null;

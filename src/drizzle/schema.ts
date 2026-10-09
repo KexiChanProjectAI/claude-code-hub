@@ -23,6 +23,7 @@ import type {
   ProviderModelRedirectRule,
   ProviderType,
   ReasoningEffortOverrideRule,
+  ServiceTierOverrideRule,
 } from "@/types/provider";
 import type { FilterOperation } from "@/lib/request-filter-types";
 import type { IpExtractionConfig } from "@/types/ip-extraction";
@@ -384,6 +385,9 @@ export const providers = pgTable('providers', {
     .default(null),
   reasoningEffortOverrideRules: jsonb('reasoning_effort_override_rules')
     .$type<ReasoningEffortOverrideRule[] | null>(),
+  // Conditional Codex service_tier override rules (null = legacy codex_service_tier_preference fallback)
+  serviceTierOverrideRules: jsonb('service_tier_override_rules')
+    .$type<ServiceTierOverrideRule[] | null>(),
 
   // Gemini (generateContent API) parameter overrides (only for gemini/gemini-cli providers)
   // - 'inherit' or null: follow client request

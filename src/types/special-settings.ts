@@ -1,4 +1,4 @@
-import type { ReasoningEffortOverrideResult } from "./provider";
+import type { ReasoningEffortOverrideResult, ServiceTierOverrideResult } from "./provider";
 
 /**
  * 特殊设置（通用审计字段）
@@ -47,6 +47,7 @@ export type ProviderParameterOverrideSpecialSetting = {
     changed: boolean;
   }>;
   ruleEvaluation?: ReasoningEffortOverrideResult;
+  serviceTierRuleEvaluation?: ServiceTierOverrideResult;
 };
 
 export type ResponseFixerSpecialSetting = {
