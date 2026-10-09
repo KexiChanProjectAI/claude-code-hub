@@ -1,4 +1,5 @@
 import { evaluateReasoningEffortOverride } from "@/lib/reasoning-effort-override";
+import { evaluateServiceTierOverride } from "@/lib/service-tier-override";
 import type {
   CodexImageGenerationPreference,
   CodexParallelToolCallsPreference,
@@ -8,6 +9,8 @@ import type {
   CodexTextVerbosityPreference,
   ReasoningEffortOverrideResult,
   ReasoningEffortOverrideRule,
+  ServiceTierOverrideResult,
+  ServiceTierOverrideRule,
 } from "@/types/provider";
 import type { ProviderParameterOverrideSpecialSetting } from "@/types/special-settings";
 
@@ -23,17 +26,37 @@ type CodexProviderOverrideConfig = {
   codexServiceTierPreference?: CodexServiceTierPreference | null;
 };
 
-export type CodexReasoningEffortOverrideContext = {
+export type CodexProviderOverrideContext = {
   readonly originalModel: string | null;
   readonly executionModel: string | null;
   readonly originalReasoningEffort: string | null;
   readonly reasoningEffortOverrideRules: readonly ReasoningEffortOverrideRule[] | null;
+  /** Raw client service_tier captured at intake (null = client sent none). */
+  readonly originalServiceTier?: string | null;
+  /** undefined/null = legacy codexServiceTierPreference fallback; [] disables the fallback. */
+  readonly serviceTierOverrideRules?: readonly ServiceTierOverrideRule[] | null;
 };
 
 type ReasoningEffortResolution = {
   readonly effort: string | null;
   readonly ruleEvaluation: ReasoningEffortOverrideResult | null;
 };
+
+type ServiceTierResolution =
+  | { readonly action: "none"; readonly value: null }
+  | { readonly action: "set"; readonly value: string }
+  | { readonly action: "unset"; readonly value: null };
+
+type ServiceTierResolutionWithEvaluation = ServiceTierResolution & {
+  readonly ruleEvaluation: ServiceTierOverrideResult | null;
+};
+
+type CodexOverrideResolutions = {
+  readonly reasoningEffort: string | null;
+  readonly serviceTier: ServiceTierResolution;
+};
+
+const SERVICE_TIER_NONE: ServiceTierResolution = { action: "none", value: null };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -68,7 +91,7 @@ function normalizeImageGenerationPreference(
 
 function resolveReasoningEffort(
   provider: CodexProviderOverrideConfig,
-  context?: CodexReasoningEffortOverrideContext | null
+  context?: CodexProviderOverrideContext | null
 ): ReasoningEffortResolution {
   const legacyEffort = normalizeStringPreference(provider.codexReasoningEffortPreference);
   if (context === undefined) {
@@ -97,6 +120,33 @@ function resolveReasoningEffort(
     effort: ruleEvaluation.shouldOverride ? ruleEvaluation.overriddenEffort : null,
     ruleEvaluation,
   };
+}
+
+function resolveServiceTier(
+  provider: CodexProviderOverrideConfig,
+  context?: CodexProviderOverrideContext | null
+): ServiceTierResolutionWithEvaluation {
+  const rules = isPlainObject(context) ? context.serviceTierOverrideRules : undefined;
+  if (rules === undefined || rules === null) {
+    const legacy = normalizeStringPreference(provider.codexServiceTierPreference);
+    return legacy === null
+      ? { ...SERVICE_TIER_NONE, ruleEvaluation: null }
+      : { action: "set", value: legacy, ruleEvaluation: null };
+  }
+
+  const ruleEvaluation = evaluateServiceTierOverride(rules, {
+    originalModel: context?.originalModel ?? null,
+    executionModel: context?.executionModel ?? null,
+    originalServiceTier: context?.originalServiceTier ?? null,
+  });
+
+  if (!ruleEvaluation.shouldOverride) {
+    return { ...SERVICE_TIER_NONE, ruleEvaluation };
+  }
+  if (ruleEvaluation.overriddenServiceTier === null) {
+    return { action: "unset", value: null, ruleEvaluation };
+  }
+  return { action: "set", value: ruleEvaluation.overriddenServiceTier, ruleEvaluation };
 }
 
 function toImageGenerationToolReference(value: unknown): Record<string, unknown> | null {
@@ -380,11 +430,12 @@ function applyImageGenerationToolChoicePreference(
   }
 }
 
-function applyCodexProviderOverridesWithEffort(
+function applyCodexProviderOverridesWithResolutions(
   provider: CodexProviderOverrideConfig,
   request: Record<string, unknown>,
-  reasoningEffort: string | null
+  resolutions: CodexOverrideResolutions
 ): Record<string, unknown> {
+  const { reasoningEffort, serviceTier } = resolutions;
   let output: Record<string, unknown> = request;
   const ensureCloned = () => {
     if (output === request) {
@@ -434,9 +485,10 @@ function applyCodexProviderOverridesWithEffort(
     target.text = nextText;
   }
 
-  const serviceTier = normalizeStringPreference(provider.codexServiceTierPreference);
-  if (serviceTier !== null) {
-    ensureCloned().service_tier = serviceTier;
+  if (serviceTier.action === "set") {
+    ensureCloned().service_tier = serviceTier.value;
+  } else if (serviceTier.action === "unset" && Object.hasOwn(output, "service_tier")) {
+    delete ensureCloned().service_tier;
   }
 
   return output;
@@ -450,6 +502,8 @@ function applyCodexProviderOverridesWithEffort(
  * - 偏好值为 null/undefined/"inherit" 表示“遵循客户端”
  * - reasoningEffortOverrideContext 未提供，或其规则为 null 时使用静态 effort 回退
  * - 非 null 规则由 evaluator 决定 reasoning.effort，空数组显式禁用静态 effort 回退
+ * - service_tier 同理：serviceTierOverrideRules 未提供或为 null 时使用静态 codexServiceTierPreference，
+ *   非 null 规则由 evaluator 决定；命中目标为 null 的规则会删除请求中的 service_tier
  * - 覆写仅影响以下字段：
  *   - parallel_tool_calls
  *   - tools / tool_choice 中与 image_generation 相关的能力声明
@@ -460,20 +514,24 @@ function applyCodexProviderOverridesWithEffort(
 export function applyCodexProviderOverrides(
   provider: CodexProviderOverrideConfig,
   request: Record<string, unknown>,
-  reasoningEffortOverrideContext?: CodexReasoningEffortOverrideContext | null
+  reasoningEffortOverrideContext?: CodexProviderOverrideContext | null
 ): Record<string, unknown> {
   if (provider.providerType !== "codex") {
     return request;
   }
 
   const reasoningEffort = resolveReasoningEffort(provider, reasoningEffortOverrideContext);
-  return applyCodexProviderOverridesWithEffort(provider, request, reasoningEffort.effort);
+  const serviceTier = resolveServiceTier(provider, reasoningEffortOverrideContext);
+  return applyCodexProviderOverridesWithResolutions(provider, request, {
+    reasoningEffort: reasoningEffort.effort,
+    serviceTier,
+  });
 }
 
 export function applyCodexProviderOverridesWithAudit(
   provider: CodexProviderOverrideConfig,
   request: Record<string, unknown>,
-  reasoningEffortOverrideContext?: CodexReasoningEffortOverrideContext | null
+  reasoningEffortOverrideContext?: CodexProviderOverrideContext | null
 ): { request: Record<string, unknown>; audit: ProviderParameterOverrideSpecialSetting | null } {
   if (provider.providerType !== "codex") {
     return { request, audit: null };
@@ -492,7 +550,7 @@ export function applyCodexProviderOverridesWithAudit(
   const imageGeneration = normalizeImageGenerationPreference(
     provider.codexImageGenerationPreference
   );
-  const serviceTier = normalizeStringPreference(provider.codexServiceTierPreference);
+  const serviceTier = resolveServiceTier(provider, reasoningEffortOverrideContext);
 
   const beforeServiceTier = toAuditValue(request.service_tier);
   const hit =
@@ -501,7 +559,7 @@ export function applyCodexProviderOverridesWithAudit(
     reasoningEffort !== null ||
     reasoningSummary !== null ||
     textVerbosity !== null ||
-    serviceTier !== null ||
+    serviceTier.action !== "none" ||
     beforeServiceTier === "priority";
 
   if (!hit) {
@@ -518,7 +576,10 @@ export function applyCodexProviderOverridesWithAudit(
   const beforeTextVerbosity = toAuditValue(beforeText?.verbosity);
   const beforeToolChoice = summarizeImageGenerationToolChoice(request.tool_choice);
 
-  const nextRequest = applyCodexProviderOverridesWithEffort(provider, request, reasoningEffort);
+  const nextRequest = applyCodexProviderOverridesWithResolutions(provider, request, {
+    reasoningEffort,
+    serviceTier,
+  });
 
   const afterServiceTier = toAuditValue(nextRequest.service_tier);
 
@@ -594,6 +655,9 @@ export function applyCodexProviderOverridesWithAudit(
     changes,
     ...(reasoningEffortResolution.ruleEvaluation
       ? { ruleEvaluation: reasoningEffortResolution.ruleEvaluation }
+      : {}),
+    ...(serviceTier.ruleEvaluation
+      ? { serviceTierRuleEvaluation: serviceTier.ruleEvaluation }
       : {}),
   };
 

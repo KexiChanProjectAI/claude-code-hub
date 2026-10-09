@@ -192,6 +192,7 @@ function createSession(
           ? (messageOutputConfig as Record<string, unknown>).effort
           : null
         : null,
+    rawResponsesServiceTier: typeof message.service_tier === "string" ? message.service_tier : null,
     originalModelName: null,
     originalUrlPathname: null,
     currentModelRedirect: null,
@@ -346,6 +347,32 @@ describe("ProxySession reasoning effort rule snapshots", () => {
     expect(session.getRawMessagesReasoningEffort()).toBeNull();
   });
 
+  test("captures the raw Responses service_tier before later mutation", async () => {
+    const session = await ProxySession.fromContext(
+      makeContext("https://hub.test/v1/responses", {
+        model: "gpt-5-raw",
+        service_tier: "priority",
+      })
+    );
+
+    session.request.message.service_tier = "flex";
+    delete session.request.message.service_tier;
+
+    expect(session.getRawResponsesServiceTier()).toBe("priority");
+  });
+
+  test("normalizes a missing or non-string service_tier to null", async () => {
+    const missing = await ProxySession.fromContext(
+      makeContext("https://hub.test/v1/responses", { model: "gpt-5-raw" })
+    );
+    const malformed = await ProxySession.fromContext(
+      makeContext("https://hub.test/v1/responses", { model: "gpt-5-raw", service_tier: 1 })
+    );
+
+    expect(missing.getRawResponsesServiceTier()).toBeNull();
+    expect(malformed.getRawResponsesServiceTier()).toBeNull();
+  });
+
   test("captures immutable Messages-format raw effort before later mutation", async () => {
     const session = await ProxySession.fromContext(
       makeContext("https://hub.test/v1/messages", {
@@ -459,13 +486,16 @@ describe("ProxyForwarder reasoning effort rule forwarding", () => {
     const session = createSession("/v1/responses", {
       model: "gpt-5-raw",
       reasoning: { effort: "medium", summary: "brief" },
+      service_tier: "priority",
     });
+    const serviceTierOverrideRules = [{ when: {}, overrideServiceTier: null }];
     const provider = createProvider({
       providerType: "codex",
       url: "https://provider.example.com/v1/responses",
       modelRedirects: [{ matchType: "exact", source: "gpt-5-raw", target: "gpt-5-execution" }],
       reasoningEffortOverrideRules: [{ when: {}, overrideEffort: "high" }],
-    });
+      serviceTierOverrideRules,
+    } as Partial<ProviderWithReasoningEffortOverrideRules>);
     vi.spyOn(forwarder, "fetchWithoutAutoDecode").mockImplementation(async () => {
       sentBodies.push(JSON.parse(session.forwardedRequestBody ?? "{}"));
       return okResponse();
@@ -479,6 +509,8 @@ describe("ProxyForwarder reasoning effort rule forwarding", () => {
         executionModel: "gpt-5-execution",
         originalReasoningEffort: "medium",
         reasoningEffortOverrideRules: provider.reasoningEffortOverrideRules,
+        originalServiceTier: "priority",
+        serviceTierOverrideRules,
       },
     ]);
     expect(anthropicContexts).toEqual([]);

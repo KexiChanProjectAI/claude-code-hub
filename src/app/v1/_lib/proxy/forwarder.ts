@@ -65,7 +65,11 @@ import {
 import { updateMessageRequestDetails } from "@/repository/message";
 import type { CacheTtlPreference, CacheTtlResolved } from "@/types/cache";
 import type { ProviderChainItem } from "@/types/message";
-import type { Provider, ReasoningEffortOverrideRule } from "@/types/provider";
+import type {
+  Provider,
+  ReasoningEffortOverrideRule,
+  ServiceTierOverrideRule,
+} from "@/types/provider";
 import type { RoutingTraceConfigV1 } from "@/types/routing-trace";
 import type {
   ClaudeMetadataUserIdInjectionSpecialSetting,
@@ -781,6 +785,15 @@ export function getReasoningEffortOverrideRules(
   provider: Provider
 ): readonly ReasoningEffortOverrideRule[] | null {
   return hasReasoningEffortOverrideRules(provider) ? provider.reasoningEffortOverrideRules : null;
+}
+
+/** Providers loaded without the column (e.g. older caches) fall back to the legacy preference. */
+export function getServiceTierOverrideRules(
+  provider: Provider
+): readonly ServiceTierOverrideRule[] | null {
+  return Object.hasOwn(provider, "serviceTierOverrideRules")
+    ? (provider.serviceTierOverrideRules ?? null)
+    : null;
 }
 
 // 非流式响应体检查的上限（字节）：避免上游在 2xx 场景返回超大内容导致内存占用失控。
@@ -4149,6 +4162,8 @@ export class ProxyForwarder {
               executionModel: session.getCurrentModel(),
               originalReasoningEffort: session.getRawResponsesReasoningEffort(),
               reasoningEffortOverrideRules: getReasoningEffortOverrideRules(provider),
+              originalServiceTier: session.getRawResponsesServiceTier(),
+              serviceTierOverrideRules: getServiceTierOverrideRules(provider),
             }
           );
           session.request.message = overridden;

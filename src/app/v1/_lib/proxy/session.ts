@@ -167,6 +167,10 @@ interface RequestBodyResult {
  * edge 会话跨 worker 往返的快照（见 ProxySession.toEdgeSnapshot）。
  * 字段值中的 Date 由 edge 状态存储负责编解码。
  */
+function extractRawServiceTier(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
 export interface EdgeSessionSnapshot {
   v: 1;
   startTime: number;
@@ -178,6 +182,8 @@ export interface EdgeSessionSnapshot {
   rawIntakeModel: string | null;
   rawResponsesReasoningEffort: string | null;
   rawMessagesReasoningEffort: string | null;
+  // Optional for compatibility with snapshots persisted before this field existed
+  rawResponsesServiceTier?: string | null;
   userName: string;
   authState: AuthState | null;
   provider: Provider | null;
@@ -331,6 +337,7 @@ export class ProxySession {
   private readonly rawIntakeModel: string | null;
   private readonly rawResponsesReasoningEffort: string | null;
   private readonly rawMessagesReasoningEffort: string | null;
+  private readonly rawResponsesServiceTier: string | null;
 
   // 原始 URL 路径（用于 Gemini 模型重定向重置）
   private originalUrlPathname: string | null = null;
@@ -435,6 +442,7 @@ export class ProxySession {
     rawIntakeModel: string | null;
     rawResponsesReasoningEffort: string | null;
     rawMessagesReasoningEffort: string | null;
+    rawResponsesServiceTier?: string | null;
   }) {
     this.startTime = init.startTime;
     this.method = init.method;
@@ -449,6 +457,7 @@ export class ProxySession {
     this.rawIntakeModel = init.rawIntakeModel;
     this.rawResponsesReasoningEffort = init.rawResponsesReasoningEffort;
     this.rawMessagesReasoningEffort = init.rawMessagesReasoningEffort;
+    this.rawResponsesServiceTier = init.rawResponsesServiceTier ?? null;
     this.userName = "unknown";
     this.authState = null;
     this.provider = null;
@@ -506,6 +515,7 @@ export class ProxySession {
     const rawMessagesReasoningEffort = extractRawReasoningEffort(
       bodyResult.requestMessage.output_config
     );
+    const rawResponsesServiceTier = extractRawServiceTier(bodyResult.requestMessage.service_tier);
 
     const isLargeRequestBody =
       (bodyResult.contentLength !== null &&
@@ -550,6 +560,7 @@ export class ProxySession {
       rawIntakeModel,
       rawResponsesReasoningEffort,
       rawMessagesReasoningEffort,
+      rawResponsesServiceTier,
     });
     // 后台所有者卡住且宽限到期时，租约已被强制归还；同步丢弃正文引用，避免被卡住的闭包继续钉住内存。
     onRequestMemoryForcedEnd(() => session.dropRequestBodyAfterForcedMemoryRelease());
@@ -593,6 +604,7 @@ export class ProxySession {
       rawIntakeModel: model,
       rawResponsesReasoningEffort: extractRawReasoningEffort(message.reasoning),
       rawMessagesReasoningEffort: extractRawReasoningEffort(message.output_config),
+      rawResponsesServiceTier: extractRawServiceTier(message.service_tier),
     });
     session.edgeDigestHints = init.hints;
     return session;
@@ -621,6 +633,7 @@ export class ProxySession {
       rawIntakeModel: this.rawIntakeModel,
       rawResponsesReasoningEffort: this.rawResponsesReasoningEffort,
       rawMessagesReasoningEffort: this.rawMessagesReasoningEffort,
+      rawResponsesServiceTier: this.rawResponsesServiceTier,
       userName: this.userName,
       authState: this.authState
         ? {
@@ -686,6 +699,7 @@ export class ProxySession {
       rawIntakeModel: snapshot.rawIntakeModel,
       rawResponsesReasoningEffort: snapshot.rawResponsesReasoningEffort,
       rawMessagesReasoningEffort: snapshot.rawMessagesReasoningEffort,
+      rawResponsesServiceTier: snapshot.rawResponsesServiceTier ?? null,
     });
     const originalHeaders = session.originalHeaders;
     for (const name of Array.from(originalHeaders.keys())) originalHeaders.delete(name);
@@ -1558,6 +1572,10 @@ export class ProxySession {
 
   getRawMessagesReasoningEffort(): string | null {
     return this.rawMessagesReasoningEffort;
+  }
+
+  getRawResponsesServiceTier(): string | null {
+    return this.rawResponsesServiceTier ?? null;
   }
 
   /**

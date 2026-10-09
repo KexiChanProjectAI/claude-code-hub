@@ -25,6 +25,7 @@ import {
   applyClaudeMetadataUserIdInjectionWithAudit,
   filterPrivateParameters,
   getReasoningEffortOverrideRules,
+  getServiceTierOverrideRules,
   ProxyForwarder,
   persistSpecialSettings,
   resolveCacheTtlPreference,
@@ -176,6 +177,8 @@ export async function buildExecutionStep(params: BuildStepParams): Promise<Execu
           executionModel: session.getCurrentModel(),
           originalReasoningEffort: session.getRawResponsesReasoningEffort(),
           reasoningEffortOverrideRules: getReasoningEffortOverrideRules(provider),
+          originalServiceTier: session.getRawResponsesServiceTier(),
+          serviceTierOverrideRules: getServiceTierOverrideRules(provider),
         }
       );
       session.request.message = overridden;

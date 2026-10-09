@@ -374,6 +374,32 @@ const CASES: Array<{
     } as Partial<Provider>,
   },
   {
+    name: "codex responses with a service tier unset rule",
+    body: { ...RESPONSES_BODY, service_tier: "priority" },
+    path: "/v1/responses",
+    provider: {
+      ...CODEX_PROVIDER,
+      codexServiceTierPreference: "flex",
+      serviceTierOverrideRules: [
+        { when: { originalServiceTier: "priority" }, overrideServiceTier: null },
+      ],
+    } as Partial<Provider>,
+  },
+  {
+    name: "codex responses with a conditional service tier rule",
+    body: RESPONSES_BODY,
+    path: "/v1/responses",
+    provider: {
+      ...CODEX_PROVIDER,
+      serviceTierOverrideRules: [
+        {
+          when: { originalModel: { matchType: "prefix", pattern: "gpt-5" } },
+          overrideServiceTier: "priority",
+        },
+      ],
+    } as Partial<Provider>,
+  },
+  {
     name: "codex responses with string input normalized",
     body: { model: "gpt-5-codex", stream: false, input: "hello there" },
     path: "/v1/responses",
@@ -462,6 +488,20 @@ describe("edge step builder parity with local forwarder", () => {
       key: "stream_options",
       value: { include_usage: true },
     });
+  });
+
+  test("a service tier unset rule becomes a delete_top_level op", async () => {
+    const result = await runEdge(
+      structuredClone({ ...RESPONSES_BODY, service_tier: "priority" }),
+      createProvider({
+        ...CODEX_PROVIDER,
+        serviceTierOverrideRules: [{ when: {}, overrideServiceTier: null }],
+      } as Partial<Provider>),
+      makeKey(),
+      "/v1/responses"
+    );
+    expect(result.step.bodyOps).toContainEqual({ op: "delete_top_level", key: "service_tier" });
+    expect(JSON.parse(result.body)).not.toHaveProperty("service_tier");
   });
 
   test("provider overrides are only applied on the first attempt", async () => {

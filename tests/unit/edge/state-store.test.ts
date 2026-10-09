@@ -125,6 +125,33 @@ describe("edge state store", () => {
     expect(restored.shouldPersistSessionDebugArtifacts()).toBe(false);
   });
 
+  test("the raw Responses service_tier survives the snapshot round trip", () => {
+    const session = ProxySession.fromEdgeDigest({
+      receivedAtMs: 1_700_000_000_000,
+      method: "POST",
+      requestUrl: new URL("http://edge.local/v1/responses"),
+      headers: new Headers(),
+      syntheticMessage: { model: "gpt-5-codex", service_tier: "priority" },
+      hints: {
+        messagesHash: "0123456789abcdef",
+        fingerprint: null,
+        isProbe: false,
+        isWarmup: false,
+      },
+    });
+    expect(session.getRawResponsesServiceTier()).toBe("priority");
+
+    const snapshot = session.toEdgeSnapshot();
+    expect(snapshot.rawResponsesServiceTier).toBe("priority");
+    expect(ProxySession.fromEdgeSnapshot(snapshot).getRawResponsesServiceTier()).toBe("priority");
+  });
+
+  test("snapshots persisted without rawResponsesServiceTier restore it as null", () => {
+    const { rawResponsesServiceTier: _omitted, ...legacySnapshot } = makeSession().toEdgeSnapshot();
+    const restored = ProxySession.fromEdgeSnapshot(legacySnapshot);
+    expect(restored.getRawResponsesServiceTier()).toBeNull();
+  });
+
   test("large states are compressed transparently", async () => {
     const session = makeSession();
     const state = makeState(session, 202);

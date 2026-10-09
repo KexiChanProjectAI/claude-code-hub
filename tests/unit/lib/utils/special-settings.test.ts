@@ -164,6 +164,28 @@ describe("buildUnifiedSpecialSettings", () => {
 });
 
 describe("hasPriorityServiceTierSpecialSetting", () => {
+  test("returns false when an unset rule removed the client priority tier", () => {
+    expect(
+      hasPriorityServiceTierSpecialSetting([
+        {
+          type: "provider_parameter_override",
+          scope: "provider",
+          providerId: 1,
+          providerName: "p",
+          providerType: "codex",
+          hit: true,
+          changed: true,
+          changes: [{ path: "service_tier", before: "priority", after: null, changed: true }],
+          serviceTierRuleEvaluation: {
+            shouldOverride: true,
+            overriddenServiceTier: null,
+            matchedIndex: 0,
+          },
+        },
+      ])
+    ).toBe(false);
+  });
+
   test("returns true when codex actual service tier is priority", () => {
     expect(
       hasPriorityServiceTierSpecialSetting([

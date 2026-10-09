@@ -1207,4 +1207,153 @@ describe("Codex 供应商级参数覆写", () => {
       changed: false,
     });
   });
+
+  describe("条件 service_tier 规则", () => {
+    const baseContext = {
+      originalModel: "gpt-5-codex",
+      executionModel: "gpt-5-codex",
+      originalReasoningEffort: null,
+      reasoningEffortOverrideRules: null,
+    };
+
+    it("命中规则时应覆写 service_tier，并优先于静态偏好", () => {
+      const input: Record<string, unknown> = { model: "gpt-5-codex", service_tier: "default" };
+      const output = applyCodexProviderOverrides(
+        { providerType: "codex", codexServiceTierPreference: "flex" },
+        input,
+        {
+          ...baseContext,
+          originalServiceTier: "default",
+          serviceTierOverrideRules: [
+            { when: { originalServiceTier: "default" }, overrideServiceTier: "priority" },
+          ],
+        }
+      );
+
+      expect(output.service_tier).toBe("priority");
+      expect(input.service_tier).toBe("default");
+    });
+
+    it("目标为 null 时应删除客户端传入的 priority，并记录审计", () => {
+      const input: Record<string, unknown> = { model: "gpt-5-codex", service_tier: "priority" };
+      const { request, audit } = applyCodexProviderOverridesWithAudit(
+        { id: 7, name: "codex", providerType: "codex" },
+        input,
+        {
+          ...baseContext,
+          originalServiceTier: "priority",
+          serviceTierOverrideRules: [
+            {
+              when: { originalModel: { matchType: "prefix", pattern: "gpt-5" } },
+              overrideServiceTier: null,
+            },
+          ],
+        }
+      );
+
+      expect(Object.hasOwn(request, "service_tier")).toBe(false);
+      expect(input.service_tier).toBe("priority");
+      expect(audit?.hit).toBe(true);
+      expect(audit?.changed).toBe(true);
+      expect(audit?.changes.find((c) => c.path === "service_tier")).toEqual({
+        path: "service_tier",
+        before: "priority",
+        after: null,
+        changed: true,
+      });
+      expect(audit?.serviceTierRuleEvaluation).toEqual({
+        shouldOverride: true,
+        overriddenServiceTier: null,
+        matchedIndex: 0,
+      });
+    });
+
+    it("目标为 null 但请求本无 service_tier 时应保持引用不变，审计 changed=false", () => {
+      const input: Record<string, unknown> = { model: "gpt-5-codex" };
+      const { request, audit } = applyCodexProviderOverridesWithAudit(
+        { providerType: "codex" },
+        input,
+        { ...baseContext, serviceTierOverrideRules: [{ when: {}, overrideServiceTier: null }] }
+      );
+
+      expect(request).toBe(input);
+      expect(audit?.hit).toBe(true);
+      expect(audit?.changed).toBe(false);
+    });
+
+    it("空规则数组应禁用静态 service_tier 偏好", () => {
+      const input: Record<string, unknown> = { model: "gpt-5-codex", service_tier: "flex" };
+      const { request, audit } = applyCodexProviderOverridesWithAudit(
+        { providerType: "codex", codexServiceTierPreference: "priority" },
+        input,
+        { ...baseContext, originalServiceTier: "flex", serviceTierOverrideRules: [] }
+      );
+
+      expect(request).toBe(input);
+      expect(audit).toBeNull();
+    });
+
+    it("未命中时应透传客户端值，并在审计中附带未命中评估", () => {
+      const input: Record<string, unknown> = { model: "gpt-5-codex", service_tier: "priority" };
+      const { request, audit } = applyCodexProviderOverridesWithAudit(
+        { providerType: "codex" },
+        input,
+        {
+          ...baseContext,
+          originalServiceTier: "priority",
+          serviceTierOverrideRules: [
+            {
+              when: { originalModel: { matchType: "exact", pattern: "o3" } },
+              overrideServiceTier: null,
+            },
+          ],
+        }
+      );
+
+      expect(request.service_tier).toBe("priority");
+      expect(audit?.changed).toBe(false);
+      expect(audit?.serviceTierRuleEvaluation).toEqual({
+        shouldOverride: false,
+        overriddenServiceTier: null,
+      });
+    });
+
+    it("规则字段为 null 或缺省时应回退到静态偏好", () => {
+      const input: Record<string, unknown> = { model: "gpt-5-codex" };
+      const provider = { providerType: "codex", codexServiceTierPreference: "flex" } as const;
+
+      expect(
+        applyCodexProviderOverrides(provider, input, {
+          ...baseContext,
+          serviceTierOverrideRules: null,
+        }).service_tier
+      ).toBe("flex");
+      expect(applyCodexProviderOverrides(provider, input, baseContext).service_tier).toBe("flex");
+      expect(applyCodexProviderOverrides(provider, input).service_tier).toBe("flex");
+    });
+
+    it("规则与推理强度规则可同时生效并分别记录评估", () => {
+      const input: Record<string, unknown> = {
+        model: "gpt-5-codex",
+        reasoning: { effort: "low" },
+        service_tier: "priority",
+      };
+      const { request, audit } = applyCodexProviderOverridesWithAudit(
+        { providerType: "codex" },
+        input,
+        {
+          ...baseContext,
+          originalReasoningEffort: "low",
+          reasoningEffortOverrideRules: [{ when: {}, overrideEffort: "high" }],
+          originalServiceTier: "priority",
+          serviceTierOverrideRules: [{ when: {}, overrideServiceTier: "flex" }],
+        }
+      );
+
+      expect(request.reasoning).toEqual({ effort: "high" });
+      expect(request.service_tier).toBe("flex");
+      expect(audit?.ruleEvaluation?.shouldOverride).toBe(true);
+      expect(audit?.serviceTierRuleEvaluation?.shouldOverride).toBe(true);
+    });
+  });
 });
