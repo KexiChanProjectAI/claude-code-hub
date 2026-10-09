@@ -1,11 +1,8 @@
-import { matchesPattern } from "@/lib/model-pattern-matcher";
+import { evaluateConditionalOverrideRules, isRecord } from "@/lib/conditional-override-rules";
 import type {
   AnthropicAdaptiveThinkingEffort,
   AnthropicAdaptiveThinkingModelMatchMode,
   CodexReasoningEffortPreference,
-  ProviderModelRedirectMatchType,
-  ReasoningEffortOverrideInput,
-  ReasoningEffortOverrideModelPredicate,
   ReasoningEffortOverrideResult,
   ReasoningEffortOverrideRule,
 } from "@/types/provider";
@@ -15,166 +12,40 @@ const NO_MATCH: ReasoningEffortOverrideResult = {
   overriddenEffort: null,
 };
 
-const INVALID = Symbol("invalid");
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+const REASONING_EFFORT_RULE_SPEC = {
+  originalValueKey: "originalReasoningEffort",
+  targetKey: "overrideEffort",
+  isTarget: (value: unknown): value is string => typeof value === "string",
+} as const;
 
 function hasOwn(value: Readonly<Record<string, unknown>>, key: string): boolean {
   return Object.hasOwn(value, key);
-}
-
-function isModelMatchType(value: unknown): value is ProviderModelRedirectMatchType {
-  switch (value) {
-    case "exact":
-    case "prefix":
-    case "suffix":
-    case "contains":
-    case "regex":
-      return true;
-    default:
-      return false;
-  }
-}
-
-function isModelPredicate(value: unknown): value is ReasoningEffortOverrideModelPredicate {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  const keys = Object.keys(value);
-  return (
-    keys.every((key) => key === "matchType" || key === "pattern") &&
-    hasOwn(value, "matchType") &&
-    hasOwn(value, "pattern") &&
-    isModelMatchType(value.matchType) &&
-    typeof value.pattern === "string"
-  );
-}
-
-function isReasoningEffortOverrideRule(value: unknown): value is ReasoningEffortOverrideRule {
-  if (!isRecord(value) || !hasOwn(value, "when") || !hasOwn(value, "overrideEffort")) {
-    return false;
-  }
-
-  if (typeof value.overrideEffort !== "string" || !isRecord(value.when)) {
-    return false;
-  }
-
-  const when = value.when;
-  if (
-    !Object.keys(when).every(
-      (key) =>
-        key === "originalModel" || key === "executionModel" || key === "originalReasoningEffort"
-    )
-  ) {
-    return false;
-  }
-
-  if (hasOwn(when, "originalModel") && !isModelPredicate(when.originalModel)) {
-    return false;
-  }
-
-  if (hasOwn(when, "executionModel") && !isModelPredicate(when.executionModel)) {
-    return false;
-  }
-
-  return (
-    !hasOwn(when, "originalReasoningEffort") ||
-    when.originalReasoningEffort === null ||
-    typeof when.originalReasoningEffort === "string"
-  );
-}
-
-function normalizeModel(value: unknown): string | null | typeof INVALID {
-  if (value === undefined || value === null) {
-    return null;
-  }
-
-  return typeof value === "string" ? value : INVALID;
-}
-
-function normalizeInput(value: unknown): ReasoningEffortOverrideInput | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  const originalModel = normalizeModel(value.originalModel);
-  const executionModel = normalizeModel(value.executionModel);
-  if (originalModel === INVALID || executionModel === INVALID) {
-    return null;
-  }
-
-  return {
-    originalModel,
-    executionModel,
-    originalReasoningEffort:
-      typeof value.originalReasoningEffort === "string" ? value.originalReasoningEffort : null,
-  };
-}
-
-function matchesModelPredicate(
-  value: string | null,
-  predicate: ReasoningEffortOverrideModelPredicate
-): boolean {
-  if (typeof value !== "string") {
-    return false;
-  }
-
-  return matchesPattern(value, predicate.matchType, predicate.pattern);
-}
-
-function matchesRule(
-  rule: ReasoningEffortOverrideRule,
-  input: ReasoningEffortOverrideInput
-): boolean {
-  const when = rule.when;
-  if (when.originalModel && !matchesModelPredicate(input.originalModel, when.originalModel)) {
-    return false;
-  }
-
-  if (when.executionModel && !matchesModelPredicate(input.executionModel, when.executionModel)) {
-    return false;
-  }
-
-  if (
-    hasOwn(when, "originalReasoningEffort") &&
-    when.originalReasoningEffort !== input.originalReasoningEffort
-  ) {
-    return false;
-  }
-
-  return true;
 }
 
 export function evaluateReasoningEffortOverride(
   rules: unknown,
   input: unknown
 ): ReasoningEffortOverrideResult {
-  const normalizedInput = normalizeInput(input);
-  if (!Array.isArray(rules) || rules.length === 0 || !normalizedInput) {
-    return NO_MATCH;
-  }
-
-  const validRules = rules.filter((candidate): candidate is ReasoningEffortOverrideRule =>
-    isReasoningEffortOverrideRule(candidate)
+  const match = evaluateConditionalOverrideRules(
+    rules,
+    isRecord(input)
+      ? {
+          originalModel: input.originalModel,
+          executionModel: input.executionModel,
+          originalValue: input.originalReasoningEffort,
+        }
+      : null,
+    REASONING_EFFORT_RULE_SPEC
   );
-  if (validRules.length !== rules.length) {
+  if (!match) {
     return NO_MATCH;
   }
 
-  for (const [index, rule] of validRules.entries()) {
-    if (matchesRule(rule, normalizedInput)) {
-      return {
-        shouldOverride: true,
-        overriddenEffort: rule.overrideEffort,
-        matchedIndex: index,
-      };
-    }
-  }
-
-  return NO_MATCH;
+  return {
+    shouldOverride: true,
+    overriddenEffort: match.target,
+    matchedIndex: match.matchedIndex,
+  };
 }
 
 function isCodexReasoningEffort(value: unknown): value is CodexReasoningEffortPreference {
