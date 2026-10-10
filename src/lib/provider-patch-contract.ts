@@ -123,7 +123,9 @@ export function validateProviderReasoningEffortOverrideMutation(
     };
   }
 
-  if (!input.hasRulesField) {
+  // Clearing rules (null or empty list) is type-agnostic, so a form that switched
+  // provider types can still submit without tripping the per-type check below.
+  if (!input.hasRulesField || !input.rules || input.rules.length === 0) {
     return { ok: true };
   }
 
@@ -142,14 +144,12 @@ export function validateProviderReasoningEffortOverrideMutation(
     };
   }
 
-  if (input.rules) {
-    const invalidTarget = input.rules.find((rule) => !allowedTargets.has(rule.overrideEffort));
-    if (invalidTarget) {
-      return {
-        ok: false,
-        error: `Invalid reasoning effort override target for ${input.providerType}: ${invalidTarget.overrideEffort}`,
-      };
-    }
+  const invalidTarget = input.rules.find((rule) => !allowedTargets.has(rule.overrideEffort));
+  if (invalidTarget) {
+    return {
+      ok: false,
+      error: `Invalid reasoning effort override target for ${input.providerType}: ${invalidTarget.overrideEffort}`,
+    };
   }
 
   return { ok: true };
@@ -231,7 +231,7 @@ export function validateProviderServiceTierOverrideMutation(
     };
   }
 
-  if (!input.hasRulesField) {
+  if (!input.hasRulesField || !input.rules || input.rules.length === 0) {
     return { ok: true };
   }
 
@@ -242,16 +242,14 @@ export function validateProviderServiceTierOverrideMutation(
     };
   }
 
-  if (input.rules) {
-    const invalidTarget = input.rules.find(
-      (rule) => !isServiceTierOverrideRuleTarget(rule.overrideServiceTier)
-    );
-    if (invalidTarget) {
-      return {
-        ok: false,
-        error: `Invalid service tier override target: ${String(invalidTarget.overrideServiceTier)}`,
-      };
-    }
+  const invalidTarget = input.rules.find(
+    (rule) => !isServiceTierOverrideRuleTarget(rule.overrideServiceTier)
+  );
+  if (invalidTarget) {
+    return {
+      ok: false,
+      error: `Invalid service tier override target: ${String(invalidTarget.overrideServiceTier)}`,
+    };
   }
 
   return { ok: true };

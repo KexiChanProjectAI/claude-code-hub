@@ -5,6 +5,7 @@ import {
   hasProviderBatchPatchChanges,
   hasProviderServiceTierOverrideRulesField,
   normalizeProviderBatchPatchDraft,
+  validateProviderReasoningEffortOverrideMutation,
   validateProviderServiceTierOverrideBatch,
   validateProviderServiceTierOverrideMutation,
 } from "@/lib/provider-patch-contract";
@@ -168,6 +169,18 @@ describe("provider-patch-contract - service tier override validation", () => {
     expect(result.ok).toBe(false);
   });
 
+  it("accepts cleared rules (null or empty) for any provider type", () => {
+    for (const rules of [null, []]) {
+      expect(
+        validateProviderServiceTierOverrideMutation({
+          ...base,
+          providerType: "openai-compatible",
+          rules,
+        })
+      ).toEqual({ ok: true });
+    }
+  });
+
   it("rejects invalid targets that bypass zod", () => {
     const result = validateProviderServiceTierOverrideMutation({
       ...base,
@@ -209,5 +222,63 @@ describe("provider-patch-contract - service tier override validation", () => {
       ],
     });
     expect(result.ok).toBe(false);
+  });
+});
+
+describe("provider-patch-contract - reasoning effort override validation", () => {
+  const base = {
+    providerType: "openai-compatible" as const,
+    hasRulesField: true,
+    rules: null,
+    hasLegacyFields: false,
+    existingRules: null,
+  };
+
+  it("accepts cleared rules (null or empty) for unsupported provider types", () => {
+    for (const providerType of ["openai-compatible", "gemini"] as const) {
+      expect(validateProviderReasoningEffortOverrideMutation({ ...base, providerType })).toEqual({
+        ok: true,
+      });
+      expect(
+        validateProviderReasoningEffortOverrideMutation({ ...base, providerType, rules: [] })
+      ).toEqual({ ok: true });
+    }
+  });
+
+  it("rejects non-empty rules for unsupported provider types", () => {
+    const result = validateProviderReasoningEffortOverrideMutation({
+      ...base,
+      rules: [{ when: {}, overrideEffort: "high" }],
+    });
+    expect(result).toEqual({
+      ok: false,
+      error:
+        "reasoning_effort_override_rules is only supported for codex, claude, and claude-auth providers",
+    });
+  });
+
+  it("still rejects co-emission of cleared rules with legacy fields", () => {
+    const result = validateProviderReasoningEffortOverrideMutation({
+      ...base,
+      hasLegacyFields: true,
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it("validates targets for supported provider types", () => {
+    expect(
+      validateProviderReasoningEffortOverrideMutation({
+        ...base,
+        providerType: "codex",
+        rules: [{ when: {}, overrideEffort: "high" }],
+      })
+    ).toEqual({ ok: true });
+    expect(
+      validateProviderReasoningEffortOverrideMutation({
+        ...base,
+        providerType: "codex",
+        rules: [{ when: {}, overrideEffort: "bogus" }],
+      }).ok
+    ).toBe(false);
   });
 });
