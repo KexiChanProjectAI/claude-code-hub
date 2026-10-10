@@ -340,10 +340,16 @@ function ProviderFormContent({
         // Base form data without key (for type safety)
         const effectiveProviderUrl = getEffectiveProviderUrl();
 
-        const hasRules = state.routing.reasoningEffortOverrideRules !== null;
+        // Rules left over from a previously selected provider type must not be submitted:
+        // the server only accepts non-empty rules for the types that support them.
+        const providerType = state.routing.providerType;
+        const supportsEffortRules =
+          providerType === "codex" || providerType === "claude" || providerType === "claude-auth";
+        const hasRules = supportsEffortRules && state.routing.reasoningEffortOverrideRules !== null;
         // Detect whether the provider originally had rules (loaded from DB)
         const hadRulesInitially = !!provider?.reasoningEffortOverrideRules;
-        const hasServiceTierRules = state.routing.serviceTierOverrideRules !== null;
+        const hasServiceTierRules =
+          providerType === "codex" && state.routing.serviceTierOverrideRules !== null;
         const hadServiceTierRulesInitially = !!provider?.serviceTierOverrideRules;
 
         // validateForm 已拒绝非法的用户 ID，这里只会得到数字或 null
