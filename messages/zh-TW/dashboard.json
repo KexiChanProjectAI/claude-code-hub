@@ -2181,7 +2181,7 @@
         "allowedModels": {
           "label": "Model 限制",
           "placeholder": "輸入模型名稱或從下拉選單選擇",
-          "description": "限制使用者只能使用指定的 AI 模型。留空表示無限制。"
+          "description": "限制使用者只能使用指定的 AI 模型。留空表示無限制。請填寫 /v1/models 回傳的完整模型 ID，包含供應商前綴（如 xai/grok-4.6）。下拉建議僅包含該使用者分組內供應商的模型。"
         },
         "enableStatus": {
           "label": "啟用狀態",

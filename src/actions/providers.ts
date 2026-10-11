@@ -48,6 +48,7 @@ import {
   validateProviderServiceTierOverrideBatch,
   validateProviderServiceTierOverrideMutation,
 } from "@/lib/provider-patch-contract";
+import { applyProviderPrefix } from "@/lib/provider-prefix";
 import {
   executeProviderTest,
   type ProviderTestConfig,
@@ -5904,6 +5905,7 @@ function checkProviderGroupMatch(providerGroupTag: string | null, userGroups: st
  *
  * 用于用户/密钥编辑时的模型限制下拉建议。
  * 从匹配分组的启用供应商中收集 allowedModels 并去重。
+ * 配置了供应商前缀时输出带前缀的模型 ID，与 /v1/models 列表及用户级白名单的精确匹配口径一致。
  *
  * @param providerGroup - 可选的供应商分组（逗号分隔），默认为 "default"
  * @returns 去重后的模型列表
@@ -5933,7 +5935,7 @@ export async function getModelSuggestionsByProviderGroup(
         if (models && Array.isArray(models)) {
           for (const rule of normalizeAllowedModelRules(models) ?? []) {
             if (rule.matchType === "exact" && rule.pattern) {
-              modelSet.add(rule.pattern);
+              modelSet.add(applyProviderPrefix(rule.pattern, provider.providerPrefix));
             }
           }
         }

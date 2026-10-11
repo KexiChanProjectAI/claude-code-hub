@@ -2237,7 +2237,7 @@
         "allowedModels": {
           "label": "Model Restrictions",
           "placeholder": "Enter model name or select from dropdown",
-          "description": "Restrict which AI models this user can access. Empty = no restriction."
+          "description": "Restrict which AI models this user can access. Empty = no restriction. Use the full model ID returned by /v1/models, including the provider prefix (e.g. xai/grok-4.6). Suggestions only list models from providers in this user's group."
         },
         "enableStatus": {
           "label": "Enable Status",
