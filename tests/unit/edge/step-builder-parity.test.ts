@@ -234,10 +234,14 @@ async function runEdge(
 function comparableHeaders(headers: Headers | HeaderPairs): Array<[string, string]> {
   const entries: Array<[string, string]> =
     headers instanceof Headers ? Array.from(headers.entries()) : [...headers];
-  return entries
-    .map(([name, value]) => [name.toLowerCase(), value] as [string, string])
-    .filter(([name]) => name !== "content-length")
-    .sort((a, b) => a[0].localeCompare(b[0]));
+  return (
+    entries
+      .map(([name, value]) => [name.toLowerCase(), value] as [string, string])
+      // accept-encoding：本地转发器声明 gzip 并自行解压；edge 执行器不做解压，
+      // 固定 identity，这里是有意的差异。
+      .filter(([name]) => name !== "content-length" && name !== "accept-encoding")
+      .sort((a, b) => a[0].localeCompare(b[0]))
+  );
 }
 
 const BASE_BODY = {

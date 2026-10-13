@@ -228,7 +228,7 @@ describe("ProxyForwarder HTTP/2 fallback", () => {
       dispatcher?: unknown;
     };
     expect(quarantinedInit.dispatcher).toBeUndefined();
-    expect(quarantinedInit.body).toBe(firstInit.body);
+    expect(bodyDigest(quarantinedInit.body)).toBe(bodyDigest(firstInit.body));
     releaseAgent(secondSession);
   });
 

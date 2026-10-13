@@ -194,6 +194,18 @@ import {
   type ThinkingSignatureRectifierResult,
   type ThinkingSignatureRectifierTrigger,
 } from "./thinking-signature-rectifier";
+import {
+  applyUpstreamAcceptEncoding,
+  buildUpstreamGzipTarget,
+  gzipUpstreamRequestBody,
+  markUpstreamGzipSupport,
+  observeUpstreamResponseEncoding,
+  shouldGzipUpstreamRequestBody,
+  shouldRetryWithoutGzip,
+} from "./upstream-compression";
+
+/** fetchWithoutAutoDecode 中由代理手动 gunzip 过的响应（解压后已剥离 content-encoding）。 */
+const gzipDecodedResponses = new WeakSet<Response>();
 
 /** Default User-Agent for Codex CLI requests when none is provided */
 export const DEFAULT_CODEX_USER_AGENT =
@@ -4532,6 +4544,8 @@ export class ProxyForwarder {
       }
     }
 
+    const acceptsGzipResponse = applyUpstreamAcceptEncoding(processedHeaders);
+
     if (
       requestBody !== undefined &&
       !ProxyForwarder.getEndpointPolicy(session).bypassForwarderPreprocessing &&
@@ -4694,6 +4708,34 @@ export class ProxyForwarder {
       ...(requestBody ? { body: requestBody } : {}),
     };
 
+    // ⭐ 出站请求体 gzip 压缩：只改 init（实际发送的内容），requestBody / processedHeaders
+    // 保持明文，供 WS 上游、明文回退重发与日志使用。
+    const upstreamGzipTarget = buildUpstreamGzipTarget(provider.id, proxyUrl);
+    let gzipApplied = false;
+    if (
+      shouldGzipUpstreamRequestBody({
+        body: requestBody,
+        target: upstreamGzipTarget,
+        hasContentEncoding: processedHeaders.has("content-encoding"),
+        bypassForwarderPreprocessing:
+          ProxyForwarder.getEndpointPolicy(session).bypassForwarderPreprocessing,
+      })
+    ) {
+      try {
+        const gzipHeaders = new Headers(processedHeaders);
+        gzipHeaders.set("content-encoding", "gzip");
+        init.body = await gzipUpstreamRequestBody(requestBody as string);
+        init.headers = gzipHeaders;
+        gzipApplied = true;
+      } catch (gzipError) {
+        logger.warn("ProxyForwarder: Failed to gzip upstream request body, sending plain", {
+          providerId: provider.id,
+          providerName: provider.name,
+          error: gzipError instanceof Error ? gzipError.message : String(gzipError),
+        });
+      }
+    }
+
     // ⭐ 获取 HTTP/2 全局开关设置
     const http2EnabledBySetting = await isHttp2Enabled();
     let enableHttp2 = http2EnabledBySetting;
@@ -4713,6 +4755,24 @@ export class ProxyForwarder {
     // 使用 fetchWithoutAutoDecode 绕过 undici 的自动解压，手动处理 gzip
     // 并通过 nodeStreamToWebStreamSafe 实现容错流转换（捕获错误并优雅关闭）
     const useErrorTolerantFetch = true;
+
+    // 记录最近一次实际发送所用的 init（H2->H1 / 代理->直连回退会替换 dispatcher），
+    // gzip 明文回退重发时沿用同一连接配置。
+    let lastSentInit: UndiciFetchOptions | null = null;
+    const sendUpstream = async (requestInit: UndiciFetchOptions): Promise<Response> => {
+      lastSentInit = requestInit;
+      return useErrorTolerantFetch
+        ? await ProxyForwarder.fetchWithoutAutoDecode(
+            proxyUrl,
+            requestInit,
+            provider.id,
+            provider.name,
+            session,
+            deferDetailSnapshotPersistence,
+            onUpstreamDispatch
+          )
+        : await fetchWithDispatch(proxyUrl, requestInit);
+    };
 
     let response: Response;
     const fetchStartTime = Date.now();
@@ -4861,19 +4921,7 @@ export class ProxyForwarder {
       // ⭐ 所有供应商使用 undici.request 绕过 fetch 的自动解压
       // 原因：undici fetch 无法关闭自动解压，上游可能无视 accept-encoding: identity 返回 gzip
       // 当 gzip 流被提前终止时（如连接关闭），undici Gunzip 会抛出 "TypeError: terminated"
-      response = responsesWsResponse
-        ? responsesWsResponse
-        : useErrorTolerantFetch
-          ? await ProxyForwarder.fetchWithoutAutoDecode(
-              proxyUrl,
-              init,
-              provider.id,
-              provider.name,
-              session,
-              deferDetailSnapshotPersistence,
-              onUpstreamDispatch
-            )
-          : await fetchWithDispatch(proxyUrl, init);
+      response = responsesWsResponse ? responsesWsResponse : await sendUpstream(init);
       // ⭐ fetch 成功：收到 HTTP 响应头，保留响应超时继续监控
       // 注意：undici 的 fetch 在收到 HTTP 响应头后就 resolve，但实际数据（SSE 首字节 / 完整 JSON）
       // 还没到达。responseTimeoutId 需要延续到 response-handler 中才能真正控制"首字节"或"总耗时"
@@ -5131,17 +5179,7 @@ export class ProxyForwarder {
         try {
           responseTimeoutPhase = "http1_fallback";
           // 使用 HTTP/1.1 重试
-          response = useErrorTolerantFetch
-            ? await ProxyForwarder.fetchWithoutAutoDecode(
-                proxyUrl,
-                http1FallbackInit,
-                provider.id,
-                provider.name,
-                session,
-                deferDetailSnapshotPersistence,
-                onUpstreamDispatch
-              )
-            : await fetchWithDispatch(proxyUrl, http1FallbackInit);
+          response = await sendUpstream(http1FallbackInit);
 
           logger.info("ProxyForwarder: HTTP/1.1 fallback succeeded", {
             providerId: provider.id,
@@ -5209,17 +5247,7 @@ export class ProxyForwarder {
             delete fallbackInit.dispatcher;
             try {
               responseTimeoutPhase = "direct_fallback";
-              response = useErrorTolerantFetch
-                ? await ProxyForwarder.fetchWithoutAutoDecode(
-                    proxyUrl,
-                    fallbackInit,
-                    provider.id,
-                    provider.name,
-                    session,
-                    deferDetailSnapshotPersistence,
-                    onUpstreamDispatch
-                  )
-                : await fetchWithDispatch(proxyUrl, fallbackInit);
+              response = await sendUpstream(fallbackInit);
               logger.info("ProxyForwarder: Direct connection succeeded after proxy failure", {
                 providerId: provider.id,
                 providerName: provider.name,
@@ -5330,6 +5358,63 @@ export class ProxyForwarder {
         cleanupCombinedSignal();
         throw fetchError;
       }
+    }
+
+    // ⭐ gzip 请求体回退：WS 上游不经过压缩，只处理 HTTP 路径
+    if (gzipApplied && lastSentInit !== null) {
+      if (response.ok) {
+        markUpstreamGzipSupport(upstreamGzipTarget, "supported");
+      } else if (shouldRetryWithoutGzip(response.status, upstreamGzipTarget)) {
+        const compressedStatus = response.status;
+        try {
+          await response.body?.cancel();
+        } catch {
+          // ignore
+        }
+        logger.warn("ProxyForwarder: Gzip request rejected by upstream, retrying uncompressed", {
+          providerId: provider.id,
+          providerName: provider.name,
+          upstreamOrigin: new URL(proxyUrl).origin,
+          status: compressedStatus,
+        });
+
+        try {
+          responseTimeoutPhase = "gzip_plain_fallback";
+          response = await sendUpstream({
+            ...(lastSentInit as UndiciFetchOptions),
+            headers: processedHeaders,
+            body: requestBody,
+          });
+        } catch (plainError) {
+          const releaseKey = proxyConfig?.cacheKey ?? directConnectionCacheKey;
+          const releaseDispatcherId = proxyConfig?.dispatcherId ?? directConnectionDispatcherId;
+          if (releaseKey && releaseDispatcherId) {
+            getGlobalAgentPool().releaseAgent(releaseKey, releaseDispatcherId);
+          }
+          cleanupCombinedSignal();
+          if (responseController.signal.aborted && !session.clientAbortSignal?.aborted) {
+            throw buildResponseTimeoutError();
+          }
+          if (isClientAbortError(plainError as Error)) {
+            throw new ProxyError("Request aborted by client", 499, undefined, true);
+          }
+          throw plainError;
+        }
+
+        if (response.ok) {
+          markUpstreamGzipSupport(upstreamGzipTarget, "unsupported");
+          logger.info("ProxyForwarder: Upstream does not accept gzip request bodies", {
+            providerId: provider.id,
+            providerName: provider.name,
+            upstreamOrigin: new URL(proxyUrl).origin,
+            compressedStatus,
+          });
+        }
+      }
+    }
+
+    if (response.ok && acceptsGzipResponse && lastSentInit !== null) {
+      observeUpstreamResponseEncoding(upstreamGzipTarget, gzipDecodedResponses.has(response));
     }
 
     // 检查 HTTP 错误状态（4xx/5xx 均视为失败，触发重试）
@@ -10111,11 +10196,13 @@ export class ProxyForwarder {
       hasGzip: encoding.includes("gzip"),
     });
 
-    return new Response(bodyStream, {
+    const wrapped = new Response(bodyStream, {
       status: undiciRes.statusCode,
       // 未知/非标准状态码不应兜底为 OK（避免误导客户端日志与调试）
       statusText: STATUS_CODES[undiciRes.statusCode] ?? "",
       headers: responseHeaders,
     });
+    if (encoding.includes("gzip")) gzipDecodedResponses.add(wrapped);
+    return wrapped;
   }
 }
