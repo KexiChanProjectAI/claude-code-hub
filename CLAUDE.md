@@ -5,7 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Repository Info
 
 - **Source**: https://github.com/ding113/claude-code-hub
-- **PR Target Branch**: `dev` (all pull requests must target the dev branch)
+- **Working remote**: `origin` = `git@github.com:KexiChanProjectAI/claude-code-hub.git` (fork)
+- **Git workflow**: commit and push directly to `origin/main`. Do not open pull requests, and do not suggest opening one against upstream `ding113/claude-code-hub`
 
 ## Critical Rules
 
