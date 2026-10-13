@@ -57,6 +57,7 @@ import {
   type TestSubStatus,
 } from "@/lib/provider-testing";
 import { getPresetsForProvider } from "@/lib/provider-testing/presets";
+import { buildProviderUpstreamGzipStatusMap } from "@/lib/provider-upstream-gzip/status";
 import { clearUpstreamQuotaState } from "@/lib/provider-upstream-quota/state";
 import {
   buildProviderUpstreamQuotaStatusMap,
@@ -135,6 +136,7 @@ import type {
   ReasoningEffortOverrideRule,
   ServiceTierOverrideRule,
 } from "@/types/provider";
+import type { ProviderUpstreamGzipStatusMap } from "@/types/upstream-gzip";
 import type {
   ProviderUpstreamQuotaStatus,
   ProviderUpstreamQuotaStatusMap,
@@ -1425,6 +1427,23 @@ export async function getProvidersUpstreamQuotaStatus(): Promise<ProviderUpstrea
     return await buildProviderUpstreamQuotaStatusMap(providers);
   } catch (error) {
     logger.error("获取上游额度状态失败:", error);
+    return {};
+  }
+}
+
+/**
+ * 获取所有供应商的出站 gzip 观测（上行：请求体压缩是否被接受；下行：响应是否被压缩）
+ */
+export async function getProvidersUpstreamGzipStatus(): Promise<ProviderUpstreamGzipStatusMap> {
+  try {
+    const session = await getSession();
+    if (session?.user.role !== "admin") {
+      return {};
+    }
+    const providers = await findAllProvidersFresh();
+    return await buildProviderUpstreamGzipStatusMap(providers.map((p) => p.id));
+  } catch (error) {
+    logger.error("获取上游 gzip 状态失败:", error);
     return {};
   }
 }

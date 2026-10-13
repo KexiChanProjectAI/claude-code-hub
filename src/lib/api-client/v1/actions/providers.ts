@@ -5,6 +5,7 @@ import type {
   ProviderHealthStatus,
   ProviderStatisticsMap,
 } from "@/types/provider";
+import type { ProviderUpstreamGzipStatusMap } from "@/types/upstream-gzip";
 import type {
   ProviderUpstreamQuotaStatus,
   ProviderUpstreamQuotaStatusMap,
@@ -121,6 +122,14 @@ export function getProvidersHealthStatus(): Promise<ProviderHealthStatus> {
 export function getProvidersUpstreamQuotaStatus(): Promise<ProviderUpstreamQuotaStatusMap> {
   return apiGet<ProviderUpstreamQuotaStatusMap>(
     "/api/v1/providers/upstream-quota",
+    dashboardCompatOptions
+  );
+}
+
+// Same as health: React Query consumes the raw map, so this is not wrapped in toActionResult.
+export function getProvidersUpstreamGzipStatus(): Promise<ProviderUpstreamGzipStatusMap> {
+  return apiGet<ProviderUpstreamGzipStatusMap>(
+    "/api/v1/providers/upstream-gzip",
     dashboardCompatOptions
   );
 }

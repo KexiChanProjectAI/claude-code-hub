@@ -49,6 +49,7 @@ import {
   getProviderLimitBatch,
   getProviderModelSuggestions,
   getProvidersHealth,
+  getProvidersUpstreamGzip,
   getProvidersUpstreamQuota,
   getProviderTestPresets,
   listProviderCacheEffectiveness,
@@ -325,6 +326,29 @@ providersRouter.openapi(
     },
   }),
   getProvidersUpstreamQuota as never
+);
+
+providersRouter.openapi(
+  createRoute({
+    method: "get",
+    path: "/providers/upstream-gzip",
+    middleware: requireAuth("admin"),
+    tags: ["Providers"],
+    summary: "Get provider upstream gzip status",
+    description:
+      "Returns the observed outbound gzip capability for every visible provider: whether the upstream accepts gzip-compressed request bodies, and whether it returns gzip-compressed responses.",
+    "x-required-access": "admin",
+    security,
+    request: { query: ProviderGroupsQuerySchema },
+    responses: {
+      200: {
+        description: "Provider upstream gzip status keyed by provider id.",
+        content: { "application/json": { schema: ProviderGenericResponseSchema } },
+      },
+      ...problemResponses,
+    },
+  }),
+  getProvidersUpstreamGzip as never
 );
 
 providersRouter.openapi(

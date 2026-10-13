@@ -354,6 +354,27 @@ export async function getProvidersUpstreamQuota(c: Context): Promise<Response> {
   );
 }
 
+export async function getProvidersUpstreamGzip(c: Context): Promise<Response> {
+  const providerActions = await import("@/actions/providers");
+  const result = await callAction(
+    c,
+    providerActions.getProvidersUpstreamGzipStatus,
+    [],
+    c.get("auth")
+  );
+  if (!result.ok) return actionError(c, result);
+
+  const visibleProviders = await loadVisibleProviders(c);
+  if (visibleProviders instanceof Response) return visibleProviders;
+  const visibleIds = new Set(visibleProviders.map((provider) => String(provider.id)));
+  return jsonResponse(
+    Object.fromEntries(
+      Object.entries(result.data as Record<string, unknown>).filter(([id]) => visibleIds.has(id))
+    ),
+    { headers: withNoStoreHeaders() }
+  );
+}
+
 export async function refreshProviderUpstreamQuota(c: Context): Promise<Response> {
   const id = parseProviderIdWithSuffix(c, "upstream-quota:refresh");
   if (id instanceof Response) return id;

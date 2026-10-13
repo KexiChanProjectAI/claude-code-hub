@@ -254,6 +254,11 @@ vi.doMock("@/lib/api-client/v1/actions/providers", async () => {
         providers,
         "getProvidersUpstreamQuotaStatus"
       ) ?? vi.fn(async () => ({})),
+    getProvidersUpstreamGzipStatus:
+      getModuleExport<typeof providers.getProvidersUpstreamGzipStatus>(
+        providers,
+        "getProvidersUpstreamGzipStatus"
+      ) ?? vi.fn(async () => ({})),
     refreshProviderUpstreamQuota:
       getModuleExport<typeof providers.refreshProviderUpstreamQuota>(
         providers,

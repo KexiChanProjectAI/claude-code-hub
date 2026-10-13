@@ -9,6 +9,7 @@ const getUnmaskedProviderKeyMock = vi.hoisted(() => vi.fn());
 const getProvidersHealthStatusMock = vi.hoisted(() => vi.fn());
 const resetProviderCircuitMock = vi.hoisted(() => vi.fn());
 const getProvidersUpstreamQuotaStatusMock = vi.hoisted(() => vi.fn());
+const getProvidersUpstreamGzipStatusMock = vi.hoisted(() => vi.fn());
 const refreshProviderUpstreamQuotaMock = vi.hoisted(() => vi.fn());
 const resetProviderTotalUsageMock = vi.hoisted(() => vi.fn());
 const batchResetProviderCircuitsMock = vi.hoisted(() => vi.fn());
@@ -45,6 +46,7 @@ vi.mock("@/actions/providers", () => ({
   getProvidersHealthStatus: getProvidersHealthStatusMock,
   resetProviderCircuit: resetProviderCircuitMock,
   getProvidersUpstreamQuotaStatus: getProvidersUpstreamQuotaStatusMock,
+  getProvidersUpstreamGzipStatus: getProvidersUpstreamGzipStatusMock,
   refreshProviderUpstreamQuota: refreshProviderUpstreamQuotaMock,
   resetProviderTotalUsage: resetProviderTotalUsageMock,
   batchResetProviderCircuits: batchResetProviderCircuitsMock,
@@ -188,6 +190,16 @@ describe("v1 providers read endpoints", () => {
       2: { circuitState: "open", failureCount: 10 },
     });
     resetProviderCircuitMock.mockResolvedValue({ ok: true });
+    getProvidersUpstreamGzipStatusMock.mockResolvedValue({
+      1: {
+        request: { state: "supported", updatedAt: 1 },
+        response: { state: "unknown", updatedAt: null },
+      },
+      999: {
+        request: { state: "unknown", updatedAt: null },
+        response: { state: "unknown", updatedAt: null },
+      },
+    });
     getProvidersUpstreamQuotaStatusMock.mockResolvedValue({
       1: {
         providerId: 1,
@@ -837,6 +849,20 @@ describe("v1 providers read endpoints", () => {
     expect(upstreamQuota.response.status).toBe(200);
     expect(Object.keys(upstreamQuota.json as object)).toEqual(["1"]);
     expect(getProvidersUpstreamQuotaStatusMock).toHaveBeenCalled();
+
+    const upstreamGzip = await callV1Route({
+      method: "GET",
+      pathname: "/api/v1/providers/upstream-gzip",
+      headers: { Authorization: "Bearer admin-token" },
+    });
+    expect(upstreamGzip.response.status).toBe(200);
+    expect(upstreamGzip.json).toEqual({
+      1: {
+        request: { state: "supported", updatedAt: 1 },
+        response: { state: "unknown", updatedAt: null },
+      },
+    });
+    expect(getProvidersUpstreamGzipStatusMock).toHaveBeenCalled();
 
     const refreshQuota = await callV1Route({
       method: "POST",
