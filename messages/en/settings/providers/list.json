@@ -81,5 +81,25 @@
   "actionDelete": "Delete",
   "selectProvider": "Select {name}",
   "schedule": "Schedule",
-  "proxyEnabled": "Proxy enabled"
+  "proxyEnabled": "Proxy enabled",
+  "upstreamGzip": {
+    "label": "gzip",
+    "title": "Upstream gzip",
+    "request": "Upload (request body)",
+    "response": "Download (response)",
+    "requestStates": {
+      "supported": "Accepts gzip",
+      "unsupported": "Rejects gzip, sending plain",
+      "unknown": "Not observed yet",
+      "disabled": "Disabled"
+    },
+    "responseStates": {
+      "compressed": "Returns gzip",
+      "uncompressed": "Returns uncompressed",
+      "unknown": "Not observed yet",
+      "disabled": "Disabled"
+    },
+    "updatedAt": "Updated {time}",
+    "hint": "Learned from live traffic. Unsupported upstreams are re-probed after 1 hour."
+  }
 }

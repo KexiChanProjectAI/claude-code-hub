@@ -81,5 +81,25 @@
   "actionDelete": "删除",
   "selectProvider": "选择 {name}",
   "schedule": "调度",
-  "proxyEnabled": "已启用代理"
+  "proxyEnabled": "已启用代理",
+  "upstreamGzip": {
+    "label": "gzip",
+    "title": "上游 gzip",
+    "request": "上行（请求体）",
+    "response": "下行（响应）",
+    "requestStates": {
+      "supported": "支持 gzip",
+      "unsupported": "不支持，已改发明文",
+      "unknown": "尚未观测",
+      "disabled": "已关闭"
+    },
+    "responseStates": {
+      "compressed": "返回 gzip",
+      "uncompressed": "返回未压缩",
+      "unknown": "尚未观测",
+      "disabled": "已关闭"
+    },
+    "updatedAt": "更新于 {time}",
+    "hint": "根据实际流量自动学习。不支持的上游 1 小时后重新探测。"
+  }
 }

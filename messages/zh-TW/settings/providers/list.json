@@ -81,5 +81,25 @@
   "actionDelete": "刪除",
   "selectProvider": "選擇 {name}",
   "schedule": "排程",
-  "proxyEnabled": "已啟用代理"
+  "proxyEnabled": "已啟用代理",
+  "upstreamGzip": {
+    "label": "gzip",
+    "title": "上游 gzip",
+    "request": "上行（請求體）",
+    "response": "下行（回應）",
+    "requestStates": {
+      "supported": "支援 gzip",
+      "unsupported": "不支援，已改傳明文",
+      "unknown": "尚未觀測",
+      "disabled": "已關閉"
+    },
+    "responseStates": {
+      "compressed": "回傳 gzip",
+      "uncompressed": "回傳未壓縮",
+      "unknown": "尚未觀測",
+      "disabled": "已關閉"
+    },
+    "updatedAt": "更新於 {time}",
+    "hint": "依實際流量自動學習。不支援的上游 1 小時後重新探測。"
+  }
 }

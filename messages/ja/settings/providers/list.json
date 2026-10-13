@@ -81,5 +81,25 @@
   "actionDelete": "削除",
   "selectProvider": "{name} を選択",
   "schedule": "スケジュール",
-  "proxyEnabled": "プロキシ有効"
+  "proxyEnabled": "プロキシ有効",
+  "upstreamGzip": {
+    "label": "gzip",
+    "title": "上流 gzip",
+    "request": "上り（リクエスト本文）",
+    "response": "下り（レスポンス）",
+    "requestStates": {
+      "supported": "gzip 対応",
+      "unsupported": "gzip 非対応、平文で送信中",
+      "unknown": "未観測",
+      "disabled": "無効"
+    },
+    "responseStates": {
+      "compressed": "gzip で返却",
+      "uncompressed": "非圧縮で返却",
+      "unknown": "未観測",
+      "disabled": "無効"
+    },
+    "updatedAt": "更新: {time}",
+    "hint": "実際のトラフィックから自動で学習します。非対応の上流は 1 時間後に再確認します。"
+  }
 }

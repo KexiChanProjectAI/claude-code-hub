@@ -85,6 +85,7 @@ import { invalidateProviderQueries } from "./invalidate-provider-queries";
 import { PriorityEditPopover } from "./priority-edit-popover";
 import { ProviderEndpointHover } from "./provider-endpoint-hover";
 import { ProviderFormDialogContent } from "./provider-form-dialog-content";
+import { UpstreamGzipBadge } from "./upstream-gzip-badge";
 import { UpstreamQuotaBadge } from "./upstream-quota-badge";
 
 interface ProviderRichListItemProps {
@@ -597,6 +598,8 @@ function ProviderRichListItemInner({
           )}
           {/* Upstream quota badge */}
           <UpstreamQuotaBadge providerId={provider.id} canRefresh={canEdit} />
+          {/* Upstream gzip badge */}
+          <UpstreamGzipBadge providerId={provider.id} enabled={canEdit} />
           {/* Provider prefix badge */}
           {provider.providerPrefix && (
             <Badge
@@ -817,6 +820,12 @@ function ProviderRichListItemInner({
             <UpstreamQuotaBadge
               providerId={provider.id}
               canRefresh={canEdit}
+              className="flex-shrink-0"
+            />
+            {/* Upstream gzip badge */}
+            <UpstreamGzipBadge
+              providerId={provider.id}
+              enabled={canEdit}
               className="flex-shrink-0"
             />
             {/* Schedule badge */}

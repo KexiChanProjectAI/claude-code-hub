@@ -59,6 +59,7 @@ import { ProviderBalanceChip } from "./balance/provider-balance-chip";
 import { ProviderForm } from "./forms/provider-form";
 import { InlineEditPopover } from "./inline-edit-popover";
 import { ProviderFormDialogContent } from "./provider-form-dialog-content";
+import { UpstreamGzipBadge } from "./upstream-gzip-badge";
 
 function buildDefaultProviderName(input: {
   vendorWebsiteDomain: string;
@@ -415,8 +416,15 @@ function VendorKeyRow(props: {
           </div>
         </TableCell>
         <TableCell className="py-1 min-w-0">
-          <div className="text-sm font-medium truncate" title={props.provider.name}>
-            {props.provider.name}
+          <div className="flex items-center gap-1.5 min-w-0">
+            <div className="text-sm font-medium truncate" title={props.provider.name}>
+              {props.provider.name}
+            </div>
+            <UpstreamGzipBadge
+              providerId={props.provider.id}
+              enabled={props.canEdit}
+              className="flex-shrink-0"
+            />
           </div>
         </TableCell>
         <TableCell className="py-1">

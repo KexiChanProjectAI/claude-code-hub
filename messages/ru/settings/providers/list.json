@@ -81,5 +81,25 @@
   "actionDelete": "Удалить",
   "selectProvider": "Выбрать {name}",
   "schedule": "Расписание",
-  "proxyEnabled": "Прокси включен"
+  "proxyEnabled": "Прокси включен",
+  "upstreamGzip": {
+    "label": "gzip",
+    "title": "gzip апстрима",
+    "request": "Исходящий (тело запроса)",
+    "response": "Входящий (ответ)",
+    "requestStates": {
+      "supported": "Принимает gzip",
+      "unsupported": "Не принимает gzip, отправка без сжатия",
+      "unknown": "Ещё не наблюдалось",
+      "disabled": "Отключено"
+    },
+    "responseStates": {
+      "compressed": "Отвечает gzip",
+      "uncompressed": "Отвечает без сжатия",
+      "unknown": "Ещё не наблюдалось",
+      "disabled": "Отключено"
+    },
+    "updatedAt": "Обновлено {time}",
+    "hint": "Определяется по реальному трафику. Неподдерживающие апстримы перепроверяются через 1 час."
+  }
 }
