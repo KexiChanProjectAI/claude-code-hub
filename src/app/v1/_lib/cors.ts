@@ -43,7 +43,7 @@ function buildCorsHeaders(options: {
 /**
  * 合并 Vary 头并去重（保留原始大小写）
  */
-function mergeVaryHeader(existing: string | null, newValue: string): string {
+export function mergeVaryHeader(existing: string | null, newValue: string): string {
   const seen = new Set<string>();
   const result: string[] = [];
 

@@ -8,6 +8,7 @@ import {
   handleCodexModels,
   handleOpenAICompatibleModels,
 } from "@/app/v1/_lib/models/available-models";
+import { withClientResponseCompression } from "@/app/v1/_lib/proxy/client-compression";
 import { handleProxyRequest } from "@/app/v1/_lib/proxy-handler";
 import { rewriteUnprefixedV1Request } from "@/app/v1/_lib/unprefixed-v1-alias";
 import { withDataDbScope } from "@/drizzle/db";
@@ -70,7 +71,8 @@ function handleProxyRoute(request: Request): Response | Promise<Response> {
   return honoHandler(rewriteUnprefixedV1Request(request));
 }
 
-const routeHandler = withDataDbScope(handleProxyRoute);
+// 最外层：按客户端 Accept-Encoding 对响应做 gzip（须在所有改写响应体的层之后执行）
+const routeHandler = withDataDbScope(withClientResponseCompression(handleProxyRoute));
 
 export {
   routeHandler as GET,

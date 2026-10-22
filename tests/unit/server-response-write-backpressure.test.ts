@@ -150,6 +150,30 @@ describe("server response write backpressure", () => {
     expect(capturedOptions).toMatchObject({ hostname: "127.0.0.1", port: 43123 });
   });
 
+  it("forces an identity accept-encoding on the internal loopback request", async () => {
+    const events: string[] = [];
+    const request = createClientRequest(true, events);
+    let capturedOptions: http.RequestOptions | undefined;
+    vi.spyOn(http, "request").mockImplementation((options) => {
+      capturedOptions = options as http.RequestOptions;
+      setImmediate(() => request.emit("error", new Error("test settlement")));
+      return request;
+    });
+    const input = requestInput();
+
+    await serverModule.forwardToInternalHttp(
+      input.ws,
+      { ...input.request, headers: { ...input.request.headers, "accept-encoding": "gzip, br" } },
+      input.body,
+      "test-session",
+      undefined,
+      undefined,
+      { hostname: "127.0.0.1", port: 43123 }
+    );
+
+    expect(capturedOptions?.headers).toMatchObject({ "accept-encoding": "identity" });
+  });
+
   it("waits for request drain before ending a backpressured payload", async () => {
     const events: string[] = [];
     const request = createClientRequest(false, events);

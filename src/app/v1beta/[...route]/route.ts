@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { handle } from "hono/vercel";
 import { registerCors } from "@/app/v1/_lib/cors";
 import { handleAvailableModels } from "@/app/v1/_lib/models/available-models";
+import { withClientResponseCompression } from "@/app/v1/_lib/proxy/client-compression";
 import { handleProxyRequest } from "@/app/v1/_lib/proxy-handler";
 import { withDataDbScope } from "@/drizzle/db";
 
@@ -20,7 +21,8 @@ app.get("/models", handleAvailableModels);
 // 格式检测会自动识别 Gemini 请求体中的 contents 字段
 app.all("*", handleProxyRequest);
 
-const routeHandler = withDataDbScope(handle(app));
+// 最外层：按客户端 Accept-Encoding 对响应做 gzip
+const routeHandler = withDataDbScope(withClientResponseCompression(handle(app)));
 
 export {
   routeHandler as GET,

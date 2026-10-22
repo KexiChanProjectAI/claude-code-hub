@@ -268,6 +268,11 @@ export const EnvSchema = z.object({
   UPSTREAM_REQUEST_GZIP_MIN_BYTES: z.coerce.number().int().min(0).default(1024),
   ENABLE_UPSTREAM_RESPONSE_GZIP: z.string().default("true").transform(booleanTransform),
 
+  // 入站 gzip：按客户端 Accept-Encoding 压缩代理发回客户端的 JSON/SSE 响应（SSE 逐事件 flush）。
+  // 响应带 content-encoding 后 Next 自带的 compression 会自动跳过，避免双重压缩。
+  ENABLE_CLIENT_RESPONSE_GZIP: z.string().default("true").transform(booleanTransform),
+  CLIENT_RESPONSE_GZIP_MIN_BYTES: z.coerce.number().int().min(0).default(1024),
+
   // 竞速输家计费：后台 drain 竞速输家响应体以拿回 token 用量时的最大等待时长（毫秒）。
   // 超时后主动断开该输家连接，仅用已收到的内容尝试计费（通常计不出 -> 跳过）。
   HEDGE_LOSER_DRAIN_TIMEOUT_MS: z.coerce.number().int().min(1000).default(120_000),

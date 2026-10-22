@@ -607,6 +607,8 @@ async function forwardToInternalHttp(
   }
   internalHeaders["accept"] = "text/event-stream";
   internalHeaders["content-type"] = "application/json";
+  // 回环响应由本进程按原始 SSE/JSON 解析，禁止代理层与 Next 对其做 gzip 压缩。
+  internalHeaders["accept-encoding"] = "identity";
   internalHeaders[CLIENT_TRANSPORT_HEADER] = "websocket";
   internalHeaders[WS_FORWARD_FLAG_HEADER] = "1";
   if (typeof responsesWsSessionId === "string" && responsesWsSessionId.length > 0) {
