@@ -82,3 +82,61 @@ export function extractOpenAIReasoningEffortFromSpecialSettings(
 
   return null;
 }
+
+/** OpenAI Chat Completions 使用记录中用于呈现请求值和实际转发值的思考强度信息。 */
+export interface OpenAIReasoningEffortInfo {
+  requestedEffort: string | null;
+  effectiveEffort: string;
+  isOverridden: boolean;
+}
+
+/**
+ * 合并 OpenAI Chat Completions 客户端请求审计与供应商覆写审计。
+ *
+ * 客户端未发送 reasoning_effort 时仍可从覆写审计恢复实际转发值；
+ * 多次覆写（切换供应商）以最后一次为准。
+ */
+export function extractOpenAIReasoningEffortInfo(
+  specialSettings: SpecialSetting[] | null | undefined
+): OpenAIReasoningEffortInfo | null {
+  if (!Array.isArray(specialSettings) || specialSettings.length === 0) {
+    return null;
+  }
+
+  const requestedEffort = extractOpenAIReasoningEffortFromSpecialSettings(specialSettings)?.effort;
+  let hasEffortOverrideAudit = false;
+  let initialOverrideBefore: string | null = null;
+  let finalOverrideAfter: string | null = null;
+
+  for (const setting of specialSettings) {
+    if (
+      setting.type !== "provider_parameter_override" ||
+      setting.providerType !== "openai-compatible"
+    ) {
+      continue;
+    }
+
+    const effortChange = setting.changes?.find((change) => change.path === "reasoning_effort");
+    if (!effortChange) {
+      continue;
+    }
+
+    if (!hasEffortOverrideAudit) {
+      initialOverrideBefore = normalizeOpenAIReasoningEffort(effortChange.before);
+    }
+    finalOverrideAfter = normalizeOpenAIReasoningEffort(effortChange.after);
+    hasEffortOverrideAudit = true;
+  }
+
+  const originalEffort = requestedEffort ?? initialOverrideBefore;
+  const effectiveEffort = finalOverrideAfter ?? originalEffort;
+  if (!effectiveEffort) {
+    return null;
+  }
+
+  return {
+    requestedEffort: originalEffort,
+    effectiveEffort,
+    isOverridden: hasEffortOverrideAudit && originalEffort !== effectiveEffort,
+  };
+}

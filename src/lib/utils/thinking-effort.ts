@@ -1,6 +1,6 @@
 import { extractAnthropicEffortInfo } from "@/lib/utils/anthropic-effort";
 import { extractCodexReasoningEffortInfo } from "@/lib/utils/codex-reasoning-effort";
-import { extractOpenAIReasoningEffortFromSpecialSettings } from "@/lib/utils/openai-reasoning-effort";
+import { extractOpenAIReasoningEffortInfo } from "@/lib/utils/openai-reasoning-effort";
 import type { SpecialSetting } from "@/types/special-settings";
 
 /** 思考强度审计来源：Codex 的 reasoning.effort、OpenAI chat/completions 或 Anthropic 的 output_config.effort。 */
@@ -21,7 +21,6 @@ export interface ThinkingEffortInfo {
  *
  * 复用 Codex、OpenAI chat/completions 与 Anthropic 三个提取器并统一返回结构：
  * Codex 审计优先，其次 OpenAI，最后回退到 Anthropic effort，三者都无则返回 null。
- * OpenAI chat/completions 目前无供应商级覆写机制，isOverridden 恒为 false。
  */
 export function extractThinkingEffortInfo(
   specialSettings: SpecialSetting[] | null | undefined
@@ -36,13 +35,13 @@ export function extractThinkingEffortInfo(
     };
   }
 
-  const openaiInfo = extractOpenAIReasoningEffortFromSpecialSettings(specialSettings);
+  const openaiInfo = extractOpenAIReasoningEffortInfo(specialSettings);
   if (openaiInfo) {
     return {
       source: "openai",
-      requestedEffort: openaiInfo.effort,
-      effectiveEffort: openaiInfo.effort,
-      isOverridden: false,
+      requestedEffort: openaiInfo.requestedEffort,
+      effectiveEffort: openaiInfo.effectiveEffort,
+      isOverridden: openaiInfo.isOverridden,
     };
   }
 

@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   extractOpenAIReasoningEffortFromRequestBody,
   extractOpenAIReasoningEffortFromSpecialSettings,
+  extractOpenAIReasoningEffortInfo,
 } from "@/lib/utils/openai-reasoning-effort";
 import type { SpecialSetting } from "@/types/special-settings";
 
@@ -128,5 +129,89 @@ describe("extractOpenAIReasoningEffortFromSpecialSettings", () => {
     expect(extractOpenAIReasoningEffortFromSpecialSettings(undefined)).toBeNull();
     expect(extractOpenAIReasoningEffortFromSpecialSettings(null)).toBeNull();
     expect(extractOpenAIReasoningEffortFromSpecialSettings([])).toBeNull();
+  });
+});
+
+function chatOverride(before: string | null, after: string | null): SpecialSetting {
+  return {
+    type: "provider_parameter_override",
+    scope: "provider",
+    providerId: 128,
+    providerName: "minimax-openai",
+    providerType: "openai-compatible",
+    hit: true,
+    changed: before !== after,
+    changes: [{ path: "reasoning_effort", before, after, changed: before !== after }],
+  };
+}
+
+const requestAudit = (effort: string): SpecialSetting => ({
+  type: "openai_reasoning_effort",
+  scope: "request",
+  hit: true,
+  effort,
+  source: "reasoning_effort",
+});
+
+describe("extractOpenAIReasoningEffortInfo", () => {
+  test("shows the forwarded value when a provider overrides reasoning_effort", () => {
+    expect(
+      extractOpenAIReasoningEffortInfo([requestAudit("medium"), chatOverride("medium", "max")])
+    ).toEqual({ requestedEffort: "medium", effectiveEffort: "max", isOverridden: true });
+  });
+
+  test("recovers the injected value when the client sent none", () => {
+    expect(extractOpenAIReasoningEffortInfo([chatOverride(null, "high")])).toEqual({
+      requestedEffort: null,
+      effectiveEffort: "high",
+      isOverridden: true,
+    });
+  });
+
+  test("uses the last override after provider failover", () => {
+    expect(
+      extractOpenAIReasoningEffortInfo([
+        requestAudit("low"),
+        chatOverride("low", "high"),
+        chatOverride("low", "xhigh"),
+      ])
+    ).toEqual({ requestedEffort: "low", effectiveEffort: "xhigh", isOverridden: true });
+  });
+
+  test("is not overridden when the target equals the client value", () => {
+    expect(
+      extractOpenAIReasoningEffortInfo([requestAudit("high"), chatOverride("high", "high")])
+    ).toEqual({ requestedEffort: "high", effectiveEffort: "high", isOverridden: false });
+  });
+
+  test("ignores Codex overrides and other paths", () => {
+    const codex: SpecialSetting = {
+      ...(chatOverride("low", "high") as Extract<
+        SpecialSetting,
+        { type: "provider_parameter_override" }
+      >),
+      providerType: "codex",
+    };
+    const otherPath: SpecialSetting = {
+      type: "provider_parameter_override",
+      scope: "provider",
+      providerId: 1,
+      providerName: null,
+      providerType: "openai-compatible",
+      hit: true,
+      changed: true,
+      changes: [{ path: "service_tier", before: null, after: "flex", changed: true }],
+    };
+    expect(extractOpenAIReasoningEffortInfo([requestAudit("low"), codex, otherPath])).toEqual({
+      requestedEffort: "low",
+      effectiveEffort: "low",
+      isOverridden: false,
+    });
+  });
+
+  test("returns null without any effort information", () => {
+    expect(extractOpenAIReasoningEffortInfo(null)).toBeNull();
+    expect(extractOpenAIReasoningEffortInfo([])).toBeNull();
+    expect(extractOpenAIReasoningEffortInfo([chatOverride(null, null)])).toBeNull();
   });
 });
