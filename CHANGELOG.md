@@ -49,6 +49,14 @@
 - 移除 OpenCode Go 保存适配弹窗及原始 Session ID 模板注入，保留转发阶段哈希 `x-opencode-session` 自动注入
 
 
+### 安全
+
+- 修复 Node.js Brotli 解码越界写入漏洞 CVE-2026-111497（高危，可远程执行代码）：入站 `content-encoding: br`
+  请求体在鉴权前解压，生产镜像运行时固定为包含修复的 `node:26.12.1-trixie-slim`，`package.json` engines 收紧为
+  `^22.23.4 || ^24.22.1 || >=26.12.1`，CI 统一从 `.node-version` 读取 Node 版本；Bun 升级到 1.4.3
+- 前后端依赖全部升级到最新版本，包括 Next.js 16.4.2、React 19.3.1、undici 8.12.3、Hono 4.13.13、
+  Langfuse SDK 6、OpenTelemetry SDK 0.223、Vitest 5、Biome 2.6、happy-dom 21、@lobehub/ui 6 与 @lobehub/icons 6
+
 ---
 
 ## v0.8.7 (2026-06-14)
