@@ -372,6 +372,44 @@ export function OptionsSection({ subSectionRefs }: OptionsSectionProps) {
             </SectionCard>
           )}
 
+          {/* OpenAI Chat Completions Overrides - openai-compatible type only */}
+          {providerType === "openai-compatible" && !isBatch && (
+            <SectionCard
+              title={t("sections.routing.openaiChatOverrides.title")}
+              description={t("sections.routing.openaiChatOverrides.desc")}
+              icon={Timer}
+            >
+              <div className="space-y-4">
+                <ToggleRow
+                  label={t("sections.routing.openaiChatOverrides.reasoningEffort.label")}
+                  description={t("sections.routing.effortRules.description")}
+                >
+                  <Switch
+                    checked={(state.routing.reasoningEffortOverrideRules?.length ?? 0) > 0}
+                    onCheckedChange={(checked) =>
+                      dispatch({
+                        type: "SET_REASONING_EFFORT_RULES",
+                        payload: checked ? [{ when: {}, overrideEffort: "" }] : [],
+                      })
+                    }
+                    disabled={state.ui.isPending}
+                    aria-label={t("sections.routing.openaiChatOverrides.reasoningEffort.label")}
+                  />
+                </ToggleRow>
+                {(state.routing.reasoningEffortOverrideRules?.length ?? 0) > 0 && (
+                  <ReasoningEffortRuleEditor
+                    rules={state.routing.reasoningEffortOverrideRules}
+                    onChange={(rules) =>
+                      dispatch({ type: "SET_REASONING_EFFORT_RULES", payload: rules })
+                    }
+                    providerType={providerType}
+                    disabled={state.ui.isPending}
+                  />
+                )}
+              </div>
+            </SectionCard>
+          )}
+
           {/* Anthropic Overrides - Claude type only (or batch mode) */}
           {(providerType === "claude" || providerType === "claude-auth" || isBatch) && (
             <SectionCard

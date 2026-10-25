@@ -186,6 +186,24 @@ describe("ReasoningEffortRuleEditor", () => {
     unmount();
   });
 
+  it("offers OpenAI chat targets including none and minimal for openai-compatible", () => {
+    const onChange = vi.fn();
+    const { container, unmount } = renderNode(
+      <ReasoningEffortRuleEditor
+        rules={[createRule({ overrideEffort: "none" })]}
+        onChange={onChange}
+        providerType="openai-compatible"
+      />
+    );
+    const target = container.querySelector("[data-testid='target-effort-0']");
+    for (const effort of ["none", "minimal", "xhigh"]) {
+      expect(
+        target?.parentElement?.querySelector(`[role="option"][data-value="${effort}"]`)
+      ).not.toBeNull();
+    }
+    unmount();
+  });
+
   it("calls onChange with new array when add rule is clicked", () => {
     const onChange = vi.fn();
     const { container, unmount } = renderNode(

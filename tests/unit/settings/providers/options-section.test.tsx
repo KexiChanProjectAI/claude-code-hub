@@ -339,6 +339,85 @@ describe("OptionsSection", () => {
     });
   });
 
+  describe("conditional rendering - openai-compatible provider", () => {
+    function findSwitchForLabel(label: string): HTMLButtonElement {
+      const labelElement = Array.from(document.body.querySelectorAll("*")).find(
+        (el) => el.children.length === 0 && el.textContent === label
+      );
+      let node: Element | null = labelElement ?? null;
+      while (node && !node.querySelector('[role="switch"]')) {
+        node = node.parentElement;
+      }
+      const toggle = node?.querySelector('[role="switch"]');
+      if (!toggle) throw new Error(`switch for ${label} not found`);
+      return toggle as HTMLButtonElement;
+    }
+
+    it("shows OpenAI Chat overrides and hides other override sections", () => {
+      const { unmount } = renderSection({
+        state: createMockState({ routing: { providerType: "openai-compatible" } }),
+      });
+
+      expect(getBodyText()).toContain("sections.routing.openaiChatOverrides.title");
+      expect(getBodyText()).toContain("sections.routing.openaiChatOverrides.reasoningEffort.label");
+      expect(getBodyText()).not.toContain("sections.routing.codexOverrides.title");
+      expect(getBodyText()).not.toContain("sections.routing.anthropicOverrides.maxTokens.label");
+      expect(document.querySelector('[data-testid="reasoning-effort-rule-editor"]')).toBeNull();
+
+      unmount();
+    });
+
+    it("dispatches an initial reasoning effort rule when enabling the override", () => {
+      const { unmount } = renderSection({
+        state: createMockState({ routing: { providerType: "openai-compatible" } }),
+      });
+
+      act(() => {
+        findSwitchForLabel("sections.routing.openaiChatOverrides.reasoningEffort.label").click();
+      });
+
+      expect(mockDispatch).toHaveBeenCalledWith({
+        type: "SET_REASONING_EFFORT_RULES",
+        payload: [{ when: {}, overrideEffort: "" }],
+      });
+
+      unmount();
+    });
+
+    it("renders the rule editor for openai-compatible when rules exist and clears on disable", () => {
+      const { unmount } = renderSection({
+        state: createMockState({
+          routing: {
+            providerType: "openai-compatible",
+            reasoningEffortOverrideRules: [{ when: {}, overrideEffort: "high" }],
+          },
+        }),
+      });
+
+      const editor = document.querySelector('[data-testid="reasoning-effort-rule-editor"]');
+      expect(editor?.getAttribute("data-provider-type")).toBe("openai-compatible");
+
+      act(() => {
+        findSwitchForLabel("sections.routing.openaiChatOverrides.reasoningEffort.label").click();
+      });
+
+      expect(mockDispatch).toHaveBeenCalledWith({
+        type: "SET_REASONING_EFFORT_RULES",
+        payload: [],
+      });
+
+      unmount();
+    });
+
+    it("does not render the OpenAI Chat section in batch mode", () => {
+      const { unmount } = renderSection({ mode: "batch" });
+
+      expect(getBodyText()).not.toContain("sections.routing.openaiChatOverrides.title");
+
+      unmount();
+    });
+  });
+
   describe("conditional rendering - gemini provider", () => {
     it("shows Gemini overrides for gemini type", () => {
       const { unmount } = renderSection({

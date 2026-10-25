@@ -383,6 +383,13 @@
         }
       }
     },
+    "openaiChatOverrides": {
+      "title": "OpenAI Chat Completions パラメータオーバーライド",
+      "desc": "プロバイダーレベルで /v1/chat/completions リクエストの reasoning_effort をオーバーライドします。対応する値はモデルによって異なり、未対応の値は上流でエラーになります。",
+      "reasoningEffort": {
+        "label": "推論強度オーバーライド"
+      }
+    },
     "anthropicOverrides": {
       "maxTokens": {
         "label": "Max Tokens オーバーライド",

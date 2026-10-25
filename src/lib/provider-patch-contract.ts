@@ -130,7 +130,7 @@ export function validateProviderReasoningEffortOverrideMutation(
   }
 
   const allowedTargets =
-    input.providerType === "codex"
+    input.providerType === "codex" || input.providerType === "openai-compatible"
       ? CODEX_REASONING_EFFORT_OVERRIDE_TARGETS
       : input.providerType === "claude" || input.providerType === "claude-auth"
         ? ANTHROPIC_REASONING_EFFORT_OVERRIDE_TARGETS
@@ -140,7 +140,7 @@ export function validateProviderReasoningEffortOverrideMutation(
     return {
       ok: false,
       error:
-        "reasoning_effort_override_rules is only supported for codex, claude, and claude-auth providers",
+        "reasoning_effort_override_rules is only supported for codex, openai-compatible, claude, and claude-auth providers",
     };
   }
 

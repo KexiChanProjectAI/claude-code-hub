@@ -383,6 +383,13 @@
         }
       }
     },
+    "openaiChatOverrides": {
+      "title": "Переопределение параметров OpenAI Chat Completions",
+      "desc": "Переопределение reasoning_effort в запросах /v1/chat/completions на уровне провайдера. Допустимые значения зависят от модели; неподдерживаемые значения отклоняются upstream.",
+      "reasoningEffort": {
+        "label": "Переопределение уровня рассуждения"
+      }
+    },
     "anthropicOverrides": {
       "maxTokens": {
         "label": "Переопределение Max Tokens",

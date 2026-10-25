@@ -150,7 +150,7 @@ describe("provider reasoning effort rule actions", () => {
 
     const unsupported = await addProvider(
       addInput({
-        provider_type: "openai-compatible",
+        provider_type: "gemini",
         reasoning_effort_override_rules: [rule],
       }) as Parameters<typeof addProvider>[0]
     );

@@ -8,6 +8,7 @@
 
 ### 新增
 
+- OpenAI Chat Completions（`/v1/chat/completions`）支持按供应商覆写思考强度：`openai-compatible` 供应商复用条件式 reasoning effort 规则（按原始/执行模型与客户端原值匹配），命中后改写顶层 `reasoning_effort`（none/minimal/low/medium/high/xhigh/max），并记录覆写审计；本地转发与 edge 执行器一致
 - 代理按客户端 `Accept-Encoding: gzip` 压缩发回客户端的响应（`/v1`、`/v1beta` 及无前缀别名，含 JSON、SSE 与错误响应）；SSE 逐事件 flush，客户端断开照常传回上游。新增 `ENABLE_CLIENT_RESPONSE_GZIP`（默认 true）与 `CLIENT_RESPONSE_GZIP_MIN_BYTES`（默认 1024）；Responses WebSocket 内部回环请求强制明文。客户端 gzip/deflate/br/zstd 压缩的请求体沿用既有自动解压
 - 供应商自定义请求头支持动态模板：可用 `{{header.Name}}` 复制非敏感入站请求头，`{{session.id}}` 写入 Session ID，`{{session.client_id}}` 写入客户端 Session ID；来源缺失时跳过该头，不允许读取凭据、Cookie 或内部传输头
 - 整合上游 v0.9.7：供应商列表新增按密钥查询余额及手动刷新，支持 New API 系统访问令牌和用户 ID；保留本地上游额度调度与探测配置

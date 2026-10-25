@@ -344,7 +344,10 @@ function ProviderFormContent({
         // the server only accepts non-empty rules for the types that support them.
         const providerType = state.routing.providerType;
         const supportsEffortRules =
-          providerType === "codex" || providerType === "claude" || providerType === "claude-auth";
+          providerType === "codex" ||
+          providerType === "openai-compatible" ||
+          providerType === "claude" ||
+          providerType === "claude-auth";
         const hasRules = supportsEffortRules && state.routing.reasoningEffortOverrideRules !== null;
         // Detect whether the provider originally had rules (loaded from DB)
         const hadRulesInitially = !!provider?.reasoningEffortOverrideRules;

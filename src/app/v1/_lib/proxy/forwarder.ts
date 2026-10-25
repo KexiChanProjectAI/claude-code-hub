@@ -36,6 +36,7 @@ import {
   DiscoveryRequestMetrics,
   recordDiscoveryControlEvent,
 } from "@/lib/observability/discovery-metrics";
+import { applyOpenAIChatProviderOverridesWithAudit } from "@/lib/openai/provider-overrides";
 import { resolveOutboundProxyUrl } from "@/lib/outbound-proxy";
 import {
   getEndpointFilterStats,
@@ -4209,6 +4210,26 @@ export class ProxyForwarder {
                 });
               });
             }
+          }
+        }
+
+        // OpenAI Chat Completions 供应商级 reasoning_effort 覆写（规则为空=遵循客户端）
+        if (applyProviderOverrides && provider.providerType === "openai-compatible") {
+          const { request: overridden, audit } = applyOpenAIChatProviderOverridesWithAudit(
+            provider,
+            session.request.message as Record<string, unknown>,
+            {
+              requestPath: session.requestUrl.pathname,
+              originalModel: session.getRawIntakeModel(),
+              executionModel: session.getCurrentModel(),
+              originalReasoningEffort: session.getRawChatReasoningEffort(),
+              reasoningEffortOverrideRules: getReasoningEffortOverrideRules(provider),
+            }
+          );
+          session.request.message = overridden;
+          if (audit) {
+            session.addSpecialSetting(audit);
+            await persistSpecialSettings(session);
           }
         }
 

@@ -436,6 +436,26 @@ const CASES: Array<{
     path: "/v1/chat/completions",
     provider: CHAT_PROVIDER,
   },
+  {
+    name: "openai-compatible reasoning_effort override rule on chat completions",
+    body: { ...CHAT_BODY, reasoning_effort: "low" },
+    path: "/v1/chat/completions",
+    provider: {
+      ...CHAT_PROVIDER,
+      reasoningEffortOverrideRules: [{ when: {}, overrideEffort: "xhigh" }],
+    } as Partial<Provider>,
+  },
+  {
+    name: "openai-compatible reasoning_effort injected when the client sent none",
+    body: CHAT_BODY,
+    path: "/v1/chat/completions",
+    provider: {
+      ...CHAT_PROVIDER,
+      reasoningEffortOverrideRules: [
+        { when: { originalReasoningEffort: null }, overrideEffort: "none" },
+      ],
+    } as Partial<Provider>,
+  },
 ];
 
 describe("edge step builder parity with local forwarder", () => {
@@ -506,6 +526,24 @@ describe("edge step builder parity with local forwarder", () => {
     );
     expect(result.step.bodyOps).toContainEqual({ op: "delete_top_level", key: "service_tier" });
     expect(JSON.parse(result.body)).not.toHaveProperty("service_tier");
+  });
+
+  test("openai-compatible reasoning_effort override becomes a set_top_level op", async () => {
+    const result = await runEdge(
+      structuredClone({ ...CHAT_BODY, reasoning_effort: "low" }),
+      createProvider({
+        ...CHAT_PROVIDER,
+        reasoningEffortOverrideRules: [{ when: {}, overrideEffort: "high" }],
+      } as Partial<Provider>),
+      makeKey(),
+      "/v1/chat/completions"
+    );
+    expect(result.step.bodyOps).toContainEqual({
+      op: "set_top_level",
+      key: "reasoning_effort",
+      value: "high",
+    });
+    expect(JSON.parse(result.body).reasoning_effort).toBe("high");
   });
 
   test("provider overrides are only applied on the first attempt", async () => {

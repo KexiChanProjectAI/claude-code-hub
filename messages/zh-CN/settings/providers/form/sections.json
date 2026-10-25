@@ -319,6 +319,13 @@
         }
       }
     },
+    "openaiChatOverrides": {
+      "title": "OpenAI Chat Completions 参数覆写",
+      "desc": "在供应商级别覆写 /v1/chat/completions 请求的 reasoning_effort。可用档位因模型而异，模型不支持时上游会返回错误。",
+      "reasoningEffort": {
+        "label": "思考强度覆写"
+      }
+    },
     "anthropicOverrides": {
       "maxTokens": {
         "label": "Max Tokens 覆写",

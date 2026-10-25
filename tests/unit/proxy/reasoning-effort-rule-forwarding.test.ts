@@ -193,6 +193,8 @@ function createSession(
           : null
         : null,
     rawResponsesServiceTier: typeof message.service_tier === "string" ? message.service_tier : null,
+    rawChatReasoningEffort:
+      typeof message.reasoning_effort === "string" ? message.reasoning_effort : null,
     originalModelName: null,
     originalUrlPathname: null,
     currentModelRedirect: null,
@@ -389,6 +391,37 @@ describe("ProxySession reasoning effort rule snapshots", () => {
     expect(session.getRawMessagesReasoningEffort()).toBe("medium");
   });
 
+  test("captures immutable Chat Completions raw reasoning_effort before later mutation", async () => {
+    const session = await ProxySession.fromContext(
+      makeContext("https://hub.test/v1/chat/completions", {
+        model: "gpt-5-raw",
+        reasoning_effort: "low",
+        messages: [{ role: "user", content: "hello" }],
+      })
+    );
+
+    session.request.message.reasoning_effort = "high";
+
+    expect(session.getRawChatReasoningEffort()).toBe("low");
+    expect(session.getRawResponsesReasoningEffort()).toBeNull();
+    expect(session.toEdgeSnapshot().rawChatReasoningEffort).toBe("low");
+  });
+
+  test("normalizes a missing or non-string Chat Completions reasoning_effort to null", async () => {
+    const missing = await ProxySession.fromContext(
+      makeContext("https://hub.test/v1/chat/completions", { model: "gpt-5-raw" })
+    );
+    const malformed = await ProxySession.fromContext(
+      makeContext("https://hub.test/v1/chat/completions", {
+        model: "gpt-5-raw",
+        reasoning_effort: { effort: "high" },
+      })
+    );
+
+    expect(missing.getRawChatReasoningEffort()).toBeNull();
+    expect(malformed.getRawChatReasoningEffort()).toBeNull();
+  });
+
   test("normalizes malformed format-specific effort inputs to null", async () => {
     const session = await ProxySession.fromContext(
       makeContext("https://hub.test/v1/messages", {
@@ -574,6 +607,74 @@ describe("ProxyForwarder reasoning effort rule forwarding", () => {
 
     expect(codexContexts).toEqual([]);
     expect(anthropicContexts).toEqual([]);
+  });
+
+  test("overrides top-level reasoning_effort for Chat Completions on openai-compatible providers", async () => {
+    const session = createSession("/v1/chat/completions", {
+      model: "gpt-5-raw",
+      reasoning_effort: "low",
+      messages: [{ role: "user", content: "hello" }],
+    });
+    const provider = createProvider({
+      providerType: "openai-compatible",
+      url: "https://provider.example.com/v1/chat/completions",
+      modelRedirects: [{ matchType: "exact", source: "gpt-5-raw", target: "gpt-5-execution" }],
+      reasoningEffortOverrideRules: [
+        {
+          when: { executionModel: { matchType: "exact", pattern: "gpt-5-execution" } },
+          overrideEffort: "xhigh",
+        },
+      ],
+    } as Partial<ProviderWithReasoningEffortOverrideRules>);
+    vi.spyOn(forwarder, "fetchWithoutAutoDecode").mockImplementation(async () => {
+      sentBodies.push(JSON.parse(session.forwardedRequestBody ?? "{}"));
+      return okResponse();
+    });
+
+    await forwarder.doForward(session, provider, provider.url);
+
+    expect(codexContexts).toEqual([]);
+    expect(anthropicContexts).toEqual([]);
+    expect(sentBodies[0]?.reasoning_effort).toBe("xhigh");
+    expect(sentBodies[0]?.model).toBe("gpt-5-execution");
+    expect(mocks.updateMessageRequestDetails).toHaveBeenCalledWith(123, {
+      specialSettings: expect.arrayContaining([
+        expect.objectContaining({
+          type: "provider_parameter_override",
+          providerType: "openai-compatible",
+          changes: [{ path: "reasoning_effort", before: "low", after: "xhigh", changed: true }],
+          ruleEvaluation: expect.objectContaining({ shouldOverride: true, matchedIndex: 0 }),
+        }),
+      ]),
+    });
+  });
+
+  test("keeps the client reasoning_effort when no openai-compatible rule matches", async () => {
+    const session = createSession("/v1/chat/completions", {
+      model: "gpt-5-raw",
+      reasoning_effort: "low",
+      messages: [{ role: "user", content: "hello" }],
+    });
+    const provider = createProvider({
+      providerType: "openai-compatible",
+      url: "https://provider.example.com/v1/chat/completions",
+      reasoningEffortOverrideRules: [
+        { when: { originalReasoningEffort: null }, overrideEffort: "high" },
+      ],
+    } as Partial<ProviderWithReasoningEffortOverrideRules>);
+    vi.spyOn(forwarder, "fetchWithoutAutoDecode").mockImplementation(async () => {
+      sentBodies.push(JSON.parse(session.forwardedRequestBody ?? "{}"));
+      return okResponse();
+    });
+
+    await forwarder.doForward(session, provider, provider.url);
+
+    expect(sentBodies[0]?.reasoning_effort).toBe("low");
+    expect(mocks.updateMessageRequestDetails).not.toHaveBeenCalledWith(123, {
+      specialSettings: expect.arrayContaining([
+        expect.objectContaining({ type: "provider_parameter_override" }),
+      ]),
+    });
   });
 
   test("bypasses the same-provider rectifier retry and reevaluates after provider failover", async () => {

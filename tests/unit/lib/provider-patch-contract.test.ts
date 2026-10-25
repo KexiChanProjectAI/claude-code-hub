@@ -234,7 +234,7 @@ describe("provider-patch-contract - reasoning effort override validation", () =>
     existingRules: null,
   };
 
-  it("accepts cleared rules (null or empty) for unsupported provider types", () => {
+  it("accepts cleared rules (null or empty) for any provider type", () => {
     for (const providerType of ["openai-compatible", "gemini"] as const) {
       expect(validateProviderReasoningEffortOverrideMutation({ ...base, providerType })).toEqual({
         ok: true,
@@ -248,12 +248,36 @@ describe("provider-patch-contract - reasoning effort override validation", () =>
   it("rejects non-empty rules for unsupported provider types", () => {
     const result = validateProviderReasoningEffortOverrideMutation({
       ...base,
+      providerType: "gemini",
       rules: [{ when: {}, overrideEffort: "high" }],
     });
     expect(result).toEqual({
       ok: false,
       error:
-        "reasoning_effort_override_rules is only supported for codex, claude, and claude-auth providers",
+        "reasoning_effort_override_rules is only supported for codex, openai-compatible, claude, and claude-auth providers",
+    });
+  });
+
+  it("accepts OpenAI chat reasoning_effort targets for openai-compatible providers", () => {
+    for (const overrideEffort of ["none", "minimal", "low", "medium", "high", "xhigh"]) {
+      expect(
+        validateProviderReasoningEffortOverrideMutation({
+          ...base,
+          rules: [{ when: {}, overrideEffort }],
+        })
+      ).toEqual({ ok: true });
+    }
+  });
+
+  it("rejects unknown reasoning_effort targets for openai-compatible providers", () => {
+    expect(
+      validateProviderReasoningEffortOverrideMutation({
+        ...base,
+        rules: [{ when: {}, overrideEffort: "ultra" }],
+      })
+    ).toEqual({
+      ok: false,
+      error: "Invalid reasoning effort override target for openai-compatible: ultra",
     });
   });
 

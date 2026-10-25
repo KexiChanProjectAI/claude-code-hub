@@ -383,6 +383,13 @@
         }
       }
     },
+    "openaiChatOverrides": {
+      "title": "OpenAI Chat Completions Parameter Overrides",
+      "desc": "Override reasoning_effort on /v1/chat/completions requests at the provider level. Supported values vary by model; unsupported values are rejected upstream.",
+      "reasoningEffort": {
+        "label": "Reasoning Effort Override"
+      }
+    },
     "anthropicOverrides": {
       "maxTokens": {
         "label": "Max Tokens Override",

@@ -171,6 +171,10 @@ function extractRawServiceTier(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
+function extractRawTopLevelString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
 export interface EdgeSessionSnapshot {
   v: 1;
   startTime: number;
@@ -184,6 +188,8 @@ export interface EdgeSessionSnapshot {
   rawMessagesReasoningEffort: string | null;
   // Optional for compatibility with snapshots persisted before this field existed
   rawResponsesServiceTier?: string | null;
+  // Optional for compatibility with snapshots persisted before this field existed
+  rawChatReasoningEffort?: string | null;
   userName: string;
   authState: AuthState | null;
   provider: Provider | null;
@@ -338,6 +344,7 @@ export class ProxySession {
   private readonly rawResponsesReasoningEffort: string | null;
   private readonly rawMessagesReasoningEffort: string | null;
   private readonly rawResponsesServiceTier: string | null;
+  private readonly rawChatReasoningEffort: string | null;
 
   // 原始 URL 路径（用于 Gemini 模型重定向重置）
   private originalUrlPathname: string | null = null;
@@ -443,6 +450,7 @@ export class ProxySession {
     rawResponsesReasoningEffort: string | null;
     rawMessagesReasoningEffort: string | null;
     rawResponsesServiceTier?: string | null;
+    rawChatReasoningEffort?: string | null;
   }) {
     this.startTime = init.startTime;
     this.method = init.method;
@@ -458,6 +466,7 @@ export class ProxySession {
     this.rawResponsesReasoningEffort = init.rawResponsesReasoningEffort;
     this.rawMessagesReasoningEffort = init.rawMessagesReasoningEffort;
     this.rawResponsesServiceTier = init.rawResponsesServiceTier ?? null;
+    this.rawChatReasoningEffort = init.rawChatReasoningEffort ?? null;
     this.userName = "unknown";
     this.authState = null;
     this.provider = null;
@@ -516,6 +525,9 @@ export class ProxySession {
       bodyResult.requestMessage.output_config
     );
     const rawResponsesServiceTier = extractRawServiceTier(bodyResult.requestMessage.service_tier);
+    const rawChatReasoningEffort = extractRawTopLevelString(
+      bodyResult.requestMessage.reasoning_effort
+    );
 
     const isLargeRequestBody =
       (bodyResult.contentLength !== null &&
@@ -561,6 +573,7 @@ export class ProxySession {
       rawResponsesReasoningEffort,
       rawMessagesReasoningEffort,
       rawResponsesServiceTier,
+      rawChatReasoningEffort,
     });
     // 后台所有者卡住且宽限到期时，租约已被强制归还；同步丢弃正文引用，避免被卡住的闭包继续钉住内存。
     onRequestMemoryForcedEnd(() => session.dropRequestBodyAfterForcedMemoryRelease());
@@ -605,6 +618,7 @@ export class ProxySession {
       rawResponsesReasoningEffort: extractRawReasoningEffort(message.reasoning),
       rawMessagesReasoningEffort: extractRawReasoningEffort(message.output_config),
       rawResponsesServiceTier: extractRawServiceTier(message.service_tier),
+      rawChatReasoningEffort: extractRawTopLevelString(message.reasoning_effort),
     });
     session.edgeDigestHints = init.hints;
     return session;
@@ -634,6 +648,7 @@ export class ProxySession {
       rawResponsesReasoningEffort: this.rawResponsesReasoningEffort,
       rawMessagesReasoningEffort: this.rawMessagesReasoningEffort,
       rawResponsesServiceTier: this.rawResponsesServiceTier,
+      rawChatReasoningEffort: this.rawChatReasoningEffort,
       userName: this.userName,
       authState: this.authState
         ? {
@@ -700,6 +715,7 @@ export class ProxySession {
       rawResponsesReasoningEffort: snapshot.rawResponsesReasoningEffort,
       rawMessagesReasoningEffort: snapshot.rawMessagesReasoningEffort,
       rawResponsesServiceTier: snapshot.rawResponsesServiceTier ?? null,
+      rawChatReasoningEffort: snapshot.rawChatReasoningEffort ?? null,
     });
     const originalHeaders = session.originalHeaders;
     for (const name of Array.from(originalHeaders.keys())) originalHeaders.delete(name);
@@ -1576,6 +1592,11 @@ export class ProxySession {
 
   getRawResponsesServiceTier(): string | null {
     return this.rawResponsesServiceTier ?? null;
+  }
+
+  /** Raw client top-level reasoning_effort (OpenAI Chat Completions) captured at intake. */
+  getRawChatReasoningEffort(): string | null {
+    return this.rawChatReasoningEffort;
   }
 
   /**

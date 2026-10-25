@@ -383,6 +383,13 @@
         }
       }
     },
+    "openaiChatOverrides": {
+      "title": "OpenAI Chat Completions 參數覆寫",
+      "desc": "在供應商級別覆寫 /v1/chat/completions 請求的 reasoning_effort。可用檔位因模型而異，模型不支援時上游會回傳錯誤。",
+      "reasoningEffort": {
+        "label": "思考強度覆寫"
+      }
+    },
     "anthropicOverrides": {
       "maxTokens": {
         "label": "Max Tokens 覆寫",

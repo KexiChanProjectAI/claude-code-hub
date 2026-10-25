@@ -225,10 +225,10 @@ describe("v1 provider reasoning effort rule contract", () => {
     {
       name: "unsupported provider target vocabulary",
       body: {
-        name: "OpenAI provider",
-        url: "https://api.openai.com",
+        name: "Gemini provider",
+        url: "https://generativelanguage.googleapis.com",
         key: "sk-test-key",
-        provider_type: "openai-compatible",
+        provider_type: "gemini",
         reasoning_effort_override_rules: rules,
       },
     },

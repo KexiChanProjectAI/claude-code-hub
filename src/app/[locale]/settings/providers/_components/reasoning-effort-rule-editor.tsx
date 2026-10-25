@@ -47,7 +47,10 @@ export function ReasoningEffortRuleEditor({
   const t = useTranslations("settings.providers.form");
   const prefix = "sections.routing.effortRules";
 
-  const validTargets = providerType === "codex" ? CODEX_EFFORT_TARGETS : CLAUDE_EFFORT_TARGETS;
+  const validTargets =
+    providerType === "codex" || providerType === "openai-compatible"
+      ? CODEX_EFFORT_TARGETS
+      : CLAUDE_EFFORT_TARGETS;
   const targets = useMemo(
     () =>
       validTargets.map((effort) => ({

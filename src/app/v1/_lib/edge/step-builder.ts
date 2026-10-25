@@ -17,6 +17,7 @@ import { applyCodexProviderOverridesWithAudit } from "@/lib/codex/provider-overr
 import { getCachedSystemSettings, isHttp2Enabled } from "@/lib/config";
 import { getEnvConfig } from "@/lib/config/env.schema";
 import { logger } from "@/lib/logger";
+import { applyOpenAIChatProviderOverridesWithAudit } from "@/lib/openai/provider-overrides";
 import type { Provider } from "@/types/provider";
 import type { SystemSettings } from "@/types/system-config";
 import { HeaderProcessor } from "../headers";
@@ -186,6 +187,30 @@ export async function buildExecutionStep(params: BuildStepParams): Promise<Execu
         session.addSpecialSetting(audit);
         await persistSpecialSettings(session);
       }
+    }
+  }
+
+  // 3b. OpenAI Chat Completions reasoning_effort 覆写（仅本供应商首次 attempt；只改写顶层字段）
+  if (
+    !endpointPolicy.bypassForwarderPreprocessing &&
+    params.applyProviderOverrides &&
+    provider.providerType === "openai-compatible"
+  ) {
+    const { request: overridden, audit } = applyOpenAIChatProviderOverridesWithAudit(
+      provider,
+      session.request.message as Record<string, unknown>,
+      {
+        requestPath: session.requestUrl.pathname,
+        originalModel: session.getRawIntakeModel(),
+        executionModel: session.getCurrentModel(),
+        originalReasoningEffort: session.getRawChatReasoningEffort(),
+        reasoningEffortOverrideRules: getReasoningEffortOverrideRules(provider),
+      }
+    );
+    session.request.message = overridden;
+    if (audit) {
+      session.addSpecialSetting(audit);
+      await persistSpecialSettings(session);
     }
   }
 
