@@ -73,6 +73,16 @@ export function buildPatchDraftFromFormState(
       draft.model_redirects = { set: state.routing.modelRedirects };
     }
   }
+  if (dirtyFields.has("routing.cyberRiskFallbackRules")) {
+    const rules = state.routing.cyberRiskFallbackRules.filter(
+      (rule) => rule.source.trim() && rule.target.trim()
+    );
+    if (rules.length === 0) {
+      draft.cyber_risk_fallback_rules = { clear: true };
+    } else {
+      draft.cyber_risk_fallback_rules = { set: rules };
+    }
+  }
   if (dirtyFields.has("routing.allowedModels")) {
     if (state.routing.allowedModels.length === 0) {
       draft.allowed_models = { clear: true };

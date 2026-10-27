@@ -16,6 +16,7 @@ function createBatchState(): ProviderFormState {
       disableSessionReuse: false,
       overwriteResponseModel: false,
       modelRedirects: [],
+      cyberRiskFallbackRules: [],
       allowedModels: [],
       allowedClients: [],
       blockedClients: [],
@@ -190,6 +191,35 @@ describe("buildPatchDraftFromFormState", () => {
     expect(draft.model_redirects).toEqual({
       set: [{ matchType: "exact", source: "model-a", target: "model-b" }],
     });
+  });
+
+  it("clears cyberRiskFallbackRules when dirty and empty list", () => {
+    const state = createBatchState();
+    const dirty = new Set(["routing.cyberRiskFallbackRules"]);
+
+    const draft = buildPatchDraftFromFormState(state, dirty);
+
+    expect(draft.cyber_risk_fallback_rules).toEqual({ clear: true });
+  });
+
+  it("sets cyberRiskFallbackRules when dirty and drops incomplete rules", () => {
+    const state = createBatchState();
+    state.routing.cyberRiskFallbackRules = [
+      { matchType: "exact", source: "gpt-5.5", target: "gpt-5.4" },
+      { matchType: "exact", source: " ", target: "gpt-5.4" },
+    ];
+    const dirty = new Set(["routing.cyberRiskFallbackRules"]);
+
+    const draft = buildPatchDraftFromFormState(state, dirty);
+
+    expect(draft.cyber_risk_fallback_rules).toEqual({
+      set: [{ matchType: "exact", source: "gpt-5.5", target: "gpt-5.4" }],
+    });
+  });
+
+  it("omits cyberRiskFallbackRules when not dirty", () => {
+    const draft = buildPatchDraftFromFormState(createBatchState(), new Set());
+    expect(draft.cyber_risk_fallback_rules).toBeUndefined();
   });
 
   it("clears allowedModels when dirty and empty array", () => {

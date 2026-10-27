@@ -938,6 +938,7 @@ function sanitizeProvider(
     overwriteResponseModel: provider.overwriteResponseModel,
     providerPrefix: provider.providerPrefix ?? null,
     modelRedirects: provider.modelRedirects,
+    cyberRiskFallbackRules: provider.cyberRiskFallbackRules ?? null,
     activeTimeStart: provider.activeTimeStart,
     activeTimeEnd: provider.activeTimeEnd,
     allowedModels: provider.allowedModels,

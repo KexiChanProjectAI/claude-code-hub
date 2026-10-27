@@ -245,6 +245,10 @@ export const providers = pgTable('providers', {
     ProviderModelRedirectRule[] | Record<string, string> | null
   >(),
 
+  // Cyber risk fallback：上游返回 cybersecurity risk 拒绝时，按执行模型匹配规则切换到 fallback 模型，
+  // 并对同一供应商重试一次（null 或空数组 = 关闭）
+  cyberRiskFallbackRules: jsonb('cyber_risk_fallback_rules').$type<ProviderModelRedirectRule[] | null>(),
+
   // 模型列表：双重语义
   // - Anthropic 提供商：白名单（管理员限制可调度的模型，可选）
   // - 非 Anthropic 提供商：声明列表（提供商声称支持的模型，可选）

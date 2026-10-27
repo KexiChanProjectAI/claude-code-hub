@@ -24,6 +24,7 @@ export type SpecialSetting =
   | AnthropicContext1mHeaderOverrideSpecialSetting
   | LongContextPricingSpecialSetting
   | GeminiFunctionIdRectifierSpecialSetting
+  | CyberRiskFallbackSpecialSetting
   | GeminiGoogleSearchOverrideSpecialSetting
   | PricingResolutionSpecialSetting
   | CodexServiceTierResultSpecialSetting
@@ -293,6 +294,31 @@ export type GeminiFunctionIdRectifierSpecialSetting = {
   retryAttemptNumber: number;
   strippedFunctionCallIds: number;
   strippedFunctionResponseIds: number;
+};
+
+/**
+ * Cyber risk fallback 审计
+ *
+ * 记录：上游以 cybersecurity risk 拒绝请求时，按供应商 cyber_risk_fallback_rules
+ * 将执行模型切换为 fallback 模型，并对同供应商重试一次的行为。
+ */
+export type CyberRiskFallbackSpecialSetting = {
+  type: "cyber_risk_fallback";
+  scope: "request";
+  hit: boolean;
+  providerId: number | null;
+  providerName: string | null;
+  /** 命中的 cyber risk 关键字 */
+  trigger: string;
+  attemptNumber: number;
+  retryAttemptNumber: number;
+  fromModel: string;
+  toModel: string;
+  matchedRule: {
+    matchType: string;
+    source: string;
+    target: string;
+  };
 };
 
 /**

@@ -306,3 +306,43 @@ describe("provider-patch-contract - reasoning effort override validation", () =>
     ).toBe(false);
   });
 });
+
+describe("provider-patch-contract - cyber risk fallback rules", () => {
+  const rules = [
+    { matchType: "exact" as const, source: "gpt-5.5", target: "gpt-5.4" },
+    { matchType: "regex" as const, source: "^gpt-(.+)-codex$", target: "gpt-$1" },
+  ];
+
+  it("normalizes set, clear and no_change drafts", () => {
+    const set = normalizeProviderBatchPatchDraft({ cyber_risk_fallback_rules: { set: rules } });
+    expect(set.ok && set.data.cyber_risk_fallback_rules).toEqual({ mode: "set", value: rules });
+
+    const clear = normalizeProviderBatchPatchDraft({ cyber_risk_fallback_rules: { clear: true } });
+    expect(clear.ok && clear.data.cyber_risk_fallback_rules).toEqual({ mode: "clear" });
+
+    const none = normalizeProviderBatchPatchDraft({});
+    expect(none.ok && none.data.cyber_risk_fallback_rules).toEqual({ mode: "no_change" });
+  });
+
+  it.each([
+    [[{ matchType: "exact", source: "", target: "gpt-5.4" }]],
+    [[{ matchType: "glob", source: "gpt", target: "gpt-5.4" }]],
+    ["not-a-list"],
+  ])("rejects an invalid set value %j", (value) => {
+    const result = normalizeProviderBatchPatchDraft({ cyber_risk_fallback_rules: { set: value } });
+    expect(result.ok).toBe(false);
+  });
+
+  it("builds apply updates for set and clear (clear writes null)", () => {
+    const set = normalizeProviderBatchPatchDraft({ cyber_risk_fallback_rules: { set: rules } });
+    if (!set.ok) throw new Error("expected ok");
+    const setUpdates = buildProviderBatchApplyUpdates(set.data);
+    expect(setUpdates.ok && setUpdates.data.cyber_risk_fallback_rules).toEqual(rules);
+    expect(hasProviderBatchPatchChanges(set.data)).toBe(true);
+
+    const clear = normalizeProviderBatchPatchDraft({ cyber_risk_fallback_rules: { clear: true } });
+    if (!clear.ok) throw new Error("expected ok");
+    const clearUpdates = buildProviderBatchApplyUpdates(clear.data);
+    expect(clearUpdates.ok && clearUpdates.data.cyber_risk_fallback_rules).toBeNull();
+  });
+});

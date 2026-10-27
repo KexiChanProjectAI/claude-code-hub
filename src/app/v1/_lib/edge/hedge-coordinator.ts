@@ -396,6 +396,7 @@ async function startAttempt(
       thinkingBudgetRetried: false,
       thinkingEffortConflictRetried: false,
       geminiFunctionIdRetried: false,
+      cyberRiskFallbackRetried: false,
     },
     status: "inflight",
     thresholdTriggered: false,

@@ -578,7 +578,47 @@
       "none": "Not configured",
       "redirects": "{count} redirects"
     },
-    "title": "Routing"
+    "title": "Routing",
+    "cyberRiskFallback": {
+      "title": "Cyber Risk Fallback",
+      "desc": "When the upstream rejects a request for possible cybersecurity risk, switch to a fallback model and retry this provider once.",
+      "label": "Enable cyber risk fallback",
+      "help": "Rules match the execution model (the model actually sent upstream, after redirects), then the original requested model. The first matching rule wins. If the fallback model is also rejected, the error is returned as before.",
+      "editor": {
+        "add": "Add",
+        "addNewRule": "Add New Rule",
+        "alreadyExists": "Model \"{model}\" already has a fallback rule",
+        "currentRules": "Current Rules ({count})",
+        "matchTypeLabel": "Match Type",
+        "matchTypeExact": "Exact",
+        "matchTypePrefix": "Prefix",
+        "matchTypeSuffix": "Suffix",
+        "matchTypeContains": "Contains",
+        "matchTypeRegex": "Regex",
+        "orderHint": "Top rules match first",
+        "maxRules": "You can add up to {max, number} fallback rules",
+        "saveRule": "Save rule",
+        "cancelEdit": "Cancel edit",
+        "moveRuleUp": "Move rule up",
+        "moveRuleDown": "Move rule down",
+        "editRule": "Edit rule",
+        "deleteRule": "Delete rule",
+        "ruleMoved": "This rule changed while you were editing. Please try again.",
+        "description": "Map the model that was rejected for cybersecurity risk to a fallback model.",
+        "emptyState": "No fallback rules yet. Without rules, cyber risk refusals are returned to the client immediately.",
+        "sourceEmpty": "Execution model cannot be empty",
+        "sourceTooLong": "Execution model name is too long (max {max} characters)",
+        "sourceModel": "Execution Model",
+        "sourcePlaceholder": "e.g. gpt-5.5",
+        "regexInvalid": "Regex pattern is invalid",
+        "regexUnsafe": "Regex pattern has potential ReDoS risk",
+        "targetEmpty": "Fallback model cannot be empty",
+        "targetTooLong": "Fallback model name is too long (max {max} characters)",
+        "targetModel": "Fallback Model",
+        "targetPlaceholder": "e.g. gpt-5.4",
+        "regexCaptureHint": "Regex rules can reference capture groups in the target: source ^gpt-(.+)-codex$ with target gpt-$1 falls back from gpt-5.5-codex to gpt-5.5."
+      }
+    }
   },
   "timeout": {
     "desc": "Configure request timeout duration, 0 means disable timeout",

@@ -4522,6 +4522,8 @@ export interface operations {
                             providerPrefix: string | null;
                             /** @description Model redirect rules. */
                             modelRedirects: unknown[] | null;
+                            /** @description Cyber risk fallback rules. When the upstream rejects a request for possible cybersecurity risk, the first rule whose source matches the execution model switches to the target model and retries the same provider once. */
+                            cyberRiskFallbackRules: unknown[] | null;
                             /** @description Scheduled active start time in HH:mm. */
                             activeTimeStart: string | null;
                             /** @description Scheduled active end time in HH:mm. */
@@ -4893,6 +4895,8 @@ export interface operations {
                     provider_prefix?: string | null;
                     /** @description Model redirect rules. */
                     model_redirects?: unknown[] | null;
+                    /** @description Cyber risk fallback rules (source = execution model, target = fallback model). */
+                    cyber_risk_fallback_rules?: unknown[] | null;
                     /** @description Scheduled active start time. */
                     active_time_start?: string | null;
                     /** @description Scheduled active end time. */
@@ -5101,6 +5105,8 @@ export interface operations {
                         providerPrefix: string | null;
                         /** @description Model redirect rules. */
                         modelRedirects: unknown[] | null;
+                        /** @description Cyber risk fallback rules. When the upstream rejects a request for possible cybersecurity risk, the first rule whose source matches the execution model switches to the target model and retries the same provider once. */
+                        cyberRiskFallbackRules: unknown[] | null;
                         /** @description Scheduled active start time in HH:mm. */
                         activeTimeStart: string | null;
                         /** @description Scheduled active end time in HH:mm. */
@@ -5480,6 +5486,8 @@ export interface operations {
                         providerPrefix: string | null;
                         /** @description Model redirect rules. */
                         modelRedirects: unknown[] | null;
+                        /** @description Cyber risk fallback rules. When the upstream rejects a request for possible cybersecurity risk, the first rule whose source matches the execution model switches to the target model and retries the same provider once. */
+                        cyberRiskFallbackRules: unknown[] | null;
                         /** @description Scheduled active start time in HH:mm. */
                         activeTimeStart: string | null;
                         /** @description Scheduled active end time in HH:mm. */
@@ -6026,6 +6034,8 @@ export interface operations {
                     provider_prefix?: string | null;
                     /** @description Model redirect rules. */
                     model_redirects?: unknown[] | null;
+                    /** @description Cyber risk fallback rules (source = execution model, target = fallback model). */
+                    cyber_risk_fallback_rules?: unknown[] | null;
                     /** @description Scheduled active start time. */
                     active_time_start?: string | null;
                     /** @description Scheduled active end time. */
@@ -6240,6 +6250,8 @@ export interface operations {
                         providerPrefix: string | null;
                         /** @description Model redirect rules. */
                         modelRedirects: unknown[] | null;
+                        /** @description Cyber risk fallback rules. When the upstream rejects a request for possible cybersecurity risk, the first rule whose source matches the execution model switches to the target model and retries the same provider once. */
+                        cyberRiskFallbackRules: unknown[] | null;
                         /** @description Scheduled active start time in HH:mm. */
                         activeTimeStart: string | null;
                         /** @description Scheduled active end time in HH:mm. */
@@ -9329,6 +9341,8 @@ export interface operations {
                         group_tag?: string | null;
                         /** @description Model redirect rules. */
                         model_redirects?: unknown[] | null;
+                        /** @description Cyber risk fallback rules (source = execution model, target = fallback model). */
+                        cyber_risk_fallback_rules?: unknown[] | null;
                         /** @description Allowed model rules. */
                         allowed_models?: unknown[] | null;
                         /** @description Allowed client patterns. */

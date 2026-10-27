@@ -135,6 +135,16 @@ function buildSettingKey(setting: SpecialSetting): string {
         setting.strippedFunctionCallIds,
         setting.strippedFunctionResponseIds,
       ]);
+    case "cyber_risk_fallback":
+      return JSON.stringify([
+        setting.type,
+        setting.hit,
+        setting.providerId ?? null,
+        setting.attemptNumber,
+        setting.retryAttemptNumber,
+        setting.fromModel,
+        setting.toModel,
+      ]);
     case "gemini_google_search_override":
       return JSON.stringify([
         setting.type,

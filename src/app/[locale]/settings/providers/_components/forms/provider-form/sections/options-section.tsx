@@ -1,8 +1,9 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Clock, Info, Settings, Timer } from "lucide-react";
+import { Clock, Info, Settings, ShieldAlert, Timer } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
@@ -23,6 +24,7 @@ import type {
   CodexTextVerbosityPreference,
   GeminiGoogleSearchPreference,
 } from "@/types/provider";
+import { ModelRedirectEditor } from "../../../model-redirect-editor";
 import { ReasoningEffortRuleEditor } from "../../../reasoning-effort-rule-editor";
 import { ServiceTierRuleEditor } from "../../../service-tier-rule-editor";
 import { ThinkingBudgetEditor } from "../../../thinking-budget-editor";
@@ -42,6 +44,11 @@ export function OptionsSection({ subSectionRefs }: OptionsSectionProps) {
   const isEdit = mode === "edit";
   const isBatch = mode === "batch";
   const providerType = state.routing.providerType;
+  const cyberRiskFallbackRules = state.routing.cyberRiskFallbackRules;
+  const [cyberRiskFallbackEnabled, setCyberRiskFallbackEnabled] = useState(
+    cyberRiskFallbackRules.length > 0
+  );
+  const showCyberRiskFallbackEditor = cyberRiskFallbackEnabled || cyberRiskFallbackRules.length > 0;
 
   return (
     <TooltipProvider>
@@ -554,6 +561,43 @@ export function OptionsSection({ subSectionRefs }: OptionsSectionProps) {
               </SmartInputWrapper>
             </SectionCard>
           )}
+
+          {/* Cyber Risk Fallback - all provider types */}
+          <SectionCard
+            title={t("sections.routing.cyberRiskFallback.title")}
+            description={t("sections.routing.cyberRiskFallback.desc")}
+            icon={ShieldAlert}
+          >
+            <div className="space-y-4">
+              <ToggleRow
+                label={t("sections.routing.cyberRiskFallback.label")}
+                description={t("sections.routing.cyberRiskFallback.help")}
+              >
+                <Switch
+                  checked={showCyberRiskFallbackEditor}
+                  onCheckedChange={(checked) => {
+                    setCyberRiskFallbackEnabled(checked);
+                    if (!checked) {
+                      dispatch({ type: "SET_CYBER_RISK_FALLBACK_RULES", payload: [] });
+                    }
+                  }}
+                  disabled={state.ui.isPending}
+                  aria-label={t("sections.routing.cyberRiskFallback.label")}
+                  data-testid="cyber-risk-fallback-switch"
+                />
+              </ToggleRow>
+              {showCyberRiskFallbackEditor && (
+                <ModelRedirectEditor
+                  value={cyberRiskFallbackRules}
+                  onChange={(rules) =>
+                    dispatch({ type: "SET_CYBER_RISK_FALLBACK_RULES", payload: rules })
+                  }
+                  disabled={state.ui.isPending}
+                  i18nNamespace="settings.providers.form.sections.routing.cyberRiskFallback.editor"
+                />
+              )}
+            </div>
+          </SectionCard>
 
           {/* Scheduled Active Time */}
           <div ref={subSectionRefs?.activeTime}>

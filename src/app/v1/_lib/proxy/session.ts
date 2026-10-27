@@ -176,6 +176,14 @@ function extractRawTopLevelString(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
+export type CyberRiskFallbackState = {
+  readonly providerId: number;
+  /** 被拒绝时的执行模型 */
+  readonly fromModel: string;
+  /** fallback 后发往上游的模型 */
+  readonly model: string;
+};
+
 export interface EdgeSessionSnapshot {
   v: 1;
   startTime: number;
@@ -216,6 +224,7 @@ export interface EdgeSessionSnapshot {
     providerId: number;
     redirect: NonNullable<ProviderChainItem["modelRedirect"]>;
   } | null;
+  cyberRiskFallback?: CyberRiskFallbackState | null;
   providerChain: ProviderChainItem[];
   routingTrace: RoutingTraceV1 | null;
   routingTraceSummaryDraft: RoutingTraceSummaryV1 | null;
@@ -363,6 +372,10 @@ export class ProxySession {
     providerId: number;
     redirect: NonNullable<ProviderChainItem["modelRedirect"]>;
   } | null = null;
+
+  // Cyber risk fallback 模型覆写：命中 cybersecurity risk 拒绝后，对同一供应商的后续 attempt
+  // 使用 fallback 模型（由 ModelRedirector 在每次 attempt 时应用）。仅对记录的 providerId 生效。
+  private cyberRiskFallback: CyberRiskFallbackState | null = null;
 
   // 上游决策链（记录尝试的供应商列表）
   private providerChain: ProviderChainItem[];
@@ -686,6 +699,7 @@ export class ProxySession {
       originalModelName: this.originalModelName,
       originalUrlPathname: this.originalUrlPathname,
       currentModelRedirect: this.currentModelRedirect,
+      cyberRiskFallback: this.cyberRiskFallback,
       providerChain: this.providerChain,
       routingTrace: this.routingTrace,
       routingTraceSummaryDraft: this.routingTraceSummaryDraft,
@@ -751,6 +765,7 @@ export class ProxySession {
     session.originalModelName = snapshot.originalModelName;
     session.originalUrlPathname = snapshot.originalUrlPathname;
     session.currentModelRedirect = snapshot.currentModelRedirect;
+    session.cyberRiskFallback = snapshot.cyberRiskFallback ?? null;
     session.providerChain = snapshot.providerChain;
     session.routingTrace = snapshot.routingTrace;
     session.routingTraceSummaryDraft = snapshot.routingTraceSummaryDraft;
@@ -1554,6 +1569,31 @@ export class ProxySession {
 
   clearCurrentModelRedirect(): void {
     this.currentModelRedirect = null;
+  }
+
+  /** 记录 cyber risk fallback：后续对该供应商的 attempt 改用 fallback 模型 */
+  setCyberRiskFallbackModel(providerId: number, fromModel: string, model: string): void {
+    this.cyberRiskFallback = { providerId, fromModel, model };
+  }
+
+  /** 获取指定供应商生效的 cyber risk fallback（其它供应商返回 null） */
+  getCyberRiskFallbackModel(providerId: number): CyberRiskFallbackState | null {
+    if (!this.cyberRiskFallback || this.cyberRiskFallback.providerId !== providerId) {
+      return null;
+    }
+    return this.cyberRiskFallback;
+  }
+
+  getCyberRiskFallbackState(): CyberRiskFallbackState | null {
+    return this.cyberRiskFallback ? { ...this.cyberRiskFallback } : null;
+  }
+
+  setCyberRiskFallbackState(state: CyberRiskFallbackState | null): void {
+    this.cyberRiskFallback = state ? { ...state } : null;
+  }
+
+  clearCyberRiskFallbackModel(): void {
+    this.cyberRiskFallback = null;
   }
 
   getCurrentModelRedirect(providerId?: number): ProviderChainItem["modelRedirect"] | undefined {

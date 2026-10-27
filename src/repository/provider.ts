@@ -233,6 +233,9 @@ export async function createProvider(
     disableSessionReuse: providerData.disable_session_reuse ?? false,
     overwriteResponseModel: providerData.overwrite_response_model ?? false,
     modelRedirects: normalizeProviderModelRedirectRules(providerData.model_redirects),
+    cyberRiskFallbackRules: normalizeProviderModelRedirectRules(
+      providerData.cyber_risk_fallback_rules
+    ),
     allowedModels: normalizeAllowedModelRules(providerData.allowed_models),
     allowedClients: providerData.allowed_clients ?? [],
     blockedClients: providerData.blocked_clients ?? [],
@@ -331,6 +334,7 @@ export async function createProvider(
         disableSessionReuse: providers.disableSessionReuse,
         overwriteResponseModel: providers.overwriteResponseModel,
         modelRedirects: providers.modelRedirects,
+        cyberRiskFallbackRules: providers.cyberRiskFallbackRules,
         allowedModels: providers.allowedModels,
         allowedClients: providers.allowedClients,
         blockedClients: providers.blockedClients,
@@ -429,6 +433,7 @@ export async function findProviderList(
       disableSessionReuse: providers.disableSessionReuse,
       overwriteResponseModel: providers.overwriteResponseModel,
       modelRedirects: providers.modelRedirects,
+      cyberRiskFallbackRules: providers.cyberRiskFallbackRules,
       allowedModels: providers.allowedModels,
       allowedClients: providers.allowedClients,
       blockedClients: providers.blockedClients,
@@ -527,6 +532,7 @@ export async function findAllProvidersFresh(): Promise<ProviderWithReasoningEffo
       disableSessionReuse: providers.disableSessionReuse,
       overwriteResponseModel: providers.overwriteResponseModel,
       modelRedirects: providers.modelRedirects,
+      cyberRiskFallbackRules: providers.cyberRiskFallbackRules,
       allowedModels: providers.allowedModels,
       allowedClients: providers.allowedClients,
       blockedClients: providers.blockedClients,
@@ -631,6 +637,7 @@ export async function findProviderById(
       disableSessionReuse: providers.disableSessionReuse,
       overwriteResponseModel: providers.overwriteResponseModel,
       modelRedirects: providers.modelRedirects,
+      cyberRiskFallbackRules: providers.cyberRiskFallbackRules,
       allowedModels: providers.allowedModels,
       allowedClients: providers.allowedClients,
       blockedClients: providers.blockedClients,
@@ -731,6 +738,10 @@ export async function updateProvider(
     dbData.overwriteResponseModel = providerData.overwrite_response_model;
   if (providerData.model_redirects !== undefined)
     dbData.modelRedirects = normalizeProviderModelRedirectRules(providerData.model_redirects);
+  if (providerData.cyber_risk_fallback_rules !== undefined)
+    dbData.cyberRiskFallbackRules = normalizeProviderModelRedirectRules(
+      providerData.cyber_risk_fallback_rules
+    );
   if (providerData.allowed_models !== undefined)
     dbData.allowedModels = normalizeAllowedModelRules(providerData.allowed_models);
   if (providerData.allowed_clients !== undefined)
@@ -910,6 +921,7 @@ export async function updateProvider(
         disableSessionReuse: providers.disableSessionReuse,
         overwriteResponseModel: providers.overwriteResponseModel,
         modelRedirects: providers.modelRedirects,
+        cyberRiskFallbackRules: providers.cyberRiskFallbackRules,
         allowedModels: providers.allowedModels,
         allowedClients: providers.allowedClients,
         blockedClients: providers.blockedClients,
@@ -1173,6 +1185,7 @@ export interface BatchProviderUpdates {
   costMultiplier?: string;
   groupTag?: string | null;
   modelRedirects?: ProviderModelRedirectRule[] | null;
+  cyberRiskFallbackRules?: ProviderModelRedirectRule[] | null;
   allowedModels?: AllowedModelRuleInput[] | null;
   allowedClients?: string[] | null;
   blockedClients?: string[] | null;
@@ -1344,6 +1357,9 @@ export async function updateProvidersBatch(
   }
   if (updates.modelRedirects !== undefined) {
     setClauses.modelRedirects = updates.modelRedirects;
+  }
+  if (updates.cyberRiskFallbackRules !== undefined) {
+    setClauses.cyberRiskFallbackRules = updates.cyberRiskFallbackRules;
   }
   if (updates.allowedModels !== undefined) {
     setClauses.allowedModels = updates.allowedModels;

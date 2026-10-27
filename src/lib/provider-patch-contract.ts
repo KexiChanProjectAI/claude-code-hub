@@ -289,6 +289,7 @@ const PATCH_FIELDS: ProviderBatchPatchFieldWithReasoningEffortRules[] = [
   "cost_multiplier",
   "group_tag",
   "model_redirects",
+  "cyber_risk_fallback_rules",
   "allowed_models",
   "allowed_clients",
   "blocked_clients",
@@ -351,6 +352,7 @@ const CLEARABLE_FIELDS: Record<ProviderBatchPatchFieldWithReasoningEffortRules, 
   cost_multiplier: false,
   group_tag: true,
   model_redirects: true,
+  cyber_risk_fallback_rules: true,
   allowed_models: true,
   allowed_clients: true,
   blocked_clients: true,
@@ -566,6 +568,7 @@ function isValidSetValue(
     case "upstream_quota_threshold_percent":
       return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 99;
     case "model_redirects":
+    case "cyber_risk_fallback_rules":
       return PROVIDER_MODEL_REDIRECT_RULE_LIST_SCHEMA.safeParse(value).success;
     case "allowed_models":
       return PROVIDER_ALLOWED_MODEL_RULE_INPUT_LIST_SCHEMA.safeParse(value).success;
@@ -734,6 +737,12 @@ export function normalizeProviderBatchPatchDraft(
 
   const modelRedirects = normalizePatchField("model_redirects", typedDraft.model_redirects);
   if (!modelRedirects.ok) return modelRedirects;
+
+  const cyberRiskFallbackRules = normalizePatchField(
+    "cyber_risk_fallback_rules",
+    typedDraft.cyber_risk_fallback_rules
+  );
+  if (!cyberRiskFallbackRules.ok) return cyberRiskFallbackRules;
 
   const allowedModels = normalizePatchField("allowed_models", typedDraft.allowed_models);
   if (!allowedModels.ok) return allowedModels;
@@ -975,6 +984,7 @@ export function normalizeProviderBatchPatchDraft(
       cost_multiplier: costMultiplier.data,
       group_tag: groupTag.data,
       model_redirects: modelRedirects.data,
+      cyber_risk_fallback_rules: cyberRiskFallbackRules.data,
       allowed_models: allowedModels.data,
       allowed_clients: allowedClients.data,
       blocked_clients: blockedClients.data,
@@ -1059,6 +1069,10 @@ function applyPatchField<T>(
         return { ok: true, data: undefined };
       case "model_redirects":
         updates.model_redirects = patch.value as ProviderBatchApplyUpdates["model_redirects"];
+        return { ok: true, data: undefined };
+      case "cyber_risk_fallback_rules":
+        updates.cyber_risk_fallback_rules =
+          patch.value as ProviderBatchApplyUpdates["cyber_risk_fallback_rules"];
         return { ok: true, data: undefined };
       case "allowed_models":
         if (!Array.isArray(patch.value) || patch.value.length === 0) {
@@ -1249,6 +1263,9 @@ function applyPatchField<T>(
     case "model_redirects":
       updates.model_redirects = null;
       return { ok: true, data: undefined };
+    case "cyber_risk_fallback_rules":
+      updates.cyber_risk_fallback_rules = null;
+      return { ok: true, data: undefined };
     case "allowed_models":
       updates.allowed_models = null;
       return { ok: true, data: undefined };
@@ -1363,6 +1380,7 @@ export function buildProviderBatchApplyUpdates(
     ["cost_multiplier", patch.cost_multiplier],
     ["group_tag", patch.group_tag],
     ["model_redirects", patch.model_redirects],
+    ["cyber_risk_fallback_rules", patch.cyber_risk_fallback_rules],
     ["allowed_models", patch.allowed_models],
     ["allowed_clients", patch.allowed_clients],
     ["blocked_clients", patch.blocked_clients],
@@ -1440,6 +1458,7 @@ export function hasProviderBatchPatchChanges(
     patch.cost_multiplier.mode !== "no_change" ||
     patch.group_tag.mode !== "no_change" ||
     patch.model_redirects.mode !== "no_change" ||
+    patch.cyber_risk_fallback_rules.mode !== "no_change" ||
     patch.allowed_models.mode !== "no_change" ||
     patch.allowed_clients.mode !== "no_change" ||
     patch.blocked_clients.mode !== "no_change" ||

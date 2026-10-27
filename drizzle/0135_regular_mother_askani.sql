@@ -1,0 +1,1 @@
+ALTER TABLE "providers" ADD COLUMN "cyber_risk_fallback_rules" jsonb;

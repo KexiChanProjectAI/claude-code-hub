@@ -242,6 +242,12 @@ export const ProviderSummarySchema = z
       "Provider prefix (normalized to end with a single '/'). When set, only model IDs starting with this prefix are routed to the provider, and the prefix is stripped before forwarding upstream."
     ),
     modelRedirects: z.array(z.unknown()).nullable().describe("Model redirect rules."),
+    cyberRiskFallbackRules: z
+      .array(z.unknown())
+      .nullable()
+      .describe(
+        "Cyber risk fallback rules. When the upstream rejects a request for possible cybersecurity risk, the first rule whose source matches the execution model switches to the target model and retries the same provider once."
+      ),
     activeTimeStart: NullableStringSchema.describe("Scheduled active start time in HH:mm."),
     activeTimeEnd: NullableStringSchema.describe("Scheduled active end time in HH:mm."),
     allowedModels: z.array(z.unknown()).nullable().describe("Allowed model rules."),
@@ -466,6 +472,11 @@ const ProviderBatchUpdateFieldsSchema = z
     cost_multiplier: z.number().min(0).optional().describe("Provider cost multiplier."),
     group_tag: z.string().max(200).nullable().optional().describe("Provider group tag."),
     model_redirects: z.array(z.unknown()).nullable().optional().describe("Model redirect rules."),
+    cyber_risk_fallback_rules: z
+      .array(z.unknown())
+      .nullable()
+      .optional()
+      .describe("Cyber risk fallback rules (source = execution model, target = fallback model)."),
     allowed_models: z.array(z.unknown()).nullable().optional().describe("Allowed model rules."),
     allowed_clients: z.array(z.string()).optional().describe("Allowed client patterns."),
     blocked_clients: z.array(z.string()).optional().describe("Blocked client patterns."),
@@ -677,6 +688,11 @@ const ProviderCreateObjectSchema = z
         "Provider prefix. Trailing '/' characters are trimmed and a single '/' is appended; empty clears it. When set, only model IDs starting with this prefix (case-insensitive) are routed to the provider, and the prefix is stripped before forwarding upstream."
       ),
     model_redirects: z.array(z.unknown()).nullable().optional().describe("Model redirect rules."),
+    cyber_risk_fallback_rules: z
+      .array(z.unknown())
+      .nullable()
+      .optional()
+      .describe("Cyber risk fallback rules (source = execution model, target = fallback model)."),
     active_time_start: TimeOfDaySchema.nullable()
       .optional()
       .describe("Scheduled active start time."),

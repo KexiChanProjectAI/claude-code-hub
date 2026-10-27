@@ -120,6 +120,7 @@ export function toProvider(dbProvider: any): ProviderWithReasoningEffortOverride
     disableSessionReuse: dbProvider?.disableSessionReuse ?? false,
     overwriteResponseModel: dbProvider?.overwriteResponseModel ?? false,
     modelRedirects: normalizeProviderModelRedirectRules(dbProvider?.modelRedirects),
+    cyberRiskFallbackRules: normalizeProviderModelRedirectRules(dbProvider?.cyberRiskFallbackRules),
     activeTimeStart: dbProvider?.activeTimeStart ?? null,
     activeTimeEnd: dbProvider?.activeTimeEnd ?? null,
     mcpPassthroughType: dbProvider?.mcpPassthroughType ?? "none",

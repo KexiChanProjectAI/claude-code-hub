@@ -8,6 +8,7 @@
 
 ### 新增
 
+- 供应商新增「Cyber Risk 降级重试」规则（`cyber_risk_fallback_rules`，适用所有供应商类型）：上游以 cybersecurity risk（`cyber_policy` / "flagged for possible cybersecurity risk"）拒绝请求时，无论是真实 4xx、假 200（如 `FAKE_200_OPENAI_RESPONSE_FAILED`）还是流式门控提交前的错误帧，按规则匹配执行模型（未命中再匹配原始请求模型），切换到备用模型并对同一供应商重试一次；计费仍按原始模型，记录 `cyber_risk_fallback` 审计。未配置规则时保持原有行为（直接返回、不切换供应商）
 - OpenAI Chat Completions（`/v1/chat/completions`）支持按供应商覆写思考强度：`openai-compatible` 供应商复用条件式 reasoning effort 规则（按原始/执行模型与客户端原值匹配），命中后改写顶层 `reasoning_effort`（none/minimal/low/medium/high/xhigh/max），并记录覆写审计；本地转发与 edge 执行器一致
 - Session 调试正文 Redis 占用大幅下降：同一请求原本写入五份内容相同的 key（requestBody、messages、before body/messages、after body），现合并为一个 Hash，相同正文只存一份，messages 读取时由正文派生；before/after 与基准不同时以基准正文为 zstd 字典压缩，只占差异的几百字节。所有留存正文改为 zstd 等级 1 的原始二进制帧（去掉 base64 的 33% 膨胀）。新增 `SESSION_REQUEST_BODY_DEDUP_ENABLED`（默认 true）与 `SESSION_PAYLOAD_ZSTD_LEVEL`（默认 1）；旧 key、base64 信封与明文仍可读回
 - 代理按客户端 `Accept-Encoding: gzip` 压缩发回客户端的响应（`/v1`、`/v1beta` 及无前缀别名，含 JSON、SSE 与错误响应）；SSE 逐事件 flush，客户端断开照常传回上游。新增 `ENABLE_CLIENT_RESPONSE_GZIP`（默认 true）与 `CLIENT_RESPONSE_GZIP_MIN_BYTES`（默认 1024）；Responses WebSocket 内部回环请求强制明文。客户端 gzip/deflate/br/zstd 压缩的请求体沿用既有自动解压

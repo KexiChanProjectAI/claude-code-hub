@@ -687,6 +687,7 @@ export const CreateProviderSchema = z
     overwrite_response_model: z.boolean().optional().default(false),
     provider_prefix: PROVIDER_PREFIX_SCHEMA,
     model_redirects: PROVIDER_MODEL_REDIRECT_RULES_SCHEMA,
+    cyber_risk_fallback_rules: PROVIDER_MODEL_REDIRECT_RULES_SCHEMA,
     // Scheduled active time window (HH:mm format)
     active_time_start: z
       .string()
@@ -945,6 +946,7 @@ export const UpdateProviderSchema = z
     overwrite_response_model: z.boolean().optional(),
     provider_prefix: PROVIDER_PREFIX_SCHEMA,
     model_redirects: PROVIDER_MODEL_REDIRECT_RULES_SCHEMA,
+    cyber_risk_fallback_rules: PROVIDER_MODEL_REDIRECT_RULES_SCHEMA,
     active_time_start: z
       .string()
       .regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/, "active_time_start must be HH:mm format")

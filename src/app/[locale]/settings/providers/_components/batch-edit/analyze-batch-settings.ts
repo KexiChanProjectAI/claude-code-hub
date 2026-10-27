@@ -39,6 +39,7 @@ export interface BatchSettingsAnalysis {
     disableSessionReuse: FieldAnalysisResult<boolean>;
     overwriteResponseModel: FieldAnalysisResult<boolean>;
     modelRedirects: FieldAnalysisResult<ProviderModelRedirectRule[]>;
+    cyberRiskFallbackRules: FieldAnalysisResult<ProviderModelRedirectRule[]>;
     allowedModels: FieldAnalysisResult<AllowedModelRule[]>;
     allowedClients: FieldAnalysisResult<string[]>;
     blockedClients: FieldAnalysisResult<string[]>;
@@ -137,6 +138,7 @@ export function analyzeBatchProviderSettings(providers: ProviderDisplay[]): Batc
       disableSessionReuse: analyzeField(providers, (p) => p.disableSessionReuse),
       overwriteResponseModel: analyzeField(providers, (p) => p.overwriteResponseModel),
       modelRedirects: analyzeField(providers, (p) => p.modelRedirects ?? []),
+      cyberRiskFallbackRules: analyzeField(providers, (p) => p.cyberRiskFallbackRules ?? []),
       allowedModels: analyzeField(
         providers,
         (p) => normalizeAllowedModelRules(p.allowedModels) ?? []

@@ -377,6 +377,7 @@ export async function getProviders(): Promise<ProviderDisplay[]> {
         disableSessionReuse: provider.disableSessionReuse,
         overwriteResponseModel: provider.overwriteResponseModel,
         modelRedirects: provider.modelRedirects,
+        cyberRiskFallbackRules: provider.cyberRiskFallbackRules ?? null,
         activeTimeStart: provider.activeTimeStart,
         activeTimeEnd: provider.activeTimeEnd,
         allowedModels: provider.allowedModels,
@@ -586,6 +587,7 @@ export async function addProvider(data: {
   preserve_client_ip?: boolean;
   disable_session_reuse?: boolean;
   model_redirects?: ProviderModelRedirectRule[] | null;
+  cyber_risk_fallback_rules?: ProviderModelRedirectRule[] | null;
   active_time_start?: string | null;
   active_time_end?: string | null;
   allowed_models?: AllowedModelRuleInput[] | null;
@@ -831,6 +833,7 @@ export async function editProvider(
     preserve_client_ip?: boolean;
     disable_session_reuse?: boolean;
     model_redirects?: ProviderModelRedirectRule[] | null;
+    cyber_risk_fallback_rules?: ProviderModelRedirectRule[] | null;
     active_time_start?: string | null;
     active_time_end?: string | null;
     allowed_models?: AllowedModelRuleInput[] | null;
@@ -1675,6 +1678,7 @@ const SINGLE_EDIT_PREIMAGE_FIELD_TO_PROVIDER_KEY: Record<
   active_time_start: "activeTimeStart",
   active_time_end: "activeTimeEnd",
   model_redirects: "modelRedirects",
+  cyber_risk_fallback_rules: "cyberRiskFallbackRules",
   allowed_models: "allowedModels",
   allowed_clients: "allowedClients",
   blocked_clients: "blockedClients",
@@ -1879,6 +1883,9 @@ function mapApplyUpdatesToRepositoryFormat(
   if (applyUpdates.model_redirects !== undefined) {
     result.modelRedirects = applyUpdates.model_redirects;
   }
+  if (applyUpdates.cyber_risk_fallback_rules !== undefined) {
+    result.cyberRiskFallbackRules = applyUpdates.cyber_risk_fallback_rules;
+  }
   if (applyUpdates.allowed_models !== undefined) {
     result.allowedModels = applyUpdates.allowed_models;
   }
@@ -2036,6 +2043,7 @@ const PATCH_FIELD_TO_PROVIDER_KEY: Record<
   cost_multiplier: "costMultiplier",
   group_tag: "groupTag",
   model_redirects: "modelRedirects",
+  cyber_risk_fallback_rules: "cyberRiskFallbackRules",
   allowed_models: "allowedModels",
   allowed_clients: "allowedClients",
   blocked_clients: "blockedClients",
@@ -2969,6 +2977,7 @@ export interface BatchUpdateProvidersParams {
     cost_multiplier?: number;
     group_tag?: string | null;
     model_redirects?: ProviderModelRedirectRule[] | null;
+    cyber_risk_fallback_rules?: ProviderModelRedirectRule[] | null;
     allowed_models?: AllowedModelRuleInput[] | null;
     allowed_clients?: string[];
     blocked_clients?: string[];
@@ -3076,6 +3085,21 @@ export async function batchUpdateProviders(
         }
         repositoryUpdates.modelRedirects = normalizeProviderModelRedirectRules(
           parsedRedirectRules.data
+        );
+      }
+    }
+    if (updates.cyber_risk_fallback_rules !== undefined) {
+      if (updates.cyber_risk_fallback_rules === null) {
+        repositoryUpdates.cyberRiskFallbackRules = null;
+      } else {
+        const parsedFallbackRules = PROVIDER_MODEL_REDIRECT_RULE_LIST_SCHEMA.safeParse(
+          updates.cyber_risk_fallback_rules
+        );
+        if (!parsedFallbackRules.success) {
+          return { ok: false, error: "Cyber risk fallback 规则格式无效" };
+        }
+        repositoryUpdates.cyberRiskFallbackRules = normalizeProviderModelRedirectRules(
+          parsedFallbackRules.data
         );
       }
     }

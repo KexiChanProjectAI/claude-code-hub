@@ -120,6 +120,7 @@ export async function enterProvider(
       thinkingBudgetRetried: false,
       thinkingEffortConflictRetried: false,
       geminiFunctionIdRetried: false,
+      cyberRiskFallbackRetried: false,
     },
     applyProviderOverrides: true,
     isMcpRequest: resolved.isMcpRequest,

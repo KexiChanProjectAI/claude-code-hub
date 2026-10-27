@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { ProxySession } from "@/app/v1/_lib/proxy/session";
+import { matchCyberRiskKeyword } from "@/lib/cyber-risk-detection";
 import { logger } from "@/lib/logger";
 import { getRedisClient } from "@/lib/redis/client";
 import type {
@@ -17,13 +18,6 @@ export type ClientProblemClass =
   | { bucket: "cyber"; kind: "cyber" }
   | { bucket: "general"; kind: "timeout" | "server" }
   | null;
-
-const CYBER_KEYWORD_RES: readonly RegExp[] = [
-  /\bcyber_policy\b/iu,
-  /flagged\s+for\s+possible\s+cybersecurity\s+risk/iu,
-  /trusted\s+access\s+for\s+cyber/iu,
-  /cybersecurity\s+risk/iu,
-];
 
 const TIMEOUT_RE =
   /ETIMEDOUT|UND_ERR_CONNECT_TIMEOUT|UND_ERR_HEADERS_TIMEOUT|UND_ERR_BODY_TIMEOUT|STREAM_IDLE_TIMEOUT|STREAM_RESPONSE_TIMEOUT|\btimeout\b/i;
@@ -139,7 +133,7 @@ export function classifyClientProblem(input: {
 }): ClientProblemClass {
   if (input.isWarmup) return null;
   if (input.statusCode === 499) return null;
-  if (matchCyberKeyword(input.errorText)) return { bucket: "cyber", kind: "cyber" };
+  if (matchCyberRiskKeyword(input.errorText)) return { bucket: "cyber", kind: "cyber" };
   if (TIMEOUT_STATUS.has(input.statusCode) || TIMEOUT_RE.test(input.errorText)) {
     return { bucket: "general", kind: "timeout" };
   }
@@ -191,17 +185,9 @@ function collectItemErrorParts(item: ProviderChainItem, parts: string[]): void {
   }
 }
 
-function matchCyberKeyword(text: string): string | null {
-  for (const re of CYBER_KEYWORD_RES) {
-    const match = text.match(re);
-    if (match?.[0]) return match[0];
-  }
-  return null;
-}
-
 function extractSampleError(errorText: string, kind: ClientProblemKind): string {
   if (kind === "cyber") {
-    const keyword = matchCyberKeyword(errorText);
+    const keyword = matchCyberRiskKeyword(errorText);
     if (keyword) return clipSampleError(keyword);
   }
   return clipSampleError(errorText);

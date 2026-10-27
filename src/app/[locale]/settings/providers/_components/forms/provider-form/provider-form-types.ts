@@ -72,6 +72,7 @@ export interface RoutingState {
   overwriteResponseModel: boolean;
   providerPrefix: string;
   modelRedirects: ProviderModelRedirectRule[];
+  cyberRiskFallbackRules: ProviderModelRedirectRule[];
   allowedModels: AllowedModelRule[];
   allowedClients: string[];
   blockedClients: string[];
@@ -182,6 +183,7 @@ export type ProviderFormAction =
   | { type: "SET_OVERWRITE_RESPONSE_MODEL"; payload: boolean }
   | { type: "SET_PROVIDER_PREFIX"; payload: string }
   | { type: "SET_MODEL_REDIRECTS"; payload: ProviderModelRedirectRule[] }
+  | { type: "SET_CYBER_RISK_FALLBACK_RULES"; payload: ProviderModelRedirectRule[] }
   | { type: "SET_ALLOWED_MODELS"; payload: AllowedModelRule[] }
   | { type: "SET_ALLOWED_CLIENTS"; payload: string[] }
   | { type: "SET_BLOCKED_CLIENTS"; payload: string[] }

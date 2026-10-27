@@ -104,6 +104,10 @@ import {
 } from "./client-abort-metering";
 import { deriveClientSafeUpstreamErrorMessage } from "./client-error-message";
 import { combineAbortSignals } from "./combine-abort-signals";
+import {
+  detectCyberRiskFallbackTrigger,
+  resolveCyberRiskFallback,
+} from "./cyber-risk-fallback-rectifier";
 import { acquireDetachedStreamLease } from "./detached-stream-budget";
 import { type DiscoveryAction, DiscoveryCoordinator } from "./discovery-coordinator";
 import { startDiscoveryLeaseHeartbeat } from "./discovery-lease-heartbeat";
@@ -691,13 +695,16 @@ export type ReactiveRectifierRetryState = {
   thinkingBudgetRetried: boolean;
   thinkingEffortConflictRetried: boolean;
   geminiFunctionIdRetried: boolean;
+  /** 可选：旧调用方未初始化时视为 false */
+  cyberRiskFallbackRetried?: boolean;
 };
 
 export type ReactiveRectifierType =
   | "thinking_signature_rectifier"
   | "thinking_budget_rectifier"
   | "thinking_effort_conflict_rectifier"
-  | "gemini_function_id_rectifier";
+  | "gemini_function_id_rectifier"
+  | "cyber_risk_fallback";
 
 export type ReactiveRectifierResult =
   | { matched: false }
@@ -1590,6 +1597,9 @@ const REACTIVE_GEMINI_RECTIFIERS: readonly ReactiveRectifierDescriptor[] = [
 ];
 
 function getReactiveRectifierDisplayName(rectifierType: ReactiveRectifierType): string {
+  if (rectifierType === "cyber_risk_fallback") {
+    return "Cyber risk fallback";
+  }
   for (const descriptor of [...REACTIVE_ANTHROPIC_RECTIFIERS, ...REACTIVE_GEMINI_RECTIFIERS]) {
     if (descriptor.type === rectifierType) {
       return descriptor.displayName;
@@ -1632,6 +1642,91 @@ export type ReactiveRectifierParams = {
   deferredRectifierTypes?: ReadonlySet<ReactiveRectifierType>;
 };
 
+/**
+ * Cyber risk fallback：上游以 cybersecurity risk 拒绝时，按供应商 cyberRiskFallbackRules
+ * 把执行模型切换为 fallback 模型并对同供应商重试一次。与供应商类型无关。
+ *
+ * 返回 null 表示错误不是 cyber risk 拒绝，调用方继续走其它整流器；
+ * 命中关键字但未配置/未匹配规则时返回 { matched: false }，保持既有行为（不可重试客户端错误）。
+ */
+async function tryApplyCyberRiskFallback(
+  params: ReactiveRectifierParams
+): Promise<ReactiveRectifierResult | null> {
+  const trigger = detectCyberRiskFallbackTrigger(params.error, params.errorMessage);
+  if (!trigger) {
+    return null;
+  }
+
+  const { provider, requestSession, persistSession, attemptNumber, retryAttemptNumber } = params;
+  const rules = provider.cyberRiskFallbackRules;
+  if (!rules || rules.length === 0) {
+    return { matched: false };
+  }
+
+  if (params.retryState.cyberRiskFallbackRetried) {
+    return {
+      matched: true,
+      applied: false,
+      reason: "already_retried",
+      rectifierType: "cyber_risk_fallback",
+      trigger,
+    };
+  }
+
+  const executionModel = requestSession.request.model;
+  const resolution = resolveCyberRiskFallback(
+    rules,
+    executionModel,
+    requestSession.getOriginalModel()
+  );
+  if (!resolution) {
+    return { matched: false };
+  }
+
+  const requestDetailsBeforeRectify = buildRequestDetails(requestSession);
+  requestSession.setCyberRiskFallbackModel(provider.id, resolution.fromModel, resolution.toModel);
+  // 立即改写请求体（下一次 attempt 的 ModelRedirector.apply 会再次应用同一覆写，结果幂等）
+  ModelRedirector.apply(requestSession, provider);
+
+  addSpecialSettingForPersistence(requestSession, persistSession, {
+    type: "cyber_risk_fallback",
+    scope: "request",
+    hit: true,
+    providerId: provider.id,
+    providerName: provider.name,
+    trigger,
+    attemptNumber,
+    retryAttemptNumber,
+    fromModel: resolution.fromModel,
+    toModel: resolution.toModel,
+    matchedRule: {
+      matchType: resolution.rule.matchType,
+      source: resolution.rule.source,
+      target: resolution.rule.target,
+    },
+  });
+  await persistSpecialSettings(persistSession);
+
+  logger.info("ProxyForwarder: Cyber risk fallback matched, retrying with fallback model", {
+    providerId: provider.id,
+    providerName: provider.name,
+    trigger,
+    fromModel: resolution.fromModel,
+    toModel: resolution.toModel,
+    matchedModel: resolution.matchedModel,
+    attemptNumber,
+  });
+
+  params.retryState.cyberRiskFallbackRetried = true;
+  return {
+    matched: true,
+    applied: true,
+    rectifierType: "cyber_risk_fallback",
+    trigger,
+    requestDetailsBeforeRectify,
+  };
+}
+
 async function tryApplyReactiveRectifier(
   params: ReactiveRectifierParams
 ): Promise<ReactiveRectifierResult> {
@@ -1640,6 +1735,11 @@ async function tryApplyReactiveRectifier(
     isRetryableUpstreamStorageCapacityError(params.error)
   ) {
     return { matched: false };
+  }
+
+  const cyberRiskFallbackResult = await tryApplyCyberRiskFallback(params);
+  if (cyberRiskFallbackResult) {
+    return cyberRiskFallbackResult;
   }
 
   const {
@@ -2039,6 +2139,7 @@ export class ProxyForwarder {
         thinkingBudgetRetried: false,
         thinkingEffortConflictRetried: false,
         geminiFunctionIdRetried: false,
+        cyberRiskFallbackRetried: false,
       };
       let applyProviderOverrides = true;
 
@@ -6868,6 +6969,7 @@ export class ProxyForwarder {
           thinkingBudgetRetried: false,
           thinkingEffortConflictRetried: false,
           geminiFunctionIdRetried: false,
+          cyberRiskFallbackRetried: false,
         },
         settled: false,
         thresholdTriggered: false,
@@ -8122,6 +8224,7 @@ export class ProxyForwarder {
           thinkingBudgetRetried: false,
           thinkingEffortConflictRetried: false,
           geminiFunctionIdRetried: false,
+          cyberRiskFallbackRetried: false,
         },
         settled: false,
         thresholdTriggered: false,
@@ -9541,6 +9644,7 @@ export class ProxyForwarder {
         }
       : null;
     shadowState.providersSnapshot = sourceState.providersSnapshot;
+    shadow.setCyberRiskFallbackState(session.getCyberRiskFallbackState());
     shadow.setCacheTtlResolved(session.getCacheTtlResolved());
     shadow.setContext1mApplied(session.getContext1mApplied());
     shadow.forwardedRequestBody = null;
@@ -9624,6 +9728,12 @@ export class ProxyForwarder {
           redirect: structuredClone(sourceState.currentModelRedirect.redirect),
         }
       : null;
+    const sourceCyberRiskFallback = (source as unknown as { cyberRiskFallback?: unknown })
+      .cyberRiskFallback;
+    (target as unknown as { cyberRiskFallback: unknown }).cyberRiskFallback =
+      sourceCyberRiskFallback && typeof sourceCyberRiskFallback === "object"
+        ? { ...sourceCyberRiskFallback }
+        : null;
     targetState.clearResponseTimeout = sourceRuntime.clearResponseTimeout;
     targetState.pauseResponseTimeout = sourceRuntime.pauseResponseTimeout;
     targetState.resumeResponseTimeout = sourceRuntime.resumeResponseTimeout;

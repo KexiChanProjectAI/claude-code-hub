@@ -578,7 +578,47 @@
       "none": "未設定",
       "redirects": "{count} 個重定向"
     },
-    "title": "路由設定"
+    "title": "路由設定",
+    "cyberRiskFallback": {
+      "title": "Cyber Risk 降級重試",
+      "desc": "上游以疑似網路安全風險（cybersecurity risk）拒絕請求時，切換到備用模型並對該供應商重試一次。",
+      "label": "啟用 Cyber Risk 降級重試",
+      "help": "規則先比對執行模型（經過重新導向後實際送往上游的模型），再比對使用者請求的原始模型，依序第一條命中生效。若備用模型同樣被拒絕，則依原有邏輯直接回傳錯誤。",
+      "editor": {
+        "add": "新增",
+        "addNewRule": "新增規則",
+        "alreadyExists": "模型 \"{model}\" 已存在降級規則",
+        "currentRules": "目前規則 ({count})",
+        "matchTypeLabel": "比對方式",
+        "matchTypeExact": "精確比對",
+        "matchTypePrefix": "前綴比對",
+        "matchTypeSuffix": "後綴比對",
+        "matchTypeContains": "關鍵字比對",
+        "matchTypeRegex": "正則比對",
+        "orderHint": "越前面的規則越先命中",
+        "maxRules": "最多可新增 {max, number} 條降級規則",
+        "saveRule": "儲存規則",
+        "cancelEdit": "取消編輯",
+        "moveRuleUp": "上移規則",
+        "moveRuleDown": "下移規則",
+        "editRule": "編輯規則",
+        "deleteRule": "刪除規則",
+        "ruleMoved": "規則在編輯期間已變更，請再試一次",
+        "description": "將因網路安全風險被拒絕的模型對應到備用模型。",
+        "emptyState": "尚無降級規則。未設定規則時，cyber risk 拒絕會直接回傳給用戶端。",
+        "sourceEmpty": "執行模型不能為空",
+        "sourceTooLong": "執行模型名稱過長（最多 {max} 個字元）",
+        "sourceModel": "執行模型",
+        "sourcePlaceholder": "例如 gpt-5.5",
+        "targetEmpty": "備用模型不能為空",
+        "targetTooLong": "備用模型名稱過長（最多 {max} 個字元）",
+        "targetModel": "備用模型",
+        "targetPlaceholder": "例如 gpt-5.4",
+        "regexCaptureHint": "正規表示式規則的目標可引用擷取群組：來源 ^gpt-(.+)-codex$、目標 gpt-$1 會把 gpt-5.5-codex 降級為 gpt-5.5。",
+        "regexInvalid": "正則表達式無效",
+        "regexUnsafe": "正則表達式存在 ReDoS 風險"
+      }
+    }
   },
   "timeout": {
     "desc": "設定請求超時時間，0 表示禁用超時",

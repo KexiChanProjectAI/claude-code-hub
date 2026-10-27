@@ -162,6 +162,7 @@ export type ProviderBatchPatchField =
   | "cost_multiplier"
   | "group_tag"
   | "model_redirects"
+  | "cyber_risk_fallback_rules"
   | "allowed_models"
   | "allowed_clients"
   | "blocked_clients"
@@ -221,6 +222,7 @@ export interface ProviderBatchPatchDraft {
   cost_multiplier?: ProviderPatchDraftInput<number>;
   group_tag?: ProviderPatchDraftInput<string>;
   model_redirects?: ProviderPatchDraftInput<ProviderModelRedirectRule[]>;
+  cyber_risk_fallback_rules?: ProviderPatchDraftInput<ProviderModelRedirectRule[]>;
   allowed_models?: ProviderPatchDraftInput<AllowedModelRuleInput[]>;
   allowed_clients?: ProviderPatchDraftInput<string[]>;
   blocked_clients?: ProviderPatchDraftInput<string[]>;
@@ -281,6 +283,7 @@ export interface ProviderBatchPatch {
   cost_multiplier: ProviderPatchOperation<number>;
   group_tag: ProviderPatchOperation<string>;
   model_redirects: ProviderPatchOperation<ProviderModelRedirectRule[]>;
+  cyber_risk_fallback_rules: ProviderPatchOperation<ProviderModelRedirectRule[]>;
   allowed_models: ProviderPatchOperation<AllowedModelRuleInput[]>;
   allowed_clients: ProviderPatchOperation<string[]>;
   blocked_clients: ProviderPatchOperation<string[]>;
@@ -341,6 +344,8 @@ export interface ProviderBatchApplyUpdates {
   cost_multiplier?: number;
   group_tag?: string | null;
   model_redirects?: ProviderModelRedirectRule[] | null;
+  // 命中 cyber risk 拒绝时：按执行模型匹配规则，切换到 fallback 模型并对同供应商重试一次
+  cyber_risk_fallback_rules?: ProviderModelRedirectRule[] | null;
   allowed_models?: AllowedModelRuleInput[] | null;
   allowed_clients?: string[];
   blocked_clients?: string[];
@@ -436,6 +441,8 @@ export interface Provider {
   // 强制将响应中的模型 ID 复写为用户请求的模型 ID
   overwriteResponseModel: boolean;
   modelRedirects: ProviderModelRedirectRule[] | null;
+  // 命中 cyber risk 拒绝时的 fallback 模型规则（source 匹配执行模型，target 为 fallback 模型；null/空 = 关闭）
+  cyberRiskFallbackRules: ProviderModelRedirectRule[] | null;
   // 供应商前缀：配置后仅带此前缀的模型 ID 才能命中，转发上游前剥离
   providerPrefix: string | null;
 
@@ -577,6 +584,8 @@ export interface ProviderDisplay {
   // 强制将响应中的模型 ID 复写为用户请求的模型 ID
   overwriteResponseModel: boolean;
   modelRedirects: ProviderModelRedirectRule[] | null;
+  // 命中 cyber risk 拒绝时的 fallback 模型规则（source 匹配执行模型，target 为 fallback 模型；null/空 = 关闭）
+  cyberRiskFallbackRules: ProviderModelRedirectRule[] | null;
   providerPrefix: string | null;
   // Scheduled active time window
   activeTimeStart: string | null;
@@ -706,6 +715,8 @@ export interface CreateProviderData {
   disable_session_reuse?: boolean;
   overwrite_response_model?: boolean;
   model_redirects?: ProviderModelRedirectRule[] | null;
+  // 命中 cyber risk 拒绝时：按执行模型匹配规则，切换到 fallback 模型并对同供应商重试一次
+  cyber_risk_fallback_rules?: ProviderModelRedirectRule[] | null;
   // 供应商前缀（规范化为以 "/" 结尾；null 表示未配置）
   provider_prefix?: string | null;
   active_time_start?: string | null;
@@ -799,6 +810,8 @@ export interface UpdateProviderData {
   disable_session_reuse?: boolean;
   overwrite_response_model?: boolean;
   model_redirects?: ProviderModelRedirectRule[] | null;
+  // 命中 cyber risk 拒绝时：按执行模型匹配规则，切换到 fallback 模型并对同供应商重试一次
+  cyber_risk_fallback_rules?: ProviderModelRedirectRule[] | null;
   // 供应商前缀（规范化为以 "/" 结尾；null 表示未配置）
   provider_prefix?: string | null;
   active_time_start?: string | null;

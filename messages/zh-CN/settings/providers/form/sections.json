@@ -387,6 +387,46 @@
           "disabled": "强制关闭"
         }
       }
+    },
+    "cyberRiskFallback": {
+      "title": "Cyber Risk 降级重试",
+      "desc": "上游以疑似网络安全风险（cybersecurity risk）拒绝请求时，切换到备用模型并对该供应商重试一次。",
+      "label": "启用 Cyber Risk 降级重试",
+      "help": "规则先匹配执行模型（经过重定向后实际发往上游的模型），再匹配用户请求的原始模型，按顺序首条命中生效。若备用模型同样被拒绝，则按原有逻辑直接返回错误。",
+      "editor": {
+        "currentRules": "当前规则 ({count})",
+        "addNewRule": "添加新规则",
+        "matchTypeLabel": "匹配方式",
+        "matchTypeExact": "精确匹配",
+        "matchTypePrefix": "前缀匹配",
+        "matchTypeSuffix": "后缀匹配",
+        "matchTypeContains": "关键词匹配",
+        "matchTypeRegex": "正则匹配",
+        "orderHint": "靠前规则优先生效",
+        "maxRules": "最多可添加 {max, number} 条降级规则",
+        "saveRule": "保存规则",
+        "cancelEdit": "取消编辑",
+        "moveRuleUp": "上移规则",
+        "moveRuleDown": "下移规则",
+        "editRule": "编辑规则",
+        "deleteRule": "删除规则",
+        "ruleMoved": "规则在编辑期间发生了变化，请重试",
+        "sourceModel": "执行模型",
+        "targetModel": "备用模型",
+        "sourcePlaceholder": "例如 gpt-5.5",
+        "targetPlaceholder": "例如 gpt-5.4",
+        "regexCaptureHint": "正则规则的目标可引用捕获组：源 ^gpt-(.+)-codex$、目标 gpt-$1 会把 gpt-5.5-codex 降级为 gpt-5.5。",
+        "add": "添加",
+        "sourceEmpty": "执行模型不能为空",
+        "sourceTooLong": "执行模型名称过长（最多 {max} 个字符）",
+        "targetEmpty": "备用模型不能为空",
+        "targetTooLong": "备用模型名称过长（最多 {max} 个字符）",
+        "alreadyExists": "模型 \"{model}\" 已存在降级规则",
+        "regexInvalid": "正则表达式无效",
+        "regexUnsafe": "正则表达式存在 ReDoS 风险",
+        "description": "将因网络安全风险被拒绝的模型映射到备用模型。",
+        "emptyState": "暂无降级规则。未配置规则时，cyber risk 拒绝会直接返回给客户端。"
+      }
     }
   },
   "rateLimit": {

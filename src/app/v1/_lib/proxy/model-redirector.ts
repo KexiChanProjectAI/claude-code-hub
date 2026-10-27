@@ -1,7 +1,7 @@
 import { logger } from "@/lib/logger";
 import { hasProviderModelRedirectRules } from "@/lib/provider-model-redirects";
 import { resolveUpstreamModel } from "@/lib/provider-upstream-model";
-import type { Provider } from "@/types/provider";
+import type { Provider, ProviderModelRedirectRule } from "@/types/provider";
 import { isOpenAIImageMultipartRequest, setOpenAIImageMultipartModel } from "./openai-image-compat";
 import type { ProxySession } from "./session";
 
@@ -38,8 +38,12 @@ export class ModelRedirector {
 
     // 先剥离供应商前缀，再按（裸模型名）重定向规则改写
     const resolution = resolveUpstreamModel(provider, originalModel);
-    const matchedRule = resolution.matchedRule;
-    const redirectedModel = resolution.model;
+    // Cyber risk fallback：同供应商重试时覆盖最终上游模型（规则命中后由 rectifier 记录）
+    const cyberRiskFallback = session.getCyberRiskFallbackModel(provider.id);
+    const matchedRule: ProviderModelRedirectRule | null = cyberRiskFallback
+      ? { matchType: "exact", source: resolution.model, target: cyberRiskFallback.model }
+      : resolution.matchedRule;
+    const redirectedModel = cyberRiskFallback ? cyberRiskFallback.model : resolution.model;
 
     if (!matchedRule && !resolution.prefixStripped) {
       session.clearCurrentModelRedirect();
@@ -62,6 +66,7 @@ export class ModelRedirector {
       redirectedModel,
       matchType: matchedRule?.matchType ?? null,
       matchedSource: matchedRule?.source ?? null,
+      cyberRiskFallback: cyberRiskFallback !== null,
       prefixStripped: resolution.prefixStripped,
       providerPrefix: resolution.prefixStripped ? provider.providerPrefix : null,
       providerId: provider.id,
@@ -126,8 +131,11 @@ export class ModelRedirector {
     }
 
     // 更新日志（记录重定向）
-    const noteLabel =
-      resolution.prefixStripped && !matchedRule ? "Provider Prefix Stripped" : "Model Redirected";
+    const noteLabel = cyberRiskFallback
+      ? "Cyber Risk Fallback"
+      : resolution.prefixStripped && !matchedRule
+        ? "Provider Prefix Stripped"
+        : "Model Redirected";
     session.request.note = `[${noteLabel}: ${originalModel} → ${redirectedModel}] ${session.request.note || ""}`;
 
     const redirectInfo = {

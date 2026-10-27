@@ -31,7 +31,11 @@ interface ModelRedirectEditorProps {
   value: ProviderModelRedirectRule[];
   onChange: (value: ProviderModelRedirectRule[]) => void;
   disabled?: boolean;
+  /** next-intl namespace for labels; lets other source -> target rule lists reuse this editor */
+  i18nNamespace?: string;
 }
+
+const DEFAULT_I18N_NAMESPACE = "settings.providers.form.modelRedirect";
 
 const DEFAULT_RULE: ProviderModelRedirectRule = {
   matchType: "exact",
@@ -56,8 +60,9 @@ export function ModelRedirectEditor({
   value,
   onChange,
   disabled = false,
+  i18nNamespace = DEFAULT_I18N_NAMESPACE,
 }: ModelRedirectEditorProps) {
-  const t = useTranslations("settings.providers.form.modelRedirect");
+  const t = useTranslations(i18nNamespace);
   const [newRule, setNewRule] = useState<ProviderModelRedirectRule>(DEFAULT_RULE);
   const [error, setError] = useState<string | null>(null);
   const [editingRuleKey, setEditingRuleKey] = useState<string | null>(null);

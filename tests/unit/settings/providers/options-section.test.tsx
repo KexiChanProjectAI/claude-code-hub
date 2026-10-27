@@ -9,7 +9,7 @@ vi.mock("framer-motion", () => ({
 }));
 vi.mock("lucide-react", () => {
   const stub = ({ className }: any) => <span data-testid="icon" className={className} />;
-  return { Clock: stub, Info: stub, Settings: stub, Timer: stub };
+  return { Clock: stub, Info: stub, Settings: stub, ShieldAlert: stub, Timer: stub };
 });
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock(
@@ -51,6 +51,26 @@ vi.mock("@/app/[locale]/settings/providers/_components/service-tier-rule-editor"
     </button>
   ),
 }));
+vi.mock("@/app/[locale]/settings/providers/_components/model-redirect-editor", () => ({
+  ModelRedirectEditor: ({
+    value,
+    onChange,
+    i18nNamespace,
+  }: {
+    value: unknown[];
+    onChange: (rules: unknown[]) => void;
+    i18nNamespace?: string;
+  }) => (
+    <button
+      type="button"
+      data-testid="cyber-risk-fallback-editor"
+      data-namespace={i18nNamespace}
+      onClick={() => onChange([{ matchType: "exact", source: "gpt-5.5", target: "gpt-5.4" }])}
+    >
+      Cyber Fallback Rules ({value.length})
+    </button>
+  ),
+}));
 vi.mock("@/app/[locale]/settings/providers/_components/thinking-budget-editor", () => ({
   ThinkingBudgetEditor: (_props: any) => <div data-testid="thinking-budget-editor" />,
 }));
@@ -68,9 +88,10 @@ vi.mock("@/components/ui/select", () => ({
   SelectValue: ({ placeholder }: any) => <span>{placeholder}</span>,
 }));
 vi.mock("@/components/ui/switch", () => ({
-  Switch: ({ id, checked, onCheckedChange, disabled }: any) => (
+  Switch: ({ id, checked, onCheckedChange, disabled, "aria-label": ariaLabel }: any) => (
     <button
       id={id}
+      aria-label={ariaLabel}
       type="button"
       role="switch"
       aria-checked={checked}
@@ -129,6 +150,7 @@ function createMockState(
       disableSessionReuse: false,
       overwriteResponseModel: false,
       modelRedirects: {},
+      cyberRiskFallbackRules: [],
       allowedModels: [],
       allowedClients: [],
       blockedClients: [],
@@ -619,7 +641,7 @@ describe("OptionsSection", () => {
         container.querySelectorAll('[data-testid="switch"]')
       ) as HTMLButtonElement[];
 
-      expect(switches).toHaveLength(5);
+      expect(switches).toHaveLength(6);
       for (const toggle of switches) {
         expect(toggle.hasAttribute("disabled")).toBe(true);
       }
@@ -863,6 +885,79 @@ describe("OptionsSection - ServiceTierRuleEditor integration", () => {
       state: createMockState({ routing: { providerType: "claude" } }),
     });
     expect(findServiceTierToggle(container)).toBeUndefined();
+    unmount();
+  });
+});
+
+describe("OptionsSection cyber risk fallback", () => {
+  const LABEL = "sections.routing.cyberRiskFallback.label";
+
+  function findCyberToggle(container: HTMLDivElement) {
+    return container.querySelector(`[aria-label='${LABEL}']`) as HTMLButtonElement | null;
+  }
+
+  function findCyberEditor(container: HTMLDivElement) {
+    return container.querySelector(
+      "[data-testid='cyber-risk-fallback-editor']"
+    ) as HTMLButtonElement | null;
+  }
+
+  beforeEach(() => {
+    while (document.body.firstChild) {
+      document.body.removeChild(document.body.firstChild);
+    }
+    vi.clearAllMocks();
+  });
+
+  it.each(["claude", "codex", "openai-compatible", "gemini"] as const)(
+    "renders the card for %s providers",
+    (providerType) => {
+      const { container, unmount } = renderSection({
+        state: createMockState({ routing: { providerType } }),
+      });
+      expect(getBodyText()).toContain("sections.routing.cyberRiskFallback.title");
+      expect(findCyberToggle(container)?.getAttribute("aria-checked")).toBe("false");
+      expect(findCyberEditor(container)).toBeNull();
+      unmount();
+    }
+  );
+
+  it("enabling shows the editor and edits dispatch rules", () => {
+    const { container, unmount } = renderSection();
+
+    act(() => findCyberToggle(container)?.click());
+    const editor = findCyberEditor(container);
+    expect(editor).not.toBeNull();
+    expect(editor?.getAttribute("data-namespace")).toBe(
+      "settings.providers.form.sections.routing.cyberRiskFallback.editor"
+    );
+
+    act(() => editor?.click());
+    expect(mockDispatch).toHaveBeenCalledWith({
+      type: "SET_CYBER_RISK_FALLBACK_RULES",
+      payload: [{ matchType: "exact", source: "gpt-5.5", target: "gpt-5.4" }],
+    });
+    unmount();
+  });
+
+  it("shows configured rules and disabling clears them", () => {
+    const { container, unmount } = renderSection({
+      state: createMockState({
+        routing: {
+          providerType: "codex",
+          cyberRiskFallbackRules: [{ matchType: "exact", source: "gpt-5.5", target: "gpt-5.4" }],
+        },
+      }),
+    });
+
+    expect(findCyberEditor(container)?.textContent).toContain("(1)");
+    const toggle = findCyberToggle(container);
+    expect(toggle?.getAttribute("aria-checked")).toBe("true");
+    act(() => toggle?.click());
+    expect(mockDispatch).toHaveBeenCalledWith({
+      type: "SET_CYBER_RISK_FALLBACK_RULES",
+      payload: [],
+    });
     unmount();
   });
 });

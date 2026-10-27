@@ -83,6 +83,7 @@ const ACTION_TO_FIELD_PATH: Partial<Record<ProviderFormActionWith5hResetMode["ty
   SET_OVERWRITE_RESPONSE_MODEL: "routing.overwriteResponseModel",
   SET_PROVIDER_PREFIX: "routing.providerPrefix",
   SET_MODEL_REDIRECTS: "routing.modelRedirects",
+  SET_CYBER_RISK_FALLBACK_RULES: "routing.cyberRiskFallbackRules",
   SET_ALLOWED_MODELS: "routing.allowedModels",
   SET_ALLOWED_CLIENTS: "routing.allowedClients",
   SET_BLOCKED_CLIENTS: "routing.blockedClients",
@@ -187,6 +188,10 @@ export function createInitialState(
         modelRedirects:
           analysis.routing.modelRedirects.status === "uniform"
             ? analysis.routing.modelRedirects.value
+            : [],
+        cyberRiskFallbackRules:
+          analysis.routing.cyberRiskFallbackRules.status === "uniform"
+            ? analysis.routing.cyberRiskFallbackRules.value
             : [],
         allowedModels:
           analysis.routing.allowedModels.status === "uniform"
@@ -404,6 +409,7 @@ export function createInitialState(
         overwriteResponseModel: false,
         providerPrefix: "",
         modelRedirects: [],
+        cyberRiskFallbackRules: [],
         allowedModels: [],
         allowedClients: [],
         blockedClients: [],
@@ -497,6 +503,8 @@ export function createInitialState(
       overwriteResponseModel: sourceProvider?.overwriteResponseModel ?? false,
       providerPrefix: sourceProvider?.providerPrefix ?? "",
       modelRedirects: normalizeProviderModelRedirectRules(sourceProvider?.modelRedirects) ?? [],
+      cyberRiskFallbackRules:
+        normalizeProviderModelRedirectRules(sourceProvider?.cyberRiskFallbackRules) ?? [],
       allowedModels: normalizeAllowedModelRules(sourceProvider?.allowedModels) ?? [],
       allowedClients: sourceProvider?.allowedClients ?? [],
       blockedClients: sourceProvider?.blockedClients ?? [],
@@ -642,6 +650,8 @@ export function providerFormReducer(
       return { ...state, routing: { ...state.routing, providerPrefix: action.payload } };
     case "SET_MODEL_REDIRECTS":
       return { ...state, routing: { ...state.routing, modelRedirects: action.payload } };
+    case "SET_CYBER_RISK_FALLBACK_RULES":
+      return { ...state, routing: { ...state.routing, cyberRiskFallbackRules: action.payload } };
     case "SET_ALLOWED_MODELS":
       return { ...state, routing: { ...state.routing, allowedModels: action.payload } };
     case "SET_ALLOWED_CLIENTS":

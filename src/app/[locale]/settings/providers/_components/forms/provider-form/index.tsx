@@ -371,6 +371,12 @@ function ProviderFormContent({
           provider_prefix: normalizeProviderPrefix(state.routing.providerPrefix),
           model_redirects:
             state.routing.modelRedirects.length > 0 ? state.routing.modelRedirects : null,
+          cyber_risk_fallback_rules: (() => {
+            const rules = state.routing.cyberRiskFallbackRules.filter(
+              (rule) => rule.source.trim() && rule.target.trim()
+            );
+            return rules.length > 0 ? rules : null;
+          })(),
           allowed_models:
             state.routing.allowedModels.length > 0 ? state.routing.allowedModels : null,
           allowed_clients: state.routing.allowedClients,
@@ -616,6 +622,8 @@ function ProviderFormContent({
       // Conditional reasoning effort override rules
       state.routing.reasoningEffortOverrideRules !== null ||
       state.routing.serviceTierOverrideRules !== null ||
+      // Cyber risk fallback rules
+      state.routing.cyberRiskFallbackRules.length > 0 ||
       // Gemini overrides
       state.routing.geminiGoogleSearchPreference !== "inherit" ||
       // Active time
