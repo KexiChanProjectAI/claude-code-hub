@@ -216,8 +216,8 @@ describe("SessionManager - Redaction based on STORE_SESSION_MESSAGES", () => {
       await SessionManager.storeSessionResponse("sess_stream", nonJsonResponse, 1);
 
       const [, , value] = redisMock.setex.mock.calls[0];
-      // Non-JSON should be stored as-is (cannot redact)
-      expect(value).toBe(nonJsonResponse);
+      // Non-JSON should be stored as-is (cannot redact); short bodies are stored as plain UTF-8 bytes
+      expect(Buffer.from(value).toString("utf8")).toBe(nonJsonResponse);
     });
 
     it("should enforce the response body limit using UTF-8 bytes at the exact boundary", async () => {
@@ -227,7 +227,7 @@ describe("SessionManager - Redaction based on STORE_SESSION_MESSAGES", () => {
       expect(redisMock.setex).toHaveBeenCalledWith(
         "session:sess_utf8_exact:req:1:response",
         300,
-        "中a"
+        Buffer.from("中a", "utf8")
       );
 
       vi.clearAllMocks();

@@ -13,6 +13,7 @@ export default createTestRunnerConfig({
     "tests/integration/lease-settlement-redis.test.ts",
     "tests/integration/session-binding-versioning-redis.test.ts",
     "tests/integration/session-response-body-dedup-redis.test.ts",
+    "tests/integration/session-request-body-dedup-redis.test.ts",
     "tests/integration/db-pool-isolation-postgres.test.ts",
     "tests/integration/db-pool-slow-close-postgres.test.ts",
     "tests/integration/message-write-buffer-recovery-postgres.test.ts",

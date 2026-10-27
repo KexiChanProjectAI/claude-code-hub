@@ -40,16 +40,30 @@ const redisPipeline = {
 };
 const redisMock = {
   status: "ready",
-  setex: vi.fn((key: string, _ttl: number, value: string) => {
-    redisStore.set(key, value);
+  setex: vi.fn((key: string, _ttl: number, value: string | Buffer) => {
+    redisStore.set(key, Buffer.isBuffer(value) ? value.toString("latin1") : value);
     return Promise.resolve("OK");
   }),
   get: vi.fn((key: string) => Promise.resolve(redisStore.get(key) ?? null)),
+  getBuffer: vi.fn((key: string) => {
+    const value = redisStore.get(key);
+    return Promise.resolve(value === undefined ? null : Buffer.from(value, "latin1"));
+  }),
+  callBuffer: vi.fn(async (_command: string, args: Array<string | number | Buffer>) => {
+    const [script, keyCount, ...rest] = args;
+    const result = await redisMock.eval(String(script), Number(keyCount), ...rest);
+    return Array.isArray(result)
+      ? result.map((item) => (typeof item === "string" ? Buffer.from(item, "latin1") : item))
+      : result;
+  }),
   del: vi.fn((key: string) => Promise.resolve(redisStore.delete(key) ? 1 : 0)),
   set: vi.fn().mockResolvedValue("OK"),
   expire: vi.fn().mockResolvedValue(1),
   incr: vi.fn().mockResolvedValue(1),
-  eval: vi.fn((script: string, keyCount: number, ...rawArgs: Array<string | number>) => {
+  eval: vi.fn((script: string, keyCount: number, ...rawArgs: Array<string | number | Buffer>) => {
+    if (script.includes("cch:session-request-bundle:read:v1")) {
+      return Promise.resolve([0, 0, null, null]);
+    }
     if (!script.includes("cch:session-response-bundle:read:v1")) return Promise.resolve(1);
     const keys = rawArgs.slice(0, keyCount).map(String);
     const body = redisStore.get(keys[1]);

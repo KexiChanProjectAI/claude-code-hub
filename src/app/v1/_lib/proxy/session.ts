@@ -18,6 +18,7 @@ import {
   writeLiveRoutingTrace,
 } from "@/lib/redis/live-chain-store";
 import type { SessionBindingSnapshot } from "@/lib/redis/session-binding";
+import type { SessionRequestBodyBundleBase } from "@/lib/session-manager";
 import {
   getSessionRequestArtifactByteSize,
   getSessionRequestArtifactMaxBytes,
@@ -274,7 +275,14 @@ export class ProxySession {
     this.request.log = "";
     this.forwardedRequestBody = null;
     this.forwardedRequestBodyPending = null;
+    this.requestBodyBundleBase = null;
   }
+
+  /**
+   * 请求正文去重布局的基准写入结果（压缩帧 + 引用）。forwarder 写 after 正文时用它做 zstd 字典，
+   * 无需再从 Redis 读回基准正文。
+   */
+  requestBodyBundleBase: Promise<SessionRequestBodyBundleBase | null> | null = null;
 
   /** 写入后异步压缩，热路径不做 CPU 密集的同步压缩。 */
   setForwardedRequestBody(text: string | null): void {

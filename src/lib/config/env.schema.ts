@@ -237,6 +237,11 @@ export const EnvSchema = z.object({
     .min(64 * 1024)
     .max(64 * 1024 * 1024)
     .default(5 * 1024 * 1024),
+  // 请求正文去重布局：同一请求的 requestBody/messages/before/after 只在一个 Hash 中保存唯一正文，
+  // messages 视图在读取时由正文派生。false 时回退为旧的五个独立 key。
+  SESSION_REQUEST_BODY_DEDUP_ENABLED: z.string().default("true").transform(booleanTransform),
+  // Redis 留存载荷的 zstd 压缩等级（1 最快，默认 1）。
+  SESSION_PAYLOAD_ZSTD_LEVEL: z.coerce.number().int().min(1).max(19).default(1),
   DEBUG_MODE: z.string().default("false").transform(booleanTransform),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
   TZ: z.string().default("Asia/Shanghai"),

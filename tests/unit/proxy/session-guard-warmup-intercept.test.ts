@@ -12,6 +12,11 @@ const storeSessionClientRequestMetaMock = vi.fn(async () => undefined);
 const storeSessionMessagesMock = vi.fn(async () => undefined);
 const storeSessionRequestPhaseSnapshotMock = vi.fn(async () => undefined);
 const storeSessionInfoMock = vi.fn(async () => undefined);
+const isRequestBodyDedupEnabledMock = vi.fn(() => false);
+const storeSessionRequestBodyBundleBaseMock = vi.fn(async () => ({
+  ref: "0",
+  frame: Buffer.from("frame"),
+}));
 const generateSessionIdMock = vi.fn();
 
 const trackSessionMock = vi.fn(async () => undefined);
@@ -33,6 +38,8 @@ vi.mock("@/lib/session-manager", () => ({
     storeSessionRequestPhaseSnapshot: storeSessionRequestPhaseSnapshotMock,
     storeSessionInfo: storeSessionInfoMock,
     generateSessionId: generateSessionIdMock,
+    isRequestBodyDedupEnabled: isRequestBodyDedupEnabledMock,
+    storeSessionRequestBodyBundleBase: storeSessionRequestBodyBundleBaseMock,
   },
 }));
 
@@ -294,6 +301,66 @@ describe("ProxySessionGuard：warmup 拦截不应计入并发会话", () => {
       metadata: { session_id: "sess_seed" },
       messages: [{ role: "user", content: "hello" }],
     });
+  });
+
+  test("去重布局：只写一次请求正文 bundle，before 快照仅保留 headers/meta", async () => {
+    isRequestBodyDedupEnabledMock.mockReturnValueOnce(true);
+    const ProxySessionGuard = await loadGuard();
+    const session = createMockSession({
+      headers: new Headers({ "content-type": "application/json" }),
+      request: {
+        message: {
+          metadata: { session_id: "sess_seed" },
+          messages: [{ role: "user", content: "hello" }],
+        },
+        model: "claude-sonnet-4-5-20250929",
+      },
+      getMessages() {
+        return [{ role: "user", content: "hello" }];
+      },
+      isWarmupRequest: () => false,
+    });
+
+    await ProxySessionGuard.ensure(session);
+
+    expect(storeSessionRequestBodyMock).not.toHaveBeenCalled();
+    expect(storeSessionMessagesMock).not.toHaveBeenCalled();
+    expect(storeSessionRequestBodyBundleBaseMock).toHaveBeenCalledTimes(1);
+    const [sessionId, input, sequence] = storeSessionRequestBodyBundleBaseMock.mock
+      .calls[0] as unknown as [string, { legacyBody: unknown; beforeBody: string }, number];
+    expect(sessionId).toBe("session_assigned");
+    expect(sequence).toBe(1);
+    expect(input.legacyBody).toBe(session.request.message);
+    expect(JSON.parse(input.beforeBody)).toEqual({
+      metadata: { session_id: "sess_seed" },
+      messages: [{ role: "user", content: "hello" }],
+    });
+    await expect(session.requestBodyBundleBase).resolves.toEqual({
+      ref: "0",
+      frame: Buffer.from("frame"),
+    });
+    const snapshotArg = storeSessionRequestPhaseSnapshotMock.mock.calls[0][2] as Record<
+      string,
+      unknown
+    >;
+    expect(Object.keys(snapshotArg).sort()).toEqual(["headers", "meta"]);
+  });
+
+  test("去重布局：bundle 写入失败时句柄回落为 null", async () => {
+    isRequestBodyDedupEnabledMock.mockReturnValueOnce(true);
+    storeSessionRequestBodyBundleBaseMock.mockRejectedValueOnce(new Error("boom"));
+    const ProxySessionGuard = await loadGuard();
+    const session = createMockSession({
+      request: {
+        message: { messages: [{ role: "user", content: "hello" }] },
+        model: "claude-sonnet-4-5-20250929",
+      },
+      isWarmupRequest: () => false,
+    });
+
+    await ProxySessionGuard.ensure(session);
+
+    await expect(session.requestBodyBundleBase).resolves.toBeNull();
   });
 
   test("超限请求跳过 request body/messages，但仍保留轻量 before 快照", async () => {

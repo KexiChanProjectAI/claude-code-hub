@@ -23,6 +23,16 @@ const sortedSetStore = new Map<string, Set<string>>();
 const ttlStore = new Map<string, number>();
 let afterBundleRead: (() => void) | null = null;
 
+/** Redis 存的是字节；mock 以 latin1 字符串无损保存 Buffer，读回时再还原。 */
+function toStored(value: unknown): string {
+  return Buffer.isBuffer(value) ? value.toString("latin1") : String(value);
+}
+
+function toReply(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(toReply);
+  return typeof value === "string" ? Buffer.from(value, "latin1") : value;
+}
+
 function responseBundle(key: string): Map<string, string> | undefined {
   return hashStore.get(key);
 }
@@ -30,17 +40,26 @@ function responseBundle(key: string): Map<string, string> | undefined {
 function bodyFields(key: string): string[] {
   return [...(responseBundle(key)?.entries() ?? [])]
     .filter(([field]) => field.startsWith("body:"))
-    .map(([, value]) => value);
+    .map(([, value]) => Buffer.from(value, "latin1").toString("utf8"));
 }
 
 const redisMock = {
   status: "ready",
-  setex: vi.fn((key: string, ttl: number, value: string) => {
-    stringStore.set(key, value);
+  setex: vi.fn((key: string, ttl: number, value: string | Buffer) => {
+    stringStore.set(key, toStored(value));
     ttlStore.set(key, ttl);
     return Promise.resolve("OK");
   }),
   get: vi.fn((key: string) => Promise.resolve(stringStore.get(key) ?? null)),
+  getBuffer: vi.fn((key: string) => {
+    const value = stringStore.get(key);
+    return Promise.resolve(value === undefined ? null : Buffer.from(value, "latin1"));
+  }),
+  callBuffer: vi.fn(async (command: string, args: Array<string | number | Buffer>) => {
+    if (command !== "EVAL") throw new Error(`unexpected callBuffer ${command}`);
+    const [script, keyCount, ...rest] = args;
+    return toReply(await redisMock.eval(String(script), Number(keyCount), ...rest));
+  }),
   del: vi.fn((...keys: string[]) => {
     let removed = 0;
     for (const key of keys) {
@@ -61,132 +80,134 @@ const redisMock = {
     del: vi.fn().mockReturnThis(),
     exec: vi.fn().mockResolvedValue([]),
   })),
-  eval: vi.fn(async (script: string, keyCount: number, ...rawArgs: Array<string | number>) => {
-    const keys = rawArgs.slice(0, keyCount).map(String);
-    const args = rawArgs.slice(keyCount);
-    const key = keys[0];
-    if (script.includes("cch:session-response-bundle:write:v1")) {
-      const [
-        ttl,
-        expectedKeyId,
-        totalBytes,
-        overBudget,
-        legacyPresent,
-        beforePresent,
-        afterPresent,
-        legacyRef,
-        beforeRef,
-        afterRef,
-        ...bodies
-      ] = args.map(String);
-      const currentGeneration = stringStore.get(keys[5]);
-      const requestGeneration = stringStore.get(keys[6]);
-      if (
-        expectedKeyId &&
-        (stringStore.get(keys[7]) !== expectedKeyId ||
-          currentGeneration === undefined ||
-          requestGeneration === undefined ||
-          currentGeneration !== requestGeneration)
-      ) {
-        return 0;
-      }
-      for (const currentKey of keys.slice(0, 4)) {
-        stringStore.delete(currentKey);
-        hashStore.delete(currentKey);
-        ttlStore.delete(currentKey);
-      }
-      const value = new Map<string, string>([
-        ["schema", "1"],
-        ["layout", "dedup"],
-        ["total_bytes", totalBytes],
-        ["over_budget", overBudget],
-      ]);
-      for (const [view, present, ref] of [
-        ["legacy", legacyPresent, legacyRef],
-        ["before", beforePresent, beforeRef],
-        ["after", afterPresent, afterRef],
-      ] as const) {
-        if (present === "1") value.set(`present:${view}`, "1");
-        if (ref) value.set(`ref:${view}`, ref);
-      }
-      bodies.forEach((body, index) => value.set(`body:${index}`, body));
-      hashStore.set(key, value);
-      ttlStore.set(key, Number(ttl));
-      const bundleIndex = sortedSetStore.get(keys[4]) ?? new Set<string>();
-      bundleIndex.add(key);
-      sortedSetStore.set(keys[4], bundleIndex);
-      ttlStore.set(keys[4], Number(ttl));
-      return 1;
-    }
-
-    if (script.includes("cch:session-response-bundle:write-legacy:v1")) {
-      const [ttl, expectedKeyId, ...viewArgs] = args.map(String);
-      const currentGeneration = stringStore.get(keys[5]);
-      const requestGeneration = stringStore.get(keys[6]);
-      if (
-        expectedKeyId &&
-        (stringStore.get(keys[7]) !== expectedKeyId ||
-          currentGeneration === undefined ||
-          requestGeneration === undefined ||
-          currentGeneration !== requestGeneration)
-      ) {
-        return 0;
-      }
-      for (const currentKey of keys.slice(0, 4)) {
-        stringStore.delete(currentKey);
-        hashStore.delete(currentKey);
-        ttlStore.delete(currentKey);
-      }
-
-      const value = new Map<string, string>([
-        ["schema", "1"],
-        ["layout", "legacy"],
-      ]);
-      for (let index = 0; index < 3; index += 1) {
-        const view = ["legacy", "before", "after"][index];
-        const offset = index * 3;
-        if (viewArgs[offset] === "1") value.set(`present:${view}`, "1");
-        if (viewArgs[offset + 1] === "1") {
-          stringStore.set(keys[index + 1], viewArgs[offset + 2]);
-          ttlStore.set(keys[index + 1], Number(ttl));
+  eval: vi.fn(
+    async (script: string, keyCount: number, ...rawArgs: Array<string | number | Buffer>) => {
+      const keys = rawArgs.slice(0, keyCount).map(String);
+      const args = rawArgs.slice(keyCount);
+      const key = keys[0];
+      if (script.includes("cch:session-response-bundle:write:v1")) {
+        const [
+          ttl,
+          expectedKeyId,
+          totalBytes,
+          overBudget,
+          legacyPresent,
+          beforePresent,
+          afterPresent,
+          legacyRef,
+          beforeRef,
+          afterRef,
+          ...bodies
+        ] = args.map(toStored);
+        const currentGeneration = stringStore.get(keys[5]);
+        const requestGeneration = stringStore.get(keys[6]);
+        if (
+          expectedKeyId &&
+          (stringStore.get(keys[7]) !== expectedKeyId ||
+            currentGeneration === undefined ||
+            requestGeneration === undefined ||
+            currentGeneration !== requestGeneration)
+        ) {
+          return 0;
         }
+        for (const currentKey of keys.slice(0, 4)) {
+          stringStore.delete(currentKey);
+          hashStore.delete(currentKey);
+          ttlStore.delete(currentKey);
+        }
+        const value = new Map<string, string>([
+          ["schema", "1"],
+          ["layout", "dedup"],
+          ["total_bytes", totalBytes],
+          ["over_budget", overBudget],
+        ]);
+        for (const [view, present, ref] of [
+          ["legacy", legacyPresent, legacyRef],
+          ["before", beforePresent, beforeRef],
+          ["after", afterPresent, afterRef],
+        ] as const) {
+          if (present === "1") value.set(`present:${view}`, "1");
+          if (ref) value.set(`ref:${view}`, ref);
+        }
+        bodies.forEach((body, index) => value.set(`body:${index}`, body));
+        hashStore.set(key, value);
+        ttlStore.set(key, Number(ttl));
+        const bundleIndex = sortedSetStore.get(keys[4]) ?? new Set<string>();
+        bundleIndex.add(key);
+        sortedSetStore.set(keys[4], bundleIndex);
+        ttlStore.set(keys[4], Number(ttl));
+        return 1;
       }
-      hashStore.set(key, value);
-      ttlStore.set(key, Number(ttl));
-      const bundleIndex = sortedSetStore.get(keys[4]) ?? new Set<string>();
-      bundleIndex.add(key);
-      sortedSetStore.set(keys[4], bundleIndex);
-      ttlStore.set(keys[4], Number(ttl));
-      return 1;
-    }
 
-    if (script.includes("cch:session-response-bundle:read:v1")) {
-      const value = hashStore.get(key);
-      const legacyBody = stringStore.get(keys[1]);
-      let result: [number, number, string | null];
-      if (!value) {
-        result = [0, legacyBody === undefined ? 0 : 1, legacyBody ?? null];
-      } else {
-        const present = value.get(`present:${String(args[0])}`) === "1";
-        if (value.get("layout") === "legacy") {
-          result = [1, present ? 1 : 0, legacyBody ?? null];
+      if (script.includes("cch:session-response-bundle:write-legacy:v1")) {
+        const [ttl, expectedKeyId, ...viewArgs] = args.map(toStored);
+        const currentGeneration = stringStore.get(keys[5]);
+        const requestGeneration = stringStore.get(keys[6]);
+        if (
+          expectedKeyId &&
+          (stringStore.get(keys[7]) !== expectedKeyId ||
+            currentGeneration === undefined ||
+            requestGeneration === undefined ||
+            currentGeneration !== requestGeneration)
+        ) {
+          return 0;
+        }
+        for (const currentKey of keys.slice(0, 4)) {
+          stringStore.delete(currentKey);
+          hashStore.delete(currentKey);
+          ttlStore.delete(currentKey);
+        }
+
+        const value = new Map<string, string>([
+          ["schema", "1"],
+          ["layout", "legacy"],
+        ]);
+        for (let index = 0; index < 3; index += 1) {
+          const view = ["legacy", "before", "after"][index];
+          const offset = index * 3;
+          if (viewArgs[offset] === "1") value.set(`present:${view}`, "1");
+          if (viewArgs[offset + 1] === "1") {
+            stringStore.set(keys[index + 1], viewArgs[offset + 2]);
+            ttlStore.set(keys[index + 1], Number(ttl));
+          }
+        }
+        hashStore.set(key, value);
+        ttlStore.set(key, Number(ttl));
+        const bundleIndex = sortedSetStore.get(keys[4]) ?? new Set<string>();
+        bundleIndex.add(key);
+        sortedSetStore.set(keys[4], bundleIndex);
+        ttlStore.set(keys[4], Number(ttl));
+        return 1;
+      }
+
+      if (script.includes("cch:session-response-bundle:read:v1")) {
+        const value = hashStore.get(key);
+        const legacyBody = stringStore.get(keys[1]);
+        let result: [number, number, string | null];
+        if (!value) {
+          result = [0, legacyBody === undefined ? 0 : 1, legacyBody ?? null];
         } else {
-          const ref = value.get(`ref:${String(args[0])}`);
-          result = [
-            1,
-            present ? 1 : 0,
-            ref === undefined ? null : (value.get(`body:${ref}`) ?? null),
-          ];
+          const present = value.get(`present:${String(args[0])}`) === "1";
+          if (value.get("layout") === "legacy") {
+            result = [1, present ? 1 : 0, legacyBody ?? null];
+          } else {
+            const ref = value.get(`ref:${String(args[0])}`);
+            result = [
+              1,
+              present ? 1 : 0,
+              ref === undefined ? null : (value.get(`body:${ref}`) ?? null),
+            ];
+          }
         }
+        const callback = afterBundleRead;
+        afterBundleRead = null;
+        callback?.();
+        return result;
       }
-      const callback = afterBundleRead;
-      afterBundleRead = null;
-      callback?.();
-      return result;
-    }
 
-    throw new Error("unexpected Redis script");
-  }),
+      throw new Error("unexpected Redis script");
+    }
+  ),
 };
 
 vi.mock("@/lib/redis", () => ({ getRedisClient: () => redisMock }));
@@ -550,12 +571,12 @@ describe("SessionManager response body deduplication", () => {
 
     await SessionManager.storeSessionResponseBodySet("sess_compressed", { legacy: body }, 1);
 
-    // 顶层 import 会在 logger mock 初始化前拉入模块，这里必须动态导入。
-    const { PAYLOAD_ENVELOPE_PREFIX } = await import("@/lib/compression/payload-codec");
-    const stored = bodyFields("session:sess_compressed:req:1:response-bodies:v1");
-    expect(stored).toHaveLength(1);
-    expect(stored[0].startsWith(PAYLOAD_ENVELOPE_PREFIX)).toBe(true);
-    expect(Buffer.byteLength(stored[0], "utf8")).toBeLessThan(Buffer.byteLength(body, "utf8") / 4);
+    const key = "session:sess_compressed:req:1:response-bodies:v1";
+    expect(bodyFields(key)).toHaveLength(1);
+    const frame = Buffer.from(responseBundle(key)?.get("body:0") ?? "", "latin1");
+    // 原始 zstd 帧（魔数 28 B5 2F FD），不再有 base64 信封。
+    expect([...frame.subarray(0, 4)]).toEqual([0x28, 0xb5, 0x2f, 0xfd]);
+    expect(frame.length).toBeLessThan(Buffer.byteLength(body, "utf8") / 4);
     await expect(SessionManager.getSessionResponse("sess_compressed", 1)).resolves.toBe(body);
   });
 

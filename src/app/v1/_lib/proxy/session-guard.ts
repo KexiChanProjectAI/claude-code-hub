@@ -260,6 +260,10 @@ export class ProxySessionGuard {
         const requestBodyBefore = requestBodyBeforeSnapshot
           ? await decompressPayload(await requestBodyBeforeSnapshot)
           : requestMessageBeforeProxyMutations;
+        // 去重布局：requestBody/messages/before body/before messages 由一个 Hash 承载，
+        // 这里只写一次正文，before 快照只保留 headers/meta 小 key。
+        const dedupRequestBodies =
+          persistSessionRequestArtifacts && SessionManager.isRequestBodyDedupEnabled?.() === true;
         const requestBeforeSnapshot = {
           headers: filterClientRequestSnapshotHeaders(session.headers),
           meta: {
@@ -267,7 +271,7 @@ export class ProxySessionGuard {
             upstreamUrl: null,
             method: session.method,
           },
-          ...(persistSessionRequestArtifacts
+          ...(persistSessionRequestArtifacts && !dedupRequestBodies
             ? {
                 body: requestBodyBefore,
                 ...(originalMessages !== undefined ? { messages: originalMessages } : {}),
@@ -275,7 +279,17 @@ export class ProxySessionGuard {
             : {}),
         };
 
-        if (persistSessionRequestArtifacts) {
+        if (dedupRequestBodies) {
+          const bundleBase = SessionManager.storeSessionRequestBodyBundleBase(
+            session.sessionId,
+            { legacyBody: session.request.message, beforeBody: requestBodyBefore },
+            requestSequence
+          ).catch((err) => {
+            logger.error("[ProxySessionGuard] Failed to store request body bundle:", err);
+            return null;
+          });
+          session.requestBodyBundleBase = bundleBase;
+        } else if (persistSessionRequestArtifacts) {
           void SessionManager.storeSessionRequestBody(
             session.sessionId,
             session.request.message,
@@ -305,7 +319,7 @@ export class ProxySessionGuard {
         });
 
         // 可选：存储 messages（受环境变量控制，按请求序号独立存储）
-        if (persistSessionRequestArtifacts && messages !== undefined) {
+        if (persistSessionRequestArtifacts && !dedupRequestBodies && messages !== undefined) {
           void SessionManager.storeSessionMessages(
             session.sessionId,
             messages,

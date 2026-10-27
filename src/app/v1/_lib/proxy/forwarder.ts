@@ -1193,6 +1193,34 @@ async function persistRequestAfterSnapshot(
     return;
   }
 
+  if (SessionManager.isRequestBodyDedupEnabled?.() === true) {
+    const sessionId = session.sessionId;
+    // after 正文进入去重 Hash：与已有正文相同只写引用，否则以基准正文为 zstd 字典压缩。
+    await retainRequestMemoryUntil(
+      (async () => {
+        const base = session.requestBodyBundleBase ? await session.requestBodyBundleBase : null;
+        await Promise.all([
+          SessionManager.storeSessionRequestPhaseSnapshot(
+            sessionId,
+            "after",
+            { headers: snapshot.headers, meta: snapshot.meta },
+            session.requestSequence
+          ),
+          SessionManager.storeSessionRequestBodyBundleAfter(
+            sessionId,
+            snapshot.body,
+            session.requestSequence,
+            base
+          ),
+        ]);
+      })().catch((err) => {
+        logger.error("Failed to store request after snapshot:", err);
+      }),
+      "request-phase-snapshot"
+    );
+    return;
+  }
+
   await retainRequestMemoryUntil(
     SessionManager.storeSessionRequestPhaseSnapshot(
       session.sessionId,

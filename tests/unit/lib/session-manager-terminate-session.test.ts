@@ -112,20 +112,21 @@ describe("SessionManager.terminateSession", () => {
     expect(pipelineRef.zrem).not.toHaveBeenCalledWith(getUserActiveSessionsKey(123), sessionId);
   });
 
-  it("full termination atomically deletes all indexed response body bundles", async () => {
+  it("full termination atomically deletes all indexed response and request body bundles", async () => {
     const sessionId = "sess_response_body_cleanup";
     const { SessionManager } = await import("@/lib/session-manager");
 
     await expect(SessionManager.terminateSession(sessionId)).resolves.toBe(true);
 
     expect(pipelineRef.eval).toHaveBeenCalledWith(
-      expect.stringContaining("cch:session-response-bundle:delete-session:v1"),
-      5,
+      expect.stringContaining("cch:session-response-bundle:delete-session:v2"),
+      6,
       `session:${sessionId}:response-body-bundles:v1`,
       `session:${sessionId}:response-body-generation:v1`,
       `session:${sessionId}:response`,
       `session:${sessionId}:req:1:snapshot:response:before:body`,
       `session:${sessionId}:req:1:snapshot:response:after:body`,
+      `session:${sessionId}:request-body-bundles:v1`,
       300,
       expect.any(String)
     );

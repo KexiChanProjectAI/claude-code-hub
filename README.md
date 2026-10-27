@@ -361,6 +361,8 @@ cch doctor            # 诊断集群与部署状态
 | `API_KEY_AUTH_CACHE_TTL_SECONDS`           | `60`                     | API Key 鉴权缓存 TTL（秒，默认 60，最大 3600）。                              |
 | `AUTH_SESSION_TTL_SECONDS`                 | `604800`                 | Web UI 登录态 TTL（秒，默认 7 天）；`ADMIN_TOKEN` opaque 登录的签名 cookie 也使用该值。降低该值会按签发时间收紧已签发 admin 签名 cookie 的剩余寿命，且不会延长其原始 `exp`。 |
 | `SESSION_TTL`                              | `300`                    | 代理请求上下文缓存时间（秒），影响供应商复用策略；不控制 Web UI 登录态。       |
+| `SESSION_REQUEST_BODY_DEDUP_ENABLED`       | `true`                   | 请求正文去重：同一请求的 requestBody/messages/before/after 只在一个 Redis Hash 里存唯一正文，差异正文以 zstd 字典压缩。 |
+| `SESSION_PAYLOAD_ZSTD_LEVEL`               | `1`                      | Redis 留存正文的 zstd 压缩等级（1-19），以原始二进制帧写入，不再 base64。     |
 | `ENABLE_SECURE_COOKIES`                    | `true`                   | 仅 HTTPS 场景能设置 Secure Cookie；HTTP 访问（非 localhost）需改为 `false`。 |
 | `ENABLE_CIRCUIT_BREAKER_ON_NETWORK_ERRORS` | `false`                  | 是否将网络错误计入熔断器；开启后能更激进地阻断异常线路。                     |
 | `APP_PORT`                                 | `23000`                  | 生产端口，可被容器或进程管理器覆盖。                                         |

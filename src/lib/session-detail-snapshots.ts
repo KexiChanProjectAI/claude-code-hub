@@ -49,3 +49,18 @@ export function hasSnapshotData(
     ("messages" in value && value.messages !== null)
   );
 }
+
+/**
+ * 从请求正文派生 messages 视图，优先级与 ProxySession.getMessages() 一致：
+ * messages -> input (Codex) -> contents (Gemini) -> request.contents (Gemini CLI)。
+ * 去重布局不再单独存储 messages，读取时由正文派生。
+ */
+export function extractRequestMessages(value: unknown): unknown | null {
+  if (!isPlainRecord(value)) return null;
+  if (value.messages !== undefined) return value.messages;
+  if (value.input !== undefined) return value.input;
+  if (value.contents !== undefined) return value.contents;
+  const request = value.request;
+  if (isPlainRecord(request) && request.contents !== undefined) return request.contents;
+  return null;
+}

@@ -6,9 +6,15 @@ import { extractCodexSessionId } from "@/app/v1/_lib/codex/session-extractor";
 import { sanitizeHeaders, sanitizeUrl } from "@/app/v1/_lib/proxy/errors";
 import { RESERVED_INTERNAL_HEADERS } from "@/app/v1/_lib/responses-ws/internal-secret";
 import { parseClaudeMetadataUserId } from "@/lib/claude-code/metadata-user-id";
-import { compressPayload, decompressPayload } from "@/lib/compression/payload-codec";
+import {
+  compressPayloadBinary,
+  decompressPayloadBinary,
+  supportsZstdDictionary,
+} from "@/lib/compression/payload-codec";
 import { getEnvConfig } from "@/lib/config/env.schema";
 import { logger } from "@/lib/logger";
+import { evalBuffer, toReplyBuffer } from "@/lib/redis/eval-buffer";
+import { extractRequestMessages } from "@/lib/session-detail-snapshots";
 import {
   getSessionRequestArtifactByteSize,
   getSessionRequestArtifactMaxBytes,
@@ -160,7 +166,7 @@ redis.call("EXPIRE", KEYS[5], ARGV[1])
 return 1
 `;
 const DELETE_SESSION_RESPONSE_BODY_BUNDLES_LUA = `
--- cch:session-response-bundle:delete-session:v1
+-- cch:session-response-bundle:delete-session:v2
 local bundle_keys = redis.call("ZRANGE", KEYS[1], 0, -1)
 local deleted = redis.call("DEL", KEYS[1])
 redis.call("SETEX", KEYS[2], ARGV[1], ARGV[2])
@@ -180,6 +186,23 @@ for _, bundle_key in ipairs(bundle_keys) do
     )
   else
     deleted = deleted + redis.call("DEL", bundle_key)
+  end
+end
+local request_bundle_keys = redis.call("ZRANGE", KEYS[6], 0, -1)
+deleted = deleted + redis.call("DEL", KEYS[6])
+local request_suffix = "request-bodies:v1"
+for _, bundle_key in ipairs(request_bundle_keys) do
+  if string.sub(bundle_key, -string.len(request_suffix)) == request_suffix then
+    local request_prefix = string.sub(bundle_key, 1, string.len(bundle_key) - string.len(request_suffix))
+    deleted = deleted + redis.call(
+      "DEL",
+      bundle_key,
+      request_prefix .. "requestBody",
+      request_prefix .. "messages",
+      request_prefix .. "snapshot:request:before:body",
+      request_prefix .. "snapshot:request:before:messages",
+      request_prefix .. "snapshot:request:after:body"
+    )
   end
 end
 return deleted
@@ -202,6 +225,117 @@ if not ref then
   return { 1, present and 1 or 0, false }
 end
 return { 1, present and 1 or 0, redis.call("HGET", KEYS[1], "body:" .. ref) or false }
+`;
+
+const SESSION_REQUEST_BODY_VIEWS = ["legacy", "before", "after"] as const;
+type SessionRequestBodyView = (typeof SESSION_REQUEST_BODY_VIEWS)[number];
+const SESSION_REQUEST_BODY_INDEX_PRUNE_LUA = `
+local redis_time = redis.call("TIME")
+local now_ms = (tonumber(redis_time[1]) * 1000) + math.floor(tonumber(redis_time[2]) / 1000)
+local expires_at_ms = now_ms + (tonumber(ARGV[1]) * 1000)
+redis.call("ZREMRANGEBYSCORE", KEYS[index_slot], "-inf", now_ms)
+redis.call("ZADD", KEYS[index_slot], expires_at_ms, KEYS[1])
+redis.call("EXPIRE", KEYS[index_slot], ARGV[1])
+`;
+// KEYS: 1=bundle hash, 2..6=五个旧请求正文 key, 7=session 级 bundle 索引
+// ARGV: 1=ttl, 2=present:legacy, 3=present:before, 4=ref:legacy, 5=ref:before, 6=正文数量,
+//       之后每份正文 4 个参数：body, hash, bytes, dict
+const WRITE_SESSION_REQUEST_BODY_BUNDLE_BASE_LUA = `
+-- cch:session-request-bundle:write-base:v1
+redis.call("DEL", KEYS[1], KEYS[2], KEYS[3], KEYS[4], KEYS[5], KEYS[6])
+local count = tonumber(ARGV[6])
+redis.call("HSET", KEYS[1], "schema", "1", "layout", "dedup", "next", tostring(count))
+if ARGV[2] == "1" then redis.call("HSET", KEYS[1], "present:legacy", "1") end
+if ARGV[3] == "1" then redis.call("HSET", KEYS[1], "present:before", "1") end
+if ARGV[4] ~= "" then redis.call("HSET", KEYS[1], "ref:legacy", ARGV[4]) end
+if ARGV[5] ~= "" then redis.call("HSET", KEYS[1], "ref:before", ARGV[5]) end
+for index = 0, count - 1 do
+  local offset = 7 + (index * 4)
+  local id = tostring(index)
+  redis.call(
+    "HSET", KEYS[1],
+    "body:" .. id, ARGV[offset],
+    "hash:" .. id, ARGV[offset + 1],
+    "bytes:" .. id, ARGV[offset + 2]
+  )
+  if ARGV[offset + 3] ~= "" then redis.call("HSET", KEYS[1], "dict:" .. id, ARGV[offset + 3]) end
+end
+redis.call("EXPIRE", KEYS[1], ARGV[1])
+local index_slot = 7
+${SESSION_REQUEST_BODY_INDEX_PRUNE_LUA}
+return 1
+`;
+// KEYS: 1=bundle hash, 2=旧 after body key, 3=session 级 bundle 索引
+// ARGV: 1=ttl, 2=hash（空串表示正文缺失/超限）, 3=bytes, 4=body, 5=dict ref（空串表示独立帧）
+const WRITE_SESSION_REQUEST_BODY_BUNDLE_AFTER_LUA = `
+-- cch:session-request-bundle:write-after:v1
+local next_index = tonumber(redis.call("HGET", KEYS[1], "next") or "0") or 0
+local new_ref = nil
+if ARGV[2] ~= "" then
+  for index = 0, next_index - 1 do
+    if redis.call("HGET", KEYS[1], "hash:" .. index) == ARGV[2] then
+      new_ref = tostring(index)
+      break
+    end
+  end
+  if not new_ref then
+    if ARGV[5] ~= "" and redis.call("HEXISTS", KEYS[1], "body:" .. ARGV[5]) == 0 then
+      return 0
+    end
+    new_ref = tostring(next_index)
+    redis.call(
+      "HSET", KEYS[1],
+      "body:" .. new_ref, ARGV[4],
+      "hash:" .. new_ref, ARGV[2],
+      "bytes:" .. new_ref, ARGV[3],
+      "next", tostring(next_index + 1)
+    )
+    if ARGV[5] ~= "" then redis.call("HSET", KEYS[1], "dict:" .. new_ref, ARGV[5]) end
+  end
+end
+
+local old_ref = redis.call("HGET", KEYS[1], "ref:after")
+if old_ref and old_ref ~= new_ref
+  and old_ref ~= redis.call("HGET", KEYS[1], "ref:legacy")
+  and old_ref ~= redis.call("HGET", KEYS[1], "ref:before") then
+  redis.call("HDEL", KEYS[1], "body:" .. old_ref, "hash:" .. old_ref, "bytes:" .. old_ref, "dict:" .. old_ref)
+end
+
+redis.call("DEL", KEYS[2])
+redis.call("HSETNX", KEYS[1], "schema", "1")
+redis.call("HSETNX", KEYS[1], "layout", "dedup")
+redis.call("HSETNX", KEYS[1], "next", tostring(next_index))
+redis.call("HSET", KEYS[1], "present:after", "1")
+if new_ref then
+  redis.call("HSET", KEYS[1], "ref:after", new_ref)
+else
+  redis.call("HDEL", KEYS[1], "ref:after")
+end
+redis.call("EXPIRE", KEYS[1], ARGV[1])
+local index_slot = 3
+${SESSION_REQUEST_BODY_INDEX_PRUNE_LUA}
+return 1
+`;
+// 返回 { exists, present, body | false, dict body | false }
+const READ_SESSION_REQUEST_BODY_BUNDLE_LUA = `
+-- cch:session-request-bundle:read:v1
+if redis.call("EXISTS", KEYS[1]) == 0 then
+  return { 0, 0, false, false }
+end
+local view = ARGV[1]
+local present = redis.call("HGET", KEYS[1], "present:" .. view) and 1 or 0
+local ref = redis.call("HGET", KEYS[1], "ref:" .. view)
+if not ref then
+  return { 1, present, false, false }
+end
+local body = redis.call("HGET", KEYS[1], "body:" .. ref)
+local dict_ref = redis.call("HGET", KEYS[1], "dict:" .. ref)
+local dict_body = false
+if dict_ref then
+  dict_body = redis.call("HGET", KEYS[1], "body:" .. dict_ref) or false
+  if not dict_body then body = false end
+end
+return { 1, present, body or false, dict_body }
 `;
 
 type SessionResponseBodyView = (typeof SESSION_RESPONSE_BODY_VIEWS)[number];
@@ -295,6 +429,96 @@ function buildLegacySessionResponseBodyViewKey(
   return buildSessionDetailSnapshotKey(sessionId, sequence, "response", view, "body");
 }
 
+function buildSessionRequestBodyBundleKey(sessionId: string, sequence: number): string {
+  return `session:${sessionId}:req:${sequence}:request-bodies:v1`;
+}
+
+function buildSessionRequestBodyBundleIndexKey(sessionId: string): string {
+  return `session:${sessionId}:request-body-bundles:v1`;
+}
+
+/** 去重布局之前，同一请求正文分散写入的五个独立 key。去重 writer 会原子删除它们。 */
+function buildLegacySessionRequestBodyKeys(sessionId: string, sequence: number): string[] {
+  const prefix = `session:${sessionId}:req:${sequence}:`;
+  return [
+    `${prefix}requestBody`,
+    `${prefix}messages`,
+    `${prefix}snapshot:request:before:body`,
+    `${prefix}snapshot:request:before:messages`,
+    `${prefix}snapshot:request:after:body`,
+  ];
+}
+
+function sha256Hex(text: string): string {
+  return crypto.createHash("sha256").update(text, "utf8").digest("hex");
+}
+
+/**
+ * 与旧 writer 相同的隐私与体积规则：先按原始体积过滤，再脱敏并序列化，最后按序列化后的 UTF-8 字节判定。
+ * 返回 null 表示该视图存在但不可存储。
+ */
+function normalizeSessionRequestBodyForStorage(
+  value: unknown,
+  storeMessages: boolean,
+  context: string
+): string | null {
+  if (!canStoreSessionRequestArtifact(value, context)) return null;
+  const normalized = parseJsonStringIfPossible(value);
+  const toStore = storeMessages ? normalized : redactRequestBody(normalized);
+  const json = JSON.stringify(toStore);
+  if (typeof json !== "string") return null;
+  return canStoreSessionRequestArtifact(json, context) ? json : null;
+}
+
+/** 请求正文去重布局的基准正文句柄：forwarder 用它做 after 正文的 zstd 字典。 */
+export type SessionRequestBodyBundleBase = {
+  ref: string;
+  frame: Buffer;
+};
+
+type SessionRequestBodyBundleRead = {
+  exists: boolean;
+  present: boolean;
+  body: string | null;
+};
+
+async function readSessionRequestBodyBundleView(
+  redis: NonNullable<ReturnType<typeof getRedisClient>>,
+  sessionId: string,
+  sequence: number,
+  view: SessionRequestBodyView
+): Promise<SessionRequestBodyBundleRead> {
+  const result = await evalBuffer(
+    redis,
+    READ_SESSION_REQUEST_BODY_BUNDLE_LUA,
+    1,
+    buildSessionRequestBodyBundleKey(sessionId, sequence),
+    view
+  );
+  if (!Array.isArray(result) || result.length < 4) {
+    throw new Error("invalid session request body bundle read result");
+  }
+
+  const exists = Number(result[0]) === 1;
+  const present = Number(result[1]) === 1;
+  const stored = toReplyBuffer(result[2]);
+  if (!exists || stored === null) return { exists, present, body: null };
+
+  const dictFrame = toReplyBuffer(result[3]);
+  let dictionary: Buffer | null = null;
+  if (dictFrame !== null) {
+    const dictText = await decompressPayloadBinary(dictFrame);
+    if (dictText === null) return { exists, present, body: null };
+    dictionary = Buffer.from(dictText, "utf8");
+  }
+  return { exists, present, body: await decompressPayloadBinary(stored, { dictionary }) };
+}
+
+function parseStoredJson(text: string | null): unknown | null {
+  if (text === null) return null;
+  return JSON.parse(text) as unknown;
+}
+
 function prepareSessionResponseBodyBundle(
   input: SessionResponseBodySetInput,
   storeMessages: boolean
@@ -356,14 +580,14 @@ function prepareLegacySessionResponseBodySet(
 
 async function compressLegacySessionBodies(
   bodies: Record<SessionResponseBodyView, string | null>
-): Promise<Record<SessionResponseBodyView, string | null>> {
+): Promise<Record<SessionResponseBodyView, Buffer | null>> {
   const entries = await Promise.all(
     SESSION_RESPONSE_BODY_VIEWS.map(async (view) => {
       const body = bodies[view];
-      return [view, body === null ? null : await compressPayload(body)] as const;
+      return [view, body === null ? null : await compressPayloadBinary(body)] as const;
     })
   );
-  return Object.fromEntries(entries) as Record<SessionResponseBodyView, string | null>;
+  return Object.fromEntries(entries) as Record<SessionResponseBodyView, Buffer | null>;
 }
 
 async function readSessionResponseBodyBundleView(
@@ -372,7 +596,8 @@ async function readSessionResponseBodyBundleView(
   sequence: number,
   view: SessionResponseBodyView
 ): Promise<SessionResponseBodyBundleRead> {
-  const result = (await redis.eval(
+  const result = (await evalBuffer(
+    redis,
     READ_SESSION_RESPONSE_BODY_BUNDLE_LUA,
     2,
     buildSessionResponseBodyBundleKey(sessionId, sequence),
@@ -383,11 +608,11 @@ async function readSessionResponseBodyBundleView(
     throw new Error("invalid session response body bundle read result");
   }
 
-  const storedBody = typeof result[2] === "string" ? result[2] : null;
+  const storedBody = toReplyBuffer(result[2]);
   return {
     exists: Number(result[0]) === 1,
     present: Number(result[1]) === 1,
-    body: storedBody === null ? null : await decompressPayload(storedBody),
+    body: storedBody === null ? null : await decompressPayloadBinary(storedBody),
   };
 }
 
@@ -1984,7 +2209,7 @@ export class SessionManager {
         await redis.del(key);
         return;
       }
-      await redis.setex(key, SessionManager.SESSION_TTL, await compressPayload(messagesJson));
+      await redis.setex(key, SessionManager.SESSION_TTL, await compressPayloadBinary(messagesJson));
       logger.trace("SessionManager: Stored session messages", {
         sessionId,
         requestSequence,
@@ -2289,18 +2514,29 @@ export class SessionManager {
         const sequence = normalizeRequestSequence(requestSequence);
         if (sequence === null) return null;
 
+        const bundled = await readSessionRequestBodyBundleView(
+          redis,
+          sessionId,
+          sequence,
+          "legacy"
+        );
+        if (bundled.exists) {
+          return bundled.body === null
+            ? null
+            : extractRequestMessages(parseStoredJson(bundled.body));
+        }
         const newKey = `session:${sessionId}:req:${sequence}:messages`;
-        const messagesJson = await redis.get(newKey);
-        return messagesJson ? JSON.parse(await decompressPayload(messagesJson)) : null;
+        const messagesJson = await redis.getBuffer(newKey);
+        return messagesJson ? parseStoredJson(await decompressPayloadBinary(messagesJson)) : null;
       }
 
       // 向后兼容：尝试旧格式
       const legacyKey = `session:${sessionId}:messages`;
-      const messagesJson = await redis.get(legacyKey);
+      const messagesJson = await redis.getBuffer(legacyKey);
       if (!messagesJson) {
         return null;
       }
-      return JSON.parse(await decompressPayload(messagesJson));
+      return parseStoredJson(await decompressPayloadBinary(messagesJson));
     } catch (error) {
       logger.error("SessionManager: Failed to get session messages", { error });
       return null;
@@ -2329,24 +2565,26 @@ export class SessionManager {
         return true;
       }
 
-      // 2. 检查新格式：使用 SCAN 搜索 session:{sessionId}:req:*:messages
-      let cursor = "0";
-      do {
-        const [nextCursor, keys] = (await redis.scan(
-          cursor,
-          "MATCH",
-          `session:${sessionId}:req:*:messages`,
-          "COUNT",
-          100
-        )) as [string, string[]];
+      // 2. 检查新格式：SCAN 旧 messages key 与去重布局的请求正文 Hash（messages 由正文派生）
+      for (const pattern of [
+        `session:${sessionId}:req:*:messages`,
+        `session:${sessionId}:req:*:request-bodies:v1`,
+      ]) {
+        let cursor = "0";
+        do {
+          const [nextCursor, keys] = (await redis.scan(cursor, "MATCH", pattern, "COUNT", 100)) as [
+            string,
+            string[],
+          ];
 
-        cursor = nextCursor;
+          cursor = nextCursor;
 
-        // 找到任意一个就返回 true
-        if (keys.length > 0) {
-          return true;
-        }
-      } while (cursor !== "0");
+          // 找到任意一个就返回 true
+          if (keys.length > 0) {
+            return true;
+          }
+        } while (cursor !== "0");
+      }
 
       return false;
     } catch (error) {
@@ -2424,7 +2662,11 @@ export class SessionManager {
       if (sequence) {
         await SessionManager.refreshSessionRequestOwner(redis, sessionId, sequence, keyId);
       }
-      await redis.setex(key, SessionManager.SESSION_TTL, await compressPayload(responseString));
+      await redis.setex(
+        key,
+        SessionManager.SESSION_TTL,
+        await compressPayloadBinary(responseString)
+      );
       logger.trace("SessionManager: Stored session response", {
         sessionId,
         requestSequence,
@@ -2544,7 +2786,7 @@ export class SessionManager {
       }
 
       const bundleStoredBodies = await Promise.all(
-        bundle.bodies.map((body) => compressPayload(body))
+        bundle.bodies.map((body) => compressPayloadBinary(body))
       );
       await SessionManager.refreshSessionRequestOwner(redis, sessionId, sequence, keyId);
       await redis.eval(
@@ -2573,6 +2815,189 @@ export class SessionManager {
         error,
         sessionId,
         requestSequence,
+      });
+    }
+  }
+
+  /** 请求正文去重布局开关。只认显式 true，测试或旧配置缺省时保持旧 key 行为。 */
+  static isRequestBodyDedupEnabled(): boolean {
+    return getEnvConfig().SESSION_REQUEST_BODY_DEDUP_ENABLED === true;
+  }
+
+  /**
+   * 去重布局的基准写入：legacy（补全后的客户端正文）与 before（补全前正文）共用一个 Hash。
+   * 两者相同时只存一份；不同时 before 以 legacy 为 zstd 字典压缩，只占差异大小。
+   * messages 视图不再单独存储，读取时由正文派生。
+   *
+   * @returns 基准正文的压缩帧，供 after 正文做字典；无可用基准时返回 null
+   */
+  static async storeSessionRequestBodyBundleBase(
+    sessionId: string,
+    input: { legacyBody?: unknown; beforeBody?: unknown },
+    requestSequence?: number
+  ): Promise<SessionRequestBodyBundleBase | null> {
+    const redis = getRedisClient();
+    if (redis?.status !== "ready") return null;
+
+    try {
+      const sequence = normalizeRequestSequence(requestSequence) ?? 1;
+      const storeMessages = SessionManager.STORE_MESSAGES;
+      const hasLegacy = input.legacyBody !== undefined;
+      const hasBefore = input.beforeBody !== undefined;
+      const legacyJson = hasLegacy
+        ? normalizeSessionRequestBodyForStorage(input.legacyBody, storeMessages, "requestBody")
+        : null;
+      const beforeJson = hasBefore
+        ? normalizeSessionRequestBodyForStorage(
+            input.beforeBody,
+            storeMessages,
+            "snapshot:before:body"
+          )
+        : null;
+
+      const baseJson = legacyJson ?? beforeJson;
+      const bodies: Array<{ frame: Buffer; hash: string; bytes: number; dict: string }> = [];
+      const refs = { legacy: "", before: "" };
+
+      if (baseJson !== null) {
+        bodies.push({
+          frame: await compressPayloadBinary(baseJson),
+          hash: sha256Hex(baseJson),
+          bytes: Buffer.byteLength(baseJson, "utf8"),
+          dict: "",
+        });
+        if (legacyJson !== null) refs.legacy = "0";
+        if (beforeJson !== null) {
+          if (beforeJson === baseJson) {
+            refs.before = "0";
+          } else {
+            const useDictionary = supportsZstdDictionary();
+            bodies.push({
+              frame: await compressPayloadBinary(beforeJson, {
+                dictionary: useDictionary ? Buffer.from(baseJson, "utf8") : null,
+              }),
+              hash: sha256Hex(beforeJson),
+              bytes: Buffer.byteLength(beforeJson, "utf8"),
+              dict: useDictionary ? "0" : "",
+            });
+            refs.before = "1";
+          }
+        }
+      }
+
+      const bundleKey = buildSessionRequestBodyBundleKey(sessionId, sequence);
+      await redis.eval(
+        WRITE_SESSION_REQUEST_BODY_BUNDLE_BASE_LUA,
+        7,
+        bundleKey,
+        ...buildLegacySessionRequestBodyKeys(sessionId, sequence),
+        buildSessionRequestBodyBundleIndexKey(sessionId),
+        SessionManager.SESSION_TTL,
+        hasLegacy ? 1 : 0,
+        hasBefore ? 1 : 0,
+        refs.legacy,
+        refs.before,
+        bodies.length,
+        ...bodies.flatMap((body) => [body.frame, body.hash, body.bytes, body.dict])
+      );
+      logger.trace("SessionManager: Stored session request body bundle", {
+        sessionId,
+        requestSequence: sequence,
+        uniqueBodies: bodies.length,
+        storedBytes: bodies.reduce((total, body) => total + body.frame.length, 0),
+        redacted: !storeMessages,
+      });
+
+      return bodies.length > 0 ? { ref: "0", frame: bodies[0].frame } : null;
+    } catch (error) {
+      logger.error("SessionManager: Failed to store session request body bundle", {
+        error,
+        sessionId,
+      });
+      return null;
+    }
+  }
+
+  /**
+   * 去重布局的 after 正文写入：与已有正文哈希相同时只写引用；否则以基准正文为字典压缩后追加。
+   * 同一请求多次写 after（重试/对冲）时，上一份仅被 after 引用的正文会被替换，不会累积。
+   */
+  static async storeSessionRequestBodyBundleAfter(
+    sessionId: string,
+    afterBody: unknown,
+    requestSequence?: number,
+    base?: SessionRequestBodyBundleBase | null
+  ): Promise<void> {
+    const redis = getRedisClient();
+    if (redis?.status !== "ready") return;
+
+    try {
+      const sequence = normalizeRequestSequence(requestSequence) ?? 1;
+      const afterJson = normalizeSessionRequestBodyForStorage(
+        afterBody ?? null,
+        SessionManager.STORE_MESSAGES,
+        "snapshot:after:body"
+      );
+      const bundleKey = buildSessionRequestBodyBundleKey(sessionId, sequence);
+      const keys = [
+        bundleKey,
+        buildLegacySessionRequestBodyKeys(sessionId, sequence)[4],
+        buildSessionRequestBodyBundleIndexKey(sessionId),
+      ];
+
+      if (afterJson === null) {
+        await redis.eval(
+          WRITE_SESSION_REQUEST_BODY_BUNDLE_AFTER_LUA,
+          3,
+          ...keys,
+          SessionManager.SESSION_TTL,
+          "",
+          0,
+          "",
+          ""
+        );
+        return;
+      }
+
+      const hash = sha256Hex(afterJson);
+      const bytes = Buffer.byteLength(afterJson, "utf8");
+      let dictionary: Buffer | null = null;
+      if (base && supportsZstdDictionary()) {
+        const baseText = await decompressPayloadBinary(base.frame);
+        if (baseText !== null && sha256Hex(baseText) !== hash) {
+          dictionary = Buffer.from(baseText, "utf8");
+        }
+      }
+
+      const frame = await compressPayloadBinary(afterJson, { dictionary });
+      const written = await redis.eval(
+        WRITE_SESSION_REQUEST_BODY_BUNDLE_AFTER_LUA,
+        3,
+        ...keys,
+        SessionManager.SESSION_TTL,
+        hash,
+        bytes,
+        frame,
+        dictionary && base ? base.ref : ""
+      );
+
+      // 基准正文已不在 Hash 中（例如被并发重写），改存独立帧，避免写出无法解码的字典帧。
+      if (Number(written) === 0) {
+        await redis.eval(
+          WRITE_SESSION_REQUEST_BODY_BUNDLE_AFTER_LUA,
+          3,
+          ...keys,
+          SessionManager.SESSION_TTL,
+          hash,
+          bytes,
+          await compressPayloadBinary(afterJson),
+          ""
+        );
+      }
+    } catch (error) {
+      logger.error("SessionManager: Failed to store session request after body", {
+        error,
+        sessionId,
       });
     }
   }
@@ -2608,7 +3033,7 @@ export class SessionManager {
         await redis.del(key);
         return;
       }
-      await redis.setex(key, SessionManager.SESSION_TTL, await compressPayload(payload));
+      await redis.setex(key, SessionManager.SESSION_TTL, await compressPayloadBinary(payload));
       logger.trace("SessionManager: Stored session request body", {
         sessionId,
         requestSequence: sequence,
@@ -2638,10 +3063,12 @@ export class SessionManager {
     try {
       const sequence = normalizeRequestSequence(requestSequence);
       if (!sequence) return null;
+      const bundled = await readSessionRequestBodyBundleView(redis, sessionId, sequence, "legacy");
+      if (bundled.exists) return parseStoredJson(bundled.body);
       const key = `session:${sessionId}:req:${sequence}:requestBody`;
-      const value = await redis.get(key);
+      const value = await redis.getBuffer(key);
       if (!value) return null;
-      return JSON.parse(await decompressPayload(value)) as unknown;
+      return parseStoredJson(await decompressPayloadBinary(value));
     } catch (error) {
       logger.error("SessionManager: Failed to get session request body", { error, sessionId });
       return null;
@@ -2982,8 +3409,8 @@ export class SessionManager {
 
       // 向后兼容：尝试旧格式
       const legacyKey = `session:${sessionId}:response`;
-      const response = await redis.get(legacyKey);
-      return response === null ? null : await decompressPayload(response);
+      const response = await redis.getBuffer(legacyKey);
+      return response === null ? null : await decompressPayloadBinary(response);
     } catch (error) {
       logger.error("SessionManager: Failed to get session response", { error });
       return null;
@@ -3024,7 +3451,7 @@ export class SessionManager {
           const bodyJson = JSON.stringify(bodyToStore);
           if (canStoreSessionRequestArtifact(bodyJson, `snapshot:${phase}:body`)) {
             writes.push(
-              compressPayload(bodyJson).then((stored) =>
+              compressPayloadBinary(bodyJson).then((stored) =>
                 redis.setex(bodyKey, SessionManager.SESSION_TTL, stored)
               )
             );
@@ -3053,7 +3480,7 @@ export class SessionManager {
           const messagesJson = JSON.stringify(messagesToStore);
           if (canStoreSessionRequestArtifact(messagesJson, `snapshot:${phase}:messages`)) {
             writes.push(
-              compressPayload(messagesJson).then((stored) =>
+              compressPayloadBinary(messagesJson).then((stored) =>
                 redis.setex(messagesKey, SessionManager.SESSION_TTL, stored)
               )
             );
@@ -3117,30 +3544,49 @@ export class SessionManager {
       const sequence = normalizeRequestSequence(requestSequence);
       if (!sequence) return null;
 
-      const [bodyValue, messagesValue, headersValue, metaValue] = await Promise.all([
-        redis.get(buildSessionDetailSnapshotKey(sessionId, sequence, "request", phase, "body")),
-        redis.get(buildSessionDetailSnapshotKey(sessionId, sequence, "request", phase, "messages")),
+      const [bundled, headersValue, metaValue] = await Promise.all([
+        readSessionRequestBodyBundleView(redis, sessionId, sequence, phase),
         redis.get(buildSessionDetailSnapshotKey(sessionId, sequence, "request", phase, "headers")),
         redis.get(buildSessionDetailSnapshotKey(sessionId, sequence, "request", phase, "meta")),
       ]);
 
-      if (
-        bodyValue === null &&
-        messagesValue === null &&
-        headersValue === null &&
-        metaValue === null
-      ) {
-        return null;
+      let body: unknown | null;
+      let messages: unknown | null;
+      if (bundled.exists) {
+        body = parseStoredJson(bundled.body);
+        // 去重布局不存 messages：before 视图由正文派生；after 视图由 action 侧从正文提取。
+        messages = phase === "before" && body !== null ? extractRequestMessages(body) : null;
+        if (body === null && !bundled.present && headersValue === null && metaValue === null) {
+          return null;
+        }
+      } else {
+        const [bodyValue, messagesValue] = await Promise.all([
+          redis.getBuffer(
+            buildSessionDetailSnapshotKey(sessionId, sequence, "request", phase, "body")
+          ),
+          redis.getBuffer(
+            buildSessionDetailSnapshotKey(sessionId, sequence, "request", phase, "messages")
+          ),
+        ]);
+        if (
+          bodyValue === null &&
+          messagesValue === null &&
+          headersValue === null &&
+          metaValue === null
+        ) {
+          return null;
+        }
+        const [bodyText, messagesText] = await Promise.all([
+          bodyValue === null ? Promise.resolve(null) : decompressPayloadBinary(bodyValue),
+          messagesValue === null ? Promise.resolve(null) : decompressPayloadBinary(messagesValue),
+        ]);
+        body = parseStoredJson(bodyText);
+        messages = parseStoredJson(messagesText);
       }
 
-      const [bodyText, messagesText] = await Promise.all([
-        bodyValue === null ? Promise.resolve(null) : decompressPayload(bodyValue),
-        messagesValue === null ? Promise.resolve(null) : decompressPayload(messagesValue),
-      ]);
-
       return {
-        body: bodyText === null ? null : (JSON.parse(bodyText) as unknown),
-        messages: messagesText === null ? null : (JSON.parse(messagesText) as unknown),
+        body,
+        messages,
         headers: headersValue === null ? null : parseHeaderRecord(headersValue),
         meta:
           metaValue === null
@@ -3223,7 +3669,7 @@ export class SessionManager {
             canStoreSessionResponseBody(bodyToStore, `snapshot:${phase}`)
           ) {
             writes.push(
-              compressPayload(bodyToStore).then((stored) =>
+              compressPayloadBinary(bodyToStore).then((stored) =>
                 redis.setex(bodyKey, SessionManager.SESSION_TTL, stored)
               )
             );
@@ -3718,12 +4164,13 @@ export class SessionManager {
       // Binding mirrors are mutated only by the tenant-authorized helpers above.
       pipeline.eval(
         DELETE_SESSION_RESPONSE_BODY_BUNDLES_LUA,
-        5,
+        6,
         buildSessionResponseBodyBundleIndexKey(sessionId),
         buildSessionResponseBodyGenerationKey(sessionId),
         `session:${sessionId}:response`,
         buildLegacySessionResponseBodyViewKey(sessionId, 1, "before"),
         buildLegacySessionResponseBodyViewKey(sessionId, 1, "after"),
+        buildSessionRequestBodyBundleIndexKey(sessionId),
         SessionManager.SESSION_TTL,
         crypto.randomUUID()
       );
