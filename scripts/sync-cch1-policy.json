@@ -1,0 +1,9 @@
+{
+  "preserveProviders": ["cc官key", "openai 官key"],
+  "rules": [
+    {
+      "tables": ["providers"],
+      "set": { "proxy_fallback_to_direct": false }
+    }
+  ]
+}

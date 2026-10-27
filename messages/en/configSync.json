@@ -1,0 +1,16 @@
+{
+  "usage": "CCH_SOURCE_DSN=... CCH_TARGET_DSN=... bun scripts/sync-cch-config.ts [--rules rules.json] [--policy policy.json] [--overwrite] [--dry-run] [--lang zh-CN|zh-TW|en|ja|ru]",
+  "applied": "Sync committed; target configuration overwritten.",
+  "preview": "Preview: no target writes. Each table shows source rows and current target rows.",
+  "restart": "Restart the target CCH to refresh provider, endpoint, and model price caches.",
+  "invalid_rules": "Invalid rules. See the configuration sync documentation.",
+  "invalid_policy": "Invalid policy: preserveProviders must be an array of provider names and rules an array of rules.",
+  "missing_preserved_provider": "A whitelisted target provider is missing. Sync refused; check its name and soft-deletion status.",
+  "invalid_field": "A rule uses an unknown, protected, or unsupported field.",
+  "invalid_host": "The replacement host must be hostname[:port], without scheme, path, or credentials.",
+  "schema_mismatch": "Source and target configuration columns or types differ. Align database migrations first.",
+  "same_database": "Source and target are the same database. Sync refused.",
+  "missing_vendor": "Configuration references a missing vendor. Transaction rolled back.",
+  "missing_dsn": "Set CCH_SOURCE_DSN and CCH_TARGET_DSN.",
+  "failed": "Sync failed; target transaction was not committed. Check connections, permissions, rule values, and database constraints."
+}

@@ -11,6 +11,8 @@
 - OpenAI Chat Completions（`/v1/chat/completions`）支持按供应商覆写思考强度：`openai-compatible` 供应商复用条件式 reasoning effort 规则（按原始/执行模型与客户端原值匹配），命中后改写顶层 `reasoning_effort`（none/minimal/low/medium/high/xhigh/max），并记录覆写审计；本地转发与 edge 执行器一致
 - Session 调试正文 Redis 占用大幅下降：同一请求原本写入五份内容相同的 key（requestBody、messages、before body/messages、after body），现合并为一个 Hash，相同正文只存一份，messages 读取时由正文派生；before/after 与基准不同时以基准正文为 zstd 字典压缩，只占差异的几百字节。所有留存正文改为 zstd 等级 1 的原始二进制帧（去掉 base64 的 33% 膨胀）。新增 `SESSION_REQUEST_BODY_DEDUP_ENABLED`（默认 true）与 `SESSION_PAYLOAD_ZSTD_LEVEL`（默认 1）；旧 key、base64 信封与明文仍可读回
 - 代理按客户端 `Accept-Encoding: gzip` 压缩发回客户端的响应（`/v1`、`/v1beta` 及无前缀别名，含 JSON、SSE 与错误响应）；SSE 逐事件 flush，客户端断开照常传回上游。新增 `ENABLE_CLIENT_RESPONSE_GZIP`（默认 true）与 `CLIENT_RESPONSE_GZIP_MIN_BYTES`（默认 1024）；Responses WebSocket 内部回环请求强制明文。客户端 gzip/deflate/br/zstd 压缩的请求体沿用既有自动解压
+- 新增 `syncer/`：cch 与 cch1 通过 TLS peer endpoint 每 60 秒同步供应商、端点池、分组和模型价格；仅在变化时写入，保留 `cc官key` 与 `openai 官key` 的原 ID 和端点池，其他供应商禁止直连回退，并沿用目标现有代理与本地 sub2api key。使用方法见 `docs/cch-config-sync.md`
+- 新增 `scripts/sync-cch-config.ts`：通过 PostgreSQL DSN 事务覆盖实例间供应商、端点池、分组及模型价格配置，支持完整凭据复制、dry-run、按字段条件覆写以及 `--policy` 目标供应商保留白名单；cch1 策略保留两个官 key 及关联端点池，并强制其他同步供应商禁止直连回退。使用方法见 `docs/cch-config-sync.md`
 - 供应商自定义请求头支持动态模板：可用 `{{header.Name}}` 复制非敏感入站请求头，`{{session.id}}` 写入 Session ID，`{{session.client_id}}` 写入客户端 Session ID；来源缺失时跳过该头，不允许读取凭据、Cookie 或内部传输头
 - 整合上游 v0.9.7：供应商列表新增按密钥查询余额及手动刷新，支持 New API 系统访问令牌和用户 ID；保留本地上游额度调度与探测配置
 - 供应商选项新增「复写响应模型 ID」：开启后把返回给客户端的 model 字段强制写成用户请求的模型 ID，用于隐藏上游映射

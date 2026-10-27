@@ -1,0 +1,16 @@
+{
+  "usage": "CCH_SOURCE_DSN=... CCH_TARGET_DSN=... bun scripts/sync-cch-config.ts [--rules rules.json] [--policy policy.json] [--overwrite] [--dry-run] [--lang zh-CN|zh-TW|en|ja|ru]",
+  "applied": "同步已提交，目标配置已覆盖。",
+  "preview": "预览：未写入目标数据库。每张表显示源记录数和目标当前记录数。",
+  "restart": "请重启目标 CCH，刷新供应商、端点与模型价格缓存。",
+  "invalid_rules": "规则格式错误。请参考同步脚本使用文档。",
+  "invalid_policy": "保留策略格式错误；preserveProviders 必须为供应商名称数组，rules 必须为规则数组。",
+  "missing_preserved_provider": "目标缺少白名单供应商，已拒绝同步；请检查名称及软删除状态。",
+  "invalid_field": "规则包含未知、受保护或不支持的字段。",
+  "invalid_host": "覆写的 host 必须为 hostname[:port]，不能包含协议、路径或凭据。",
+  "schema_mismatch": "源与目标配置表的字段或类型不同；请先统一数据库迁移版本。",
+  "same_database": "源与目标是同一个数据库，已拒绝同步。",
+  "missing_vendor": "配置引用了不存在的供应商实体，事务已回滚。",
+  "missing_dsn": "请设置 CCH_SOURCE_DSN 和 CCH_TARGET_DSN。",
+  "failed": "同步失败，目标事务未提交。请检查连接、权限、规则值和数据库约束。"
+}

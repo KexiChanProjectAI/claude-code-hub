@@ -1,0 +1,22 @@
+[Unit]
+Description=CCH configuration sync source
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/cch-config-sync source
+Environment=CCH_ENV_FILE=/opt/claude-code-hub/.env
+Environment=CCH_SYNC_LISTEN=100.64.1.38:23180
+Environment=CCH_SYNC_TOKEN_FILE=/etc/cch-config-sync/token
+Environment=CCH_SYNC_TLS_CERT=/etc/cch-config-sync/tls/server.crt
+Environment=CCH_SYNC_TLS_KEY=/etc/cch-config-sync/tls/server.key
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+MemoryMax=2G
+
+[Install]
+WantedBy=multi-user.target

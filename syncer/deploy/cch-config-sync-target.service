@@ -1,0 +1,25 @@
+[Unit]
+Description=CCH configuration sync target
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/cch-config-sync target
+Environment=CCH_ENV_FILE=/opt/claude-code-hub/.env
+Environment=CCH_SYNC_SOURCE_URL=https://100.64.1.38:23180
+Environment=CCH_SYNC_INTERVAL=60s
+Environment=CCH_SYNC_TOKEN_FILE=/etc/cch-config-sync/token
+Environment=CCH_SYNC_CA_FILE=/etc/cch-config-sync/tls/server.crt
+Environment=CCH_SYNC_POLICY=/etc/cch-config-sync/policy.json
+Environment=CCH_SYNC_STATE=/var/lib/cch-config-sync/state.json
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ReadWritePaths=/var/lib/cch-config-sync
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target

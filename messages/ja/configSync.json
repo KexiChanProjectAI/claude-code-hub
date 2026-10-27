@@ -1,0 +1,16 @@
+{
+  "usage": "CCH_SOURCE_DSN=... CCH_TARGET_DSN=... bun scripts/sync-cch-config.ts [--rules rules.json] [--policy policy.json] [--overwrite] [--dry-run] [--lang zh-CN|zh-TW|en|ja|ru]",
+  "applied": "同期を確定し、対象の設定を上書きしました。",
+  "preview": "プレビュー：対象への書き込みはありません。各テーブルに同期元と対象の現在の行数を表示します。",
+  "restart": "対象の CCH を再起動して、プロバイダー、エンドポイント、モデル価格のキャッシュを更新してください。",
+  "invalid_rules": "ルールの形式が不正です。同期スクリプトのドキュメントを参照してください。",
+  "invalid_policy": "保護ポリシーの形式が不正です。preserveProviders はプロバイダー名の配列、rules はルールの配列にしてください。",
+  "missing_preserved_provider": "保護対象のプロバイダーが同期先にありません。同期を拒否しました。名前と論理削除の状態を確認してください。",
+  "invalid_field": "ルールに不明、保護対象、または未対応のフィールドがあります。",
+  "invalid_host": "置換する host は hostname[:port] とし、スキーム、パス、認証情報を含めないでください。",
+  "schema_mismatch": "同期元と対象の列または型が異なります。データベースのマイグレーションを揃えてください。",
+  "same_database": "同期元と対象は同じデータベースです。同期を拒否しました。",
+  "missing_vendor": "存在しないベンダーへの参照があります。トランザクションをロールバックしました。",
+  "missing_dsn": "CCH_SOURCE_DSN と CCH_TARGET_DSN を設定してください。",
+  "failed": "同期に失敗しました。対象のトランザクションは確定されていません。接続、権限、ルールの値、データベース制約を確認してください。"
+}

@@ -1,0 +1,25 @@
+[
+  {
+    "tables": ["providers", "provider_endpoints"],
+    "when": {
+      "field": "url.host",
+      "op": "eq",
+      "value": "api.old.example:8443"
+    },
+    "set": {
+      "url.host": "api.new.example:9443"
+    }
+  },
+  {
+    "tables": ["providers"],
+    "when": {
+      "field": "url.host",
+      "op": "not_like",
+      "value": "internal.example%"
+    },
+    "set": {
+      "proxy_url": "socks5://127.0.0.1:1080",
+      "proxy_fallback_to_direct": false
+    }
+  }
+]
