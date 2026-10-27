@@ -65,6 +65,7 @@ import {
   touchSessionBinding,
   type VersionedBindingCapabilityState,
 } from "./redis/session-binding";
+import { resolveSessionBindingTtlSeconds } from "./session-binding-ttl";
 import { SessionTracker } from "./session-tracker";
 
 const RESERVED_INTERNAL_HEADER_SET = new Set(
@@ -806,6 +807,13 @@ async function findCachedProviderById(providerId: number) {
 export class SessionManager {
   private static readonly SESSION_TTL = parseInt(process.env.SESSION_TTL || "300", 10); // 5 分钟
   /**
+   * Session -> 供应商粘性绑定 TTL（默认 7 天），与 SESSION_TTL 管理的请求快照等短期数据解耦。
+   * 只用于绑定键（canonical / legacy provider / owner）的读写与续期。
+   */
+  private static readonly SESSION_BINDING_TTL = resolveSessionBindingTtlSeconds(
+    process.env.SESSION_BINDING_TTL_SECONDS
+  );
+  /**
    * 获取 STORE_SESSION_MESSAGES 配置
    * - true：原样存储 message 内容
    * - false（默认）：存储但对 message 内容脱敏 [REDACTED]
@@ -894,7 +902,7 @@ export class SessionManager {
     const binding = await readOrReconcileSessionBinding({
       sessionId,
       keyId,
-      ttlSeconds: SessionManager.SESSION_TTL,
+      ttlSeconds: SessionManager.SESSION_BINDING_TTL,
       redis,
     });
     if (binding.status === "ok") {
@@ -907,7 +915,7 @@ export class SessionManager {
     const legacyRefresh = await mutateLegacySessionBindingSafely({
       sessionId,
       keyId,
-      ttlSeconds: SessionManager.SESSION_TTL,
+      ttlSeconds: SessionManager.SESSION_BINDING_TTL,
       redis,
       mutation: { type: "refresh" },
     });
@@ -1245,7 +1253,7 @@ export class SessionManager {
       const binding = await readOrReconcileSessionBinding({
         sessionId,
         keyId,
-        ttlSeconds: SessionManager.SESSION_TTL,
+        ttlSeconds: SessionManager.SESSION_BINDING_TTL,
         redis,
       });
       if (binding.status !== "ok") {
@@ -1253,7 +1261,7 @@ export class SessionManager {
         const legacy = await mutateLegacySessionBindingSafely({
           sessionId,
           keyId,
-          ttlSeconds: SessionManager.SESSION_TTL,
+          ttlSeconds: SessionManager.SESSION_BINDING_TTL,
           redis,
           mutation: { type: "inspect" },
         });
@@ -1300,7 +1308,7 @@ export class SessionManager {
         const legacyRefresh = await mutateLegacySessionBindingSafely({
           sessionId,
           keyId,
-          ttlSeconds: SessionManager.SESSION_TTL,
+          ttlSeconds: SessionManager.SESSION_BINDING_TTL,
           redis,
           mutation: { type: "refresh" },
         });
@@ -1385,7 +1393,7 @@ export class SessionManager {
     return readOrReconcileSessionBinding({
       sessionId,
       keyId,
-      ttlSeconds: SessionManager.SESSION_TTL,
+      ttlSeconds: SessionManager.SESSION_BINDING_TTL,
       redis,
     });
   }
@@ -1395,7 +1403,7 @@ export class SessionManager {
    * for a transient Redis failure without allowing a live binding to expire.
    */
   static getVersionedSessionBindingRefreshIntervalMs(): number {
-    return Math.max(1, Math.floor((SessionManager.SESSION_TTL * 1000) / 3));
+    return Math.max(1, Math.floor((SessionManager.SESSION_BINDING_TTL * 1000) / 3));
   }
 
   static async touchVersionedSessionBinding(
@@ -1408,7 +1416,7 @@ export class SessionManager {
       keyId: snapshot.keyId,
       expectedGeneration: snapshot.generation,
       expectedProviderId: snapshot.providerId,
-      ttlSeconds: SessionManager.SESSION_TTL,
+      ttlSeconds: SessionManager.SESSION_BINDING_TTL,
       redis,
     });
   }
@@ -1424,7 +1432,7 @@ export class SessionManager {
       keyId: snapshot.keyId,
       expectedGeneration: snapshot.generation,
       providerId,
-      ttlSeconds: SessionManager.SESSION_TTL,
+      ttlSeconds: SessionManager.SESSION_BINDING_TTL,
       redis,
     });
   }
@@ -1442,7 +1450,7 @@ export class SessionManager {
       expectedGeneration: snapshot.generation,
       expectedProviderId,
       cooldownTtlSeconds,
-      ttlSeconds: SessionManager.SESSION_TTL,
+      ttlSeconds: SessionManager.SESSION_BINDING_TTL,
       redis,
     });
   }
@@ -1478,7 +1486,7 @@ export class SessionManager {
         const binding = await readOrReconcileSessionBinding({
           sessionId,
           keyId,
-          ttlSeconds: SessionManager.SESSION_TTL,
+          ttlSeconds: SessionManager.SESSION_BINDING_TTL,
           redis,
         });
         if (binding.status === "ok") {
@@ -1495,7 +1503,7 @@ export class SessionManager {
             keyId,
             expectedGeneration: binding.snapshot.generation,
             providerId,
-            ttlSeconds: SessionManager.SESSION_TTL,
+            ttlSeconds: SessionManager.SESSION_BINDING_TTL,
             redis,
           });
           if (updated.status === "ok") {
@@ -1517,7 +1525,7 @@ export class SessionManager {
         const legacy = await mutateLegacySessionBindingSafely({
           sessionId,
           keyId,
-          ttlSeconds: SessionManager.SESSION_TTL,
+          ttlSeconds: SessionManager.SESSION_BINDING_TTL,
           redis,
           mutation: { type: "bind_if_absent", providerId },
         });
@@ -1560,7 +1568,7 @@ export class SessionManager {
         const binding = await readOrReconcileSessionBinding({
           sessionId,
           keyId,
-          ttlSeconds: SessionManager.SESSION_TTL,
+          ttlSeconds: SessionManager.SESSION_BINDING_TTL,
           redis,
         });
         if (binding.status === "ok") {
@@ -1630,7 +1638,7 @@ export class SessionManager {
         const binding = await readOrReconcileSessionBinding({
           sessionId,
           keyId,
-          ttlSeconds: SessionManager.SESSION_TTL,
+          ttlSeconds: SessionManager.SESSION_BINDING_TTL,
           redis,
         });
         if (binding.status === "ok") {
@@ -1647,7 +1655,7 @@ export class SessionManager {
             keyId,
             expectedGeneration: binding.snapshot.generation,
             expectedProviderId: currentProviderId,
-            ttlSeconds: SessionManager.SESSION_TTL,
+            ttlSeconds: SessionManager.SESSION_BINDING_TTL,
             redis,
           });
           const didClear = cleared.status === "ok";
@@ -1670,7 +1678,7 @@ export class SessionManager {
         const legacy = await mutateLegacySessionBindingSafely({
           sessionId,
           keyId,
-          ttlSeconds: SessionManager.SESSION_TTL,
+          ttlSeconds: SessionManager.SESSION_BINDING_TTL,
           redis,
           mutation: { type: "clear", expectedProviderId },
         });
@@ -1708,7 +1716,7 @@ export class SessionManager {
     const binding = await readOrReconcileSessionBinding({
       sessionId,
       keyId,
-      ttlSeconds: SessionManager.SESSION_TTL,
+      ttlSeconds: SessionManager.SESSION_BINDING_TTL,
       redis,
     });
     if (binding.status === "ok") {
@@ -1719,7 +1727,7 @@ export class SessionManager {
         keyId,
         expectedGeneration: binding.snapshot.generation,
         expectedProviderId: providerId,
-        ttlSeconds: SessionManager.SESSION_TTL,
+        ttlSeconds: SessionManager.SESSION_BINDING_TTL,
         redis,
       });
       return cleared.status === "ok";
@@ -1729,7 +1737,7 @@ export class SessionManager {
     const legacy = await mutateLegacySessionBindingSafely({
       sessionId,
       keyId,
-      ttlSeconds: SessionManager.SESSION_TTL,
+      ttlSeconds: SessionManager.SESSION_BINDING_TTL,
       redis,
       mutation: { type: "clear", expectedProviderIds: providerIds },
     });
@@ -1812,7 +1820,7 @@ export class SessionManager {
         const binding = await readOrReconcileSessionBinding({
           sessionId,
           keyId,
-          ttlSeconds: SessionManager.SESSION_TTL,
+          ttlSeconds: SessionManager.SESSION_BINDING_TTL,
           redis,
         });
         if (binding.status === "ok") {
@@ -1821,7 +1829,7 @@ export class SessionManager {
           const legacy = await mutateLegacySessionBindingSafely({
             sessionId,
             keyId,
-            ttlSeconds: SessionManager.SESSION_TTL,
+            ttlSeconds: SessionManager.SESSION_BINDING_TTL,
             redis,
             mutation: { type: "inspect" },
           });
@@ -1859,7 +1867,7 @@ export class SessionManager {
             keyId: versionedSnapshot.keyId,
             expectedGeneration: versionedSnapshot.generation,
             providerId: newProviderId,
-            ttlSeconds: SessionManager.SESSION_TTL,
+            ttlSeconds: SessionManager.SESSION_BINDING_TTL,
             redis,
           });
           if (result.status !== "ok") {
@@ -1879,7 +1887,7 @@ export class SessionManager {
         const result = await mutateLegacySessionBindingSafely({
           sessionId,
           keyId: keyId!,
-          ttlSeconds: SessionManager.SESSION_TTL,
+          ttlSeconds: SessionManager.SESSION_BINDING_TTL,
           redis,
           mutation: onlyIfUnbound
             ? { type: "bind_if_absent", providerId: newProviderId }
@@ -3839,7 +3847,7 @@ export class SessionManager {
         const binding = await readOrReconcileSessionBinding({
           sessionId: codexSessionId,
           keyId,
-          ttlSeconds: SessionManager.SESSION_TTL,
+          ttlSeconds: SessionManager.SESSION_BINDING_TTL,
           redis,
         });
         if (binding.status === "ok") {
@@ -3856,7 +3864,7 @@ export class SessionManager {
             keyId,
             expectedGeneration: binding.snapshot.generation,
             providerId,
-            ttlSeconds: SessionManager.SESSION_TTL,
+            ttlSeconds: SessionManager.SESSION_BINDING_TTL,
             redis,
           });
           if (updated.status === "ok") {
@@ -3879,7 +3887,7 @@ export class SessionManager {
         const legacy = await mutateLegacySessionBindingSafely({
           sessionId: codexSessionId,
           keyId,
-          ttlSeconds: SessionManager.SESSION_TTL,
+          ttlSeconds: SessionManager.SESSION_BINDING_TTL,
           redis,
           mutation: { type: "inspect" },
         });
@@ -3896,7 +3904,7 @@ export class SessionManager {
           await mutateLegacySessionBindingSafely({
             sessionId: codexSessionId,
             keyId,
-            ttlSeconds: SessionManager.SESSION_TTL,
+            ttlSeconds: SessionManager.SESSION_BINDING_TTL,
             redis,
             mutation: { type: "refresh" },
           });
@@ -3906,7 +3914,7 @@ export class SessionManager {
         const bound = await mutateLegacySessionBindingSafely({
           sessionId: codexSessionId,
           keyId,
-          ttlSeconds: SessionManager.SESSION_TTL,
+          ttlSeconds: SessionManager.SESSION_BINDING_TTL,
           redis,
           mutation: { type: "bind_if_absent", providerId },
         });
@@ -4005,7 +4013,7 @@ export class SessionManager {
         const binding = await readOrReconcileSessionBinding({
           sessionId,
           keyId,
-          ttlSeconds: SessionManager.SESSION_TTL,
+          ttlSeconds: SessionManager.SESSION_BINDING_TTL,
           redis,
         });
         if (binding.status === "ok") {
@@ -4024,7 +4032,7 @@ export class SessionManager {
             expectedProviderId: expectedProviderIds
               ? (binding.snapshot.providerId ?? undefined)
               : undefined,
-            ttlSeconds: SessionManager.SESSION_TTL,
+            ttlSeconds: SessionManager.SESSION_BINDING_TTL,
             redis,
           });
           if (terminated.status !== "ok") {
@@ -4078,7 +4086,7 @@ export class SessionManager {
           const legacy = await mutateLegacySessionBindingSafely({
             sessionId,
             keyId,
-            ttlSeconds: SessionManager.SESSION_TTL,
+            ttlSeconds: SessionManager.SESSION_BINDING_TTL,
             redis,
             mutation: { type: "terminate", expectedProviderIds },
           });

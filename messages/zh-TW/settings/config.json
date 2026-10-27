@@ -143,7 +143,7 @@
     "racingTotalTimeoutMs": "Discovery 總逾時（毫秒）",
     "stickyTimeoutCooldownMs": "Sticky 逾時冷卻（毫秒）",
     "stickyBindingTtl": "Sticky 綁定有效期",
-    "stickyBindingTtlDesc": "唯讀；此值跟隨環境變數 SESSION_TTL，並與其他 Session 快照共用。",
+    "stickyBindingTtlDesc": "唯讀；此值跟隨環境變數 SESSION_BINDING_TTL_SECONDS（預設 7 天），獨立於 SESSION_TTL 管理的 Session 快照。",
     "discoveryWindowDesc": "總逾時必須不小於 Sticky SLA + 最大輪數 × Discovery SLA。開啟輸家計費後，只有已取得有效首字的 Discovery 輸家會在後台讀取；SLA 逾時、失敗或未取得首字的請求仍會取消。",
     "discoveryWindowInvalid": "Discovery 總逾時短於已設定的 Sticky 與 Discovery 視窗。",
     "discoverySettingsInvalid": "一個或多個 Discovery 設定值超出允許範圍。",

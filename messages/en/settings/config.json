@@ -143,7 +143,7 @@
     "racingTotalTimeoutMs": "Discovery total timeout (milliseconds)",
     "stickyTimeoutCooldownMs": "Sticky timeout cooldown (milliseconds)",
     "stickyBindingTtl": "Sticky binding validity",
-    "stickyBindingTtlDesc": "Read-only. This follows the SESSION_TTL environment variable and is shared with other session snapshots.",
+    "stickyBindingTtlDesc": "Read-only. This follows the SESSION_BINDING_TTL_SECONDS environment variable (default 7 days) and is independent of the session snapshots governed by SESSION_TTL.",
     "discoveryWindowDesc": "The total timeout must be at least Sticky SLA + maximum rounds × Discovery SLA. With loser billing enabled, only ready Discovery losers may be drained; SLA timeouts and failed or no-prefix attempts remain cancelled.",
     "discoveryWindowInvalid": "Discovery total timeout is shorter than the configured Sticky and Discovery windows.",
     "discoverySettingsInvalid": "One or more Discovery values are outside the allowed range.",

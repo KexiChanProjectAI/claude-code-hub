@@ -77,8 +77,8 @@ import type {
 } from "@/types/system-config";
 
 interface SystemSettingsFormProps {
-  /** Read-only runtime value; SESSION_TTL is not a persisted system setting. */
-  sessionTtlSeconds?: number;
+  /** Read-only runtime value from SESSION_BINDING_TTL_SECONDS; not a persisted system setting. */
+  stickyBindingTtlSeconds?: number;
   /** Read-only env fallback used while replayEnabled remains null. */
   replayDefaultEnabled?: boolean;
   initialSettings: Pick<
@@ -155,7 +155,7 @@ type DiscoveryNumberValue = number | "";
 
 export function SystemSettingsForm({
   initialSettings,
-  sessionTtlSeconds = 300,
+  stickyBindingTtlSeconds = 604_800,
   replayDefaultEnabled = true,
 }: SystemSettingsFormProps) {
   const router = useRouter();
@@ -968,7 +968,9 @@ export function SystemSettingsForm({
               <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 px-3 py-2.5">
                 <div className="flex items-center justify-between gap-3 text-xs">
                   <span className="font-medium text-foreground">{t("stickyBindingTtl")}</span>
-                  <span className="font-mono text-muted-foreground">{sessionTtlSeconds}s</span>
+                  <span className="font-mono text-muted-foreground">
+                    {stickyBindingTtlSeconds}s
+                  </span>
                 </div>
                 <p className="mt-1 text-[11px] text-muted-foreground">
                   {t("stickyBindingTtlDesc")}

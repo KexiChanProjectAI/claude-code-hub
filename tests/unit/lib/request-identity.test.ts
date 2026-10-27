@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildAffinityScopeTag,
   buildScopeTag,
   canonicalRequestBytes,
   sha256Hex,
@@ -64,5 +65,23 @@ describe("buildScopeTag", () => {
 
   it("treats null and undefined model identically", () => {
     expect(buildScopeTag(1, "claude", null)).toBe(buildScopeTag(1, "claude", undefined));
+  });
+});
+
+describe("buildAffinityScopeTag", () => {
+  it("returns 16 hex chars and separates tenants / formats", () => {
+    const tag = buildAffinityScopeTag(1, "claude");
+    expect(tag).toMatch(/^[0-9a-f]{16}$/);
+    expect(buildAffinityScopeTag(1, "claude")).toBe(tag);
+    expect(buildAffinityScopeTag("1", "claude")).toBe(tag);
+    expect(buildAffinityScopeTag(2, "claude")).not.toBe(tag);
+    expect(buildAffinityScopeTag(1, "openai")).not.toBe(tag);
+  });
+
+  it("never collides with model-scoped replay tags", () => {
+    const tag = buildAffinityScopeTag(1, "claude");
+    expect(tag).not.toBe(buildScopeTag(1, "claude", null));
+    expect(tag).not.toBe(buildScopeTag(1, "claude", "sonnet"));
+    expect(tag).not.toBe(buildScopeTag(1, "claude", "affinity:v2"));
   });
 });

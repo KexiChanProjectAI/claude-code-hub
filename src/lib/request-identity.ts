@@ -40,6 +40,18 @@ export function buildScopeTag(
 }
 
 /**
+ * 前缀亲和 scope 标签：sha256(affinity:v2|keyId|format) 截 16 hex。
+ *
+ * 与 buildScopeTag 不同，这里刻意不含模型：同一会话中途切换模型时仍能命中
+ * 原有供应商的亲和绑定；模型是否受支持由候选硬校验（providerSupportsModel）负责。
+ * 命名空间前置，保证与 buildScopeTag（keyId 开头）的哈希输入永不重合；
+ * 旧的含模型 scope 键不再被读取，按各自 TTL 自然过期。
+ */
+export function buildAffinityScopeTag(keyId: number | string, format: string): string {
+  return sha256Hex(`affinity:v2|${keyId}|${format}`).slice(0, 16);
+}
+
+/**
  * 构造用户可见的物理 Session identity。
  *
  * `pfx:` 是前缀亲和 identity namespace，`sid:` 是物理 Session 的转义 namespace。

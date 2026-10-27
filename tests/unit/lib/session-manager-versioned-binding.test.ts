@@ -51,6 +51,7 @@ vi.mock("@/lib/redis/session-binding", () => ({
 }));
 
 import { SessionManager } from "@/lib/session-manager";
+import { resolveSessionBindingTtlSeconds } from "@/lib/session-binding-ttl";
 
 const SESSION_ID = "session-versioned";
 const KEY_ID = 7;
@@ -181,7 +182,9 @@ describe("SessionManager versioned binding adapter", () => {
 
   it("touches only the captured binding and exposes a TTL-derived heartbeat interval", async () => {
     const binding = snapshot().snapshot;
-    const configuredTtl = Number.parseInt(process.env.SESSION_TTL || "300", 10);
+    // 粘性绑定使用独立的 SESSION_BINDING_TTL_SECONDS（默认 7 天），不再跟随 SESSION_TTL
+    const configuredTtl = resolveSessionBindingTtlSeconds(process.env.SESSION_BINDING_TTL_SECONDS);
+    expect(configuredTtl).toBeGreaterThan(Number.parseInt(process.env.SESSION_TTL || "300", 10));
 
     await expect(SessionManager.touchVersionedSessionBinding(binding)).resolves.toMatchObject({
       status: "ok",

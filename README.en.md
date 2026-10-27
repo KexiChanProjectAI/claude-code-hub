@@ -347,7 +347,9 @@ See **[docs/k8s-deployment.md](docs/k8s-deployment.md)** for full options, place
 | `ENABLE_API_KEY_VACUUM_FILTER`             | `true`                   | Enables API Key Vacuum Filter (negative short-circuit only; set to `false/0` to disable).            |
 | `ENABLE_API_KEY_REDIS_CACHE`               | `true`                   | Enables API Key auth Redis cache (requires Redis; auto-fallback to DB on errors).                    |
 | `API_KEY_AUTH_CACHE_TTL_SECONDS`           | `60`                     | API Key auth cache TTL in seconds (default 60, max 3600).                                             |
-| `SESSION_TTL`                              | `300`                    | Session cache window (seconds) that drives vendor reuse.                                             |
+| `SESSION_TTL`                              | `300`                    | Session context and snapshot cache window (seconds); no longer controls provider stickiness.        |
+| `SESSION_BINDING_TTL_SECONDS`              | `604800`                 | Sliding TTL (seconds, default 7 days) of the session-to-provider sticky binding; a model switch keeps the original provider when possible. |
+| `PREFIX_AFFINITY_TTL_SECONDS`              | `604800`                 | Sliding TTL (seconds, default 7 days) of prefix-affinity bindings; scoped per key and request format, not per model. |
 | `ENABLE_SECURE_COOKIES`                    | `true`                   | Browsers require HTTPS for Secure cookies; set to `false` when serving plain HTTP outside localhost. |
 | `ENABLE_CIRCUIT_BREAKER_ON_NETWORK_ERRORS` | `false`                  | When `true`, network errors also trip the circuit breaker for quicker isolation.                     |
 | `APP_PORT`                                 | `23000`                  | Production port (override via container or process manager).                                         |

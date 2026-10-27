@@ -2,6 +2,7 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 import type Redis from "ioredis";
+import { getEnvConfig } from "@/lib/config/env.schema";
 import { logger } from "@/lib/logger";
 import { getRedisClient } from "@/lib/redis/client";
 
@@ -130,7 +131,25 @@ return generation
 `;
 
 const TOMBSTONE_TTL_SECONDS = 60;
-const GENERATION_FENCE_TTL_SECONDS = 2 * 24 * 60 * 60;
+const MIN_GENERATION_FENCE_TTL_SECONDS = 2 * 24 * 60 * 60;
+const GENERATION_FENCE_MARGIN_SECONDS = 24 * 60 * 60;
+
+/**
+ * generation 围栏必须比绑定活得更久：否则围栏先过期而绑定仍在，后续 CAS 写回会被拒绝，
+ * 管理终止后的旧 generation 也可能复活。取「绑定 TTL + 1 天」与 2 天中的较大者。
+ */
+export function getGenerationFenceTtlSeconds(bindingTtlSeconds: number): number {
+  const ttl = Number.isFinite(bindingTtlSeconds) ? Math.max(0, Math.floor(bindingTtlSeconds)) : 0;
+  return Math.max(MIN_GENERATION_FENCE_TTL_SECONDS, ttl + GENERATION_FENCE_MARGIN_SECONDS);
+}
+
+function getConfiguredGenerationFenceTtlSeconds(): number {
+  try {
+    return getGenerationFenceTtlSeconds(getEnvConfig().PREFIX_AFFINITY_TTL_SECONDS);
+  } catch {
+    return MIN_GENERATION_FENCE_TTL_SECONDS;
+  }
+}
 
 export interface AffinityHint {
   providerId: number;
@@ -258,7 +277,7 @@ export class AffinityStore {
           generation,
           migratedValue,
           String(ttlSeconds),
-          GENERATION_FENCE_TTL_SECONDS,
+          getGenerationFenceTtlSeconds(ttlSeconds),
           now,
           now + ttlSeconds
         );
@@ -280,7 +299,7 @@ export class AffinityStore {
         1,
         this.buildGenerationKey(scopeTag, missIdentityFp),
         this.generationToken(),
-        GENERATION_FENCE_TTL_SECONDS
+        getGenerationFenceTtlSeconds(slidingTtlSeconds)
       );
       if (!generation) return null;
       return {
@@ -335,7 +354,7 @@ export class AffinityStore {
         expectedGeneration,
         value,
         ttlSeconds,
-        GENERATION_FENCE_TTL_SECONDS,
+        getGenerationFenceTtlSeconds(ttlSeconds),
         now,
         now + ttlSeconds
       );
@@ -372,7 +391,7 @@ export class AffinityStore {
         expectedGeneration,
         `0|${reason.slice(0, 32)}|${identityFp}|${expectedGeneration}`,
         TOMBSTONE_TTL_SECONDS,
-        GENERATION_FENCE_TTL_SECONDS,
+        getConfiguredGenerationFenceTtlSeconds(),
         now,
         now + TOMBSTONE_TTL_SECONDS
       );
@@ -417,7 +436,7 @@ export class AffinityStore {
         descendantsV2Key,
         ...keys,
         this.generationToken(),
-        GENERATION_FENCE_TTL_SECONDS
+        getConfiguredGenerationFenceTtlSeconds()
       );
       return true;
     } catch (error) {

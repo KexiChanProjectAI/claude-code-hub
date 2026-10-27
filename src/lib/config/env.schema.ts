@@ -205,6 +205,10 @@ export const EnvSchema = z.object({
     .max(31_536_000, "AUTH_SESSION_TTL_SECONDS 不能大于 31536000")
     .default(604_800),
   SESSION_TTL: z.coerce.number().default(300),
+  // Session -> 供应商粘性绑定的滑动 TTL（秒，默认 604800 = 7 天）。
+  // 仅作用于绑定键（canonical / legacy provider / owner），与 SESSION_TTL 管理的
+  // 请求快照、活跃会话统计等短期数据解耦，避免拉长 TTL 导致 Redis 内存膨胀。
+  SESSION_BINDING_TTL_SECONDS: z.coerce.number().int().min(60).max(2_592_000).default(604_800),
   // 可用性投影 outbox 保留期：已发布（published）的 outbox_events 超过该天数后分批删除
   PROJECTION_OUTBOX_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(3),
   // 可用性投影去重表 proj_applied_requests 保留天数（仅用于迟到重复事件去重）
@@ -352,8 +356,8 @@ export const EnvSchema = z.object({
     .default(8 * 1024 * 1024),
   // 最长前缀亲和路由：链式指纹匹配的供应商粘性（软提名，仍走全套硬校验）
   ENABLE_PREFIX_AFFINITY: z.string().default("false").transform(booleanTransform),
-  // 亲和绑定滑动 TTL（秒）：读即续期，目标是把供应商粘性拉长到接近 prompt cache 保留期
-  PREFIX_AFFINITY_TTL_SECONDS: z.coerce.number().int().min(60).max(86400).default(3600),
+  // 亲和绑定滑动 TTL（秒，默认 604800 = 7 天）：读即续期，长期保持会话的供应商粘性
+  PREFIX_AFFINITY_TTL_SECONDS: z.coerce.number().int().min(60).max(2_592_000).default(604_800),
   // 指纹链回看窗口（尾部边界数）：覆盖编辑回退场景的拐点，超过 8 收益递减
   PREFIX_AFFINITY_WINDOW: z.coerce.number().int().min(1).max(64).default(8),
   // 缓存效果计费模拟：理论 vs 实际缓存命中率聚合指标（仅展示，不影响路由，默认开启）

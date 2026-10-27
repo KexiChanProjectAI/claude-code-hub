@@ -54,6 +54,7 @@ import {
 } from "@/lib/proxy-agent/http2-quarantine";
 import { RateLimitService } from "@/lib/rate-limit/service";
 import type { SessionBindingSnapshot } from "@/lib/redis/session-binding";
+import { DEFAULT_CONFIGURED_SESSION_BINDING_TTL_SECONDS } from "@/lib/session-binding-ttl";
 import { SessionManager } from "@/lib/session-manager";
 import {
   detectUpstreamErrorFromSseOrJsonText,
@@ -2014,12 +2015,12 @@ export function applyClaudeMetadataUserIdInjectionWithAudit(
   };
 }
 
-/** 路由追踪里记录的会话 TTL（秒）。 */
+/** 路由追踪里记录的粘性绑定 TTL（秒），跟随 SESSION_BINDING_TTL_SECONDS。 */
 export function resolveRoutingTraceSessionTtlSeconds(): number {
-  const configuredSessionTtlSeconds = getEnvConfig().SESSION_TTL;
-  return Number.isFinite(configuredSessionTtlSeconds)
-    ? Math.max(1, Math.floor(configuredSessionTtlSeconds))
-    : 300;
+  const configuredBindingTtlSeconds = getEnvConfig().SESSION_BINDING_TTL_SECONDS;
+  return Number.isFinite(configuredBindingTtlSeconds)
+    ? Math.max(1, Math.floor(configuredBindingTtlSeconds))
+    : DEFAULT_CONFIGURED_SESSION_BINDING_TTL_SECONDS;
 }
 
 /** 路由追踪的配置快照（discovery / legacy hedge / 串行共用）。 */

@@ -8,7 +8,7 @@ import { matchesProviderPrefix, stripProviderPrefix } from "@/lib/provider-prefi
 import { describeUpstreamQuotaVerdict } from "@/lib/provider-upstream-quota/evaluate";
 import { checkProviderUpstreamQuota } from "@/lib/provider-upstream-quota/verdict";
 import { RateLimitService } from "@/lib/rate-limit";
-import { buildPublicSessionIdentity, buildScopeTag } from "@/lib/request-identity";
+import { buildAffinityScopeTag, buildPublicSessionIdentity } from "@/lib/request-identity";
 import { SessionManager } from "@/lib/session-manager";
 import {
   getProxyRuntimeSettings,
@@ -669,6 +669,9 @@ export class ProxyProviderResolver {
   /**
    * F3a 指纹状态：计算链式指纹与 scopeTag 挂到 session.affinity（幂等，已有则跳过）。
    *
+   * scopeTag 只按 key + 格式划分，不含模型：会话内切换模型仍优先亲和原供应商，
+   * 原供应商不可用或不支持新模型时由 validateAffinityCandidate 软回落加权随机。
+   *
    * 仅 default endpoint policy 建状态——raw 端点（如 count_tokens）绝不建，
    * 各终态写回随之全部 no-op；亲和路由与缓存效果指标（F3b）任一开启即计算，
    * 仅指标模式下也要指纹供终态落值。返回 session.affinity 是否可用（可指纹化）。
@@ -689,7 +692,7 @@ export class ProxyProviderResolver {
     if (!chain) return false;
 
     session.affinity = {
-      scopeTag: buildScopeTag(keyId, session.originalFormat, session.getOriginalModel()),
+      scopeTag: buildAffinityScopeTag(keyId, session.originalFormat),
       chain,
       nominatedProviderId: null,
       matchedFp: null,

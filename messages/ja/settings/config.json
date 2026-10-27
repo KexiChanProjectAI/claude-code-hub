@@ -143,7 +143,7 @@
     "racingTotalTimeoutMs": "Discovery 合計タイムアウト（ミリ秒）",
     "stickyTimeoutCooldownMs": "Sticky タイムアウト後のクールダウン（ミリ秒）",
     "stickyBindingTtl": "Sticky バインドの有効期間",
-    "stickyBindingTtlDesc": "読み取り専用です。この値は環境変数 SESSION_TTL に従い、他の Session スナップショットと共有されます。",
+    "stickyBindingTtlDesc": "読み取り専用です。この値は環境変数 SESSION_BINDING_TTL_SECONDS（既定 7 日）に従い、SESSION_TTL が管理する Session スナップショットとは独立しています。",
     "discoveryWindowDesc": "合計タイムアウトは Sticky SLA + 最大ラウンド数 × Discovery SLA 以上にしてください。敗者課金を有効にした場合も、有効な応答を受信済みの Discovery 敗者だけを読み切り、SLA タイムアウトや失敗はキャンセルします。",
     "discoveryWindowInvalid": "Discovery 合計タイムアウトが設定された Sticky/Discovery ウィンドウより短くなっています。",
     "discoverySettingsInvalid": "1 つ以上の Discovery 設定値が許容範囲外です。",

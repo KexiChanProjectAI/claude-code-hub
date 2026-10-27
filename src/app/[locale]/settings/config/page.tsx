@@ -36,7 +36,7 @@ async function SettingsConfigContent({ locale }: { locale: string }) {
   const t = await getTranslations({ locale, namespace: "settings" });
   const settings = await getSystemSettings();
   const env = getEnvConfig();
-  const sessionTtlSeconds = Math.max(1, Math.floor(env.SESSION_TTL));
+  const stickyBindingTtlSeconds = Math.max(1, Math.floor(env.SESSION_BINDING_TTL_SECONDS));
 
   return (
     <>
@@ -47,7 +47,7 @@ async function SettingsConfigContent({ locale }: { locale: string }) {
         variant="default"
       >
         <SystemSettingsForm
-          sessionTtlSeconds={sessionTtlSeconds}
+          stickyBindingTtlSeconds={stickyBindingTtlSeconds}
           replayDefaultEnabled={env.ENABLE_REQUEST_REPLAY}
           initialSettings={{
             siteTitle: settings.siteTitle,

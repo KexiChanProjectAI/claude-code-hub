@@ -360,7 +360,9 @@ cch doctor            # 诊断集群与部署状态
 | `ENABLE_API_KEY_REDIS_CACHE`               | `true`                   | 是否启用 API Key 鉴权 Redis 缓存（需 Redis 可用；异常自动回落到 DB）。       |
 | `API_KEY_AUTH_CACHE_TTL_SECONDS`           | `60`                     | API Key 鉴权缓存 TTL（秒，默认 60，最大 3600）。                              |
 | `AUTH_SESSION_TTL_SECONDS`                 | `604800`                 | Web UI 登录态 TTL（秒，默认 7 天）；`ADMIN_TOKEN` opaque 登录的签名 cookie 也使用该值。降低该值会按签发时间收紧已签发 admin 签名 cookie 的剩余寿命，且不会延长其原始 `exp`。 |
-| `SESSION_TTL`                              | `300`                    | 代理请求上下文缓存时间（秒），影响供应商复用策略；不控制 Web UI 登录态。       |
+| `SESSION_TTL`                              | `300`                    | 代理请求上下文与快照缓存时间（秒）；不控制 Web UI 登录态，也不再决定供应商粘性。 |
+| `SESSION_BINDING_TTL_SECONDS`              | `604800`                 | Session 到供应商的粘性绑定滑动 TTL（秒，默认 7 天）；同一会话切换模型时仍优先复用原供应商。 |
+| `PREFIX_AFFINITY_TTL_SECONDS`              | `604800`                 | 前缀亲和绑定滑动 TTL（秒，默认 7 天）；亲和范围按 Key 与请求格式划分，不含模型。 |
 | `SESSION_REQUEST_BODY_DEDUP_ENABLED`       | `true`                   | 请求正文去重：同一请求的 requestBody/messages/before/after 只在一个 Redis Hash 里存唯一正文，差异正文以 zstd 字典压缩。 |
 | `SESSION_PAYLOAD_ZSTD_LEVEL`               | `1`                      | Redis 留存正文的 zstd 压缩等级（1-19），以原始二进制帧写入，不再 base64。     |
 | `ENABLE_SECURE_COOKIES`                    | `true`                   | 仅 HTTPS 场景能设置 Secure Cookie；HTTP 访问（非 localhost）需改为 `false`。 |

@@ -4,7 +4,7 @@ import { getCachedSystemSettings } from "@/lib/config";
 import { getEnvConfig } from "@/lib/config/env.schema";
 import { logger } from "@/lib/logger";
 import { resolveKeyUserConcurrentSessionLimits } from "@/lib/rate-limit/concurrent-session-limit";
-import { buildPublicSessionIdentity, buildScopeTag } from "@/lib/request-identity";
+import { buildAffinityScopeTag, buildPublicSessionIdentity } from "@/lib/request-identity";
 import { headersToSanitizedObject, SessionManager } from "@/lib/session-manager";
 import { SessionTracker } from "@/lib/session-tracker";
 import { completeCodexSessionIdentifiers } from "../codex/session-completer";
@@ -198,11 +198,7 @@ export class ProxySessionGuard {
         );
         if (chain) {
           session.affinity = {
-            scopeTag: buildScopeTag(
-              keyId,
-              session.originalFormat,
-              session.getOriginalModel() ?? session.request.model
-            ),
+            scopeTag: buildAffinityScopeTag(keyId, session.originalFormat),
             chain,
             nominatedProviderId: null,
             matchedFp: null,

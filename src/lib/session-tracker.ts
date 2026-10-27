@@ -10,6 +10,7 @@ import {
   getVersionedBindingCapabilityState,
   mutateLegacySessionBindingSafely,
 } from "./redis/session-binding";
+import { resolveSessionBindingTtlSeconds } from "./session-binding-ttl";
 
 const PROVIDER_ACTIVE_SESSIONS_PATTERN = /^provider:(\d+):active_sessions$/;
 
@@ -39,6 +40,7 @@ export class SessionTracker {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 300;
   })();
   private static readonly SESSION_TTL_MS = SessionTracker.SESSION_TTL_SECONDS * 1000;
+  private static readonly SESSION_BINDING_TTL_SECONDS = resolveSessionBindingTtlSeconds();
   private static readonly CLEANUP_PROBABILITY = 0.01;
 
   /**
@@ -266,10 +268,11 @@ export class SessionTracker {
       const now = Date.now();
       const ttlSeconds = SessionTracker.SESSION_TTL_SECONDS;
       if (getVersionedBindingCapabilityState() === "unavailable") {
+        // 绑定键使用独立的粘性 TTL，避免把长期绑定刷短到 SESSION_TTL
         const legacyRefresh = await mutateLegacySessionBindingSafely({
           sessionId,
           keyId,
-          ttlSeconds,
+          ttlSeconds: SessionTracker.SESSION_BINDING_TTL_SECONDS,
           redis,
           mutation: { type: "refresh" },
         });

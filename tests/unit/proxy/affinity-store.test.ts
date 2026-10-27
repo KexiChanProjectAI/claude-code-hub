@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { AffinityStore, getAffinityStore } from "@/app/v1/_lib/proxy/affinity/affinity-store";
+import {
+  AffinityStore,
+  getAffinityStore,
+  getGenerationFenceTtlSeconds,
+} from "@/app/v1/_lib/proxy/affinity/affinity-store";
 
 /**
  * Fake redis that executes the lookup Lua semantics in JS against an in-memory
@@ -375,7 +379,7 @@ describe("AffinityStore.tombstone", () => {
       "0",
       "0|failover|rootfp|0",
       60,
-      172800,
+      8 * 24 * 60 * 60,
       expect.any(Number),
       expect.any(Number)
     );
@@ -390,7 +394,7 @@ describe("AffinityStore.tombstone", () => {
       "0",
       `0|${"x".repeat(32)}|rootfp|0`,
       60,
-      172800,
+      8 * 24 * 60 * 60,
       expect.any(Number),
       expect.any(Number)
     );
@@ -608,5 +612,41 @@ describe("getAffinityStore", () => {
     const a = getAffinityStore();
     expect(a).toBeInstanceOf(AffinityStore);
     expect(getAffinityStore()).toBe(a);
+  });
+});
+
+describe("getGenerationFenceTtlSeconds", () => {
+  const TWO_DAYS = 2 * 24 * 60 * 60;
+  const ONE_DAY = 24 * 60 * 60;
+
+  it("keeps the 2-day floor for short binding TTLs", () => {
+    expect(getGenerationFenceTtlSeconds(3600)).toBe(TWO_DAYS);
+    expect(getGenerationFenceTtlSeconds(0)).toBe(TWO_DAYS);
+    expect(getGenerationFenceTtlSeconds(Number.NaN)).toBe(TWO_DAYS);
+  });
+
+  it("outlives long binding TTLs by one day", () => {
+    const sevenDays = 7 * ONE_DAY;
+    expect(getGenerationFenceTtlSeconds(sevenDays)).toBe(sevenDays + ONE_DAY);
+  });
+
+  it("passes the scaled fence to put for long binding TTLs", async () => {
+    const sevenDays = 7 * ONE_DAY;
+    const { client } = createLuaFakeRedis({ [generationKey("s1", "rootfp")]: "0" });
+    const store = makeStore(client);
+    await store.put("s1", "tip", 7, sevenDays, "rootfp", "0");
+    expect(client.eval).toHaveBeenLastCalledWith(
+      expect.stringContaining("affinity_cas_write_v3"),
+      3,
+      generationKey("s1", "rootfp"),
+      key("s1", "tip"),
+      descendantsV2Key("s1", "rootfp"),
+      "0",
+      "1|7|rootfp|0",
+      sevenDays,
+      sevenDays + ONE_DAY,
+      expect.any(Number),
+      expect.any(Number)
+    );
   });
 });
