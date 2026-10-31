@@ -1,0 +1,1 @@
+ALTER TABLE "providers" ADD COLUMN "openrouter_provider_routing" jsonb;

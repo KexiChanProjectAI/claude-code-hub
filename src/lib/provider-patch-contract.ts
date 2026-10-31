@@ -1,3 +1,7 @@
+import {
+  normalizeOpenRouterProviderRouting,
+  OPENROUTER_PROVIDER_ROUTING_SCHEMA,
+} from "@/lib/openrouter/provider-routing";
 import { isServiceTierOverrideRuleTarget } from "@/lib/service-tier-override";
 import { normalizeProviderGroupTag } from "@/lib/utils/provider-group";
 import {
@@ -290,6 +294,7 @@ const PATCH_FIELDS: ProviderBatchPatchFieldWithReasoningEffortRules[] = [
   "group_tag",
   "model_redirects",
   "cyber_risk_fallback_rules",
+  "openrouter_provider_routing",
   "allowed_models",
   "allowed_clients",
   "blocked_clients",
@@ -353,6 +358,7 @@ const CLEARABLE_FIELDS: Record<ProviderBatchPatchFieldWithReasoningEffortRules, 
   group_tag: true,
   model_redirects: true,
   cyber_risk_fallback_rules: true,
+  openrouter_provider_routing: true,
   allowed_models: true,
   allowed_clients: true,
   blocked_clients: true,
@@ -570,6 +576,11 @@ function isValidSetValue(
     case "model_redirects":
     case "cyber_risk_fallback_rules":
       return PROVIDER_MODEL_REDIRECT_RULE_LIST_SCHEMA.safeParse(value).success;
+    case "openrouter_provider_routing":
+      return (
+        OPENROUTER_PROVIDER_ROUTING_SCHEMA.safeParse(value).success &&
+        normalizeOpenRouterProviderRouting(value) !== null
+      );
     case "allowed_models":
       return PROVIDER_ALLOWED_MODEL_RULE_INPUT_LIST_SCHEMA.safeParse(value).success;
     case "allowed_clients":
@@ -743,6 +754,12 @@ export function normalizeProviderBatchPatchDraft(
     typedDraft.cyber_risk_fallback_rules
   );
   if (!cyberRiskFallbackRules.ok) return cyberRiskFallbackRules;
+
+  const openrouterProviderRouting = normalizePatchField(
+    "openrouter_provider_routing",
+    typedDraft.openrouter_provider_routing
+  );
+  if (!openrouterProviderRouting.ok) return openrouterProviderRouting;
 
   const allowedModels = normalizePatchField("allowed_models", typedDraft.allowed_models);
   if (!allowedModels.ok) return allowedModels;
@@ -985,6 +1002,7 @@ export function normalizeProviderBatchPatchDraft(
       group_tag: groupTag.data,
       model_redirects: modelRedirects.data,
       cyber_risk_fallback_rules: cyberRiskFallbackRules.data,
+      openrouter_provider_routing: openrouterProviderRouting.data,
       allowed_models: allowedModels.data,
       allowed_clients: allowedClients.data,
       blocked_clients: blockedClients.data,
@@ -1073,6 +1091,9 @@ function applyPatchField<T>(
       case "cyber_risk_fallback_rules":
         updates.cyber_risk_fallback_rules =
           patch.value as ProviderBatchApplyUpdates["cyber_risk_fallback_rules"];
+        return { ok: true, data: undefined };
+      case "openrouter_provider_routing":
+        updates.openrouter_provider_routing = normalizeOpenRouterProviderRouting(patch.value);
         return { ok: true, data: undefined };
       case "allowed_models":
         if (!Array.isArray(patch.value) || patch.value.length === 0) {
@@ -1266,6 +1287,9 @@ function applyPatchField<T>(
     case "cyber_risk_fallback_rules":
       updates.cyber_risk_fallback_rules = null;
       return { ok: true, data: undefined };
+    case "openrouter_provider_routing":
+      updates.openrouter_provider_routing = null;
+      return { ok: true, data: undefined };
     case "allowed_models":
       updates.allowed_models = null;
       return { ok: true, data: undefined };
@@ -1381,6 +1405,7 @@ export function buildProviderBatchApplyUpdates(
     ["group_tag", patch.group_tag],
     ["model_redirects", patch.model_redirects],
     ["cyber_risk_fallback_rules", patch.cyber_risk_fallback_rules],
+    ["openrouter_provider_routing", patch.openrouter_provider_routing],
     ["allowed_models", patch.allowed_models],
     ["allowed_clients", patch.allowed_clients],
     ["blocked_clients", patch.blocked_clients],
@@ -1459,6 +1484,7 @@ export function hasProviderBatchPatchChanges(
     patch.group_tag.mode !== "no_change" ||
     patch.model_redirects.mode !== "no_change" ||
     patch.cyber_risk_fallback_rules.mode !== "no_change" ||
+    patch.openrouter_provider_routing.mode !== "no_change" ||
     patch.allowed_models.mode !== "no_change" ||
     patch.allowed_clients.mode !== "no_change" ||
     patch.blocked_clients.mode !== "no_change" ||

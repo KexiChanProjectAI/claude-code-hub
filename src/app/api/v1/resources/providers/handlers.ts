@@ -939,6 +939,8 @@ function sanitizeProvider(
     providerPrefix: provider.providerPrefix ?? null,
     modelRedirects: provider.modelRedirects,
     cyberRiskFallbackRules: provider.cyberRiskFallbackRules ?? null,
+    openrouterProviderRouting:
+      (provider.openrouterProviderRouting as Record<string, unknown> | null) ?? null,
     activeTimeStart: provider.activeTimeStart,
     activeTimeEnd: provider.activeTimeEnd,
     allowedModels: provider.allowedModels,

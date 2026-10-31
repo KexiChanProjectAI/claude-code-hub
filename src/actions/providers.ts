@@ -25,6 +25,7 @@ import {
 import { PROVIDER_GROUP, PROVIDER_TIMEOUT_DEFAULTS } from "@/lib/constants/provider.constants";
 import { normalizeCustomHeadersRecord } from "@/lib/custom-headers";
 import { logger } from "@/lib/logger";
+import { OPENROUTER_PROVIDER_ROUTING_SCHEMA } from "@/lib/openrouter/provider-routing";
 import { PROVIDER_ALLOWED_MODEL_RULE_INPUT_LIST_SCHEMA } from "@/lib/provider-allowed-model-schema";
 import {
   PROVIDER_BATCH_PATCH_ERROR_CODES,
@@ -125,6 +126,7 @@ import type {
   CodexReasoningSummaryPreference,
   CodexServiceTierPreference,
   CodexTextVerbosityPreference,
+  OpenRouterProviderRouting,
   Provider,
   ProviderBatchPatch,
   ProviderBatchPatchField,
@@ -378,6 +380,7 @@ export async function getProviders(): Promise<ProviderDisplay[]> {
         overwriteResponseModel: provider.overwriteResponseModel,
         modelRedirects: provider.modelRedirects,
         cyberRiskFallbackRules: provider.cyberRiskFallbackRules ?? null,
+        openrouterProviderRouting: provider.openrouterProviderRouting ?? null,
         activeTimeStart: provider.activeTimeStart,
         activeTimeEnd: provider.activeTimeEnd,
         allowedModels: provider.allowedModels,
@@ -588,6 +591,7 @@ export async function addProvider(data: {
   disable_session_reuse?: boolean;
   model_redirects?: ProviderModelRedirectRule[] | null;
   cyber_risk_fallback_rules?: ProviderModelRedirectRule[] | null;
+  openrouter_provider_routing?: OpenRouterProviderRouting | null;
   active_time_start?: string | null;
   active_time_end?: string | null;
   allowed_models?: AllowedModelRuleInput[] | null;
@@ -834,6 +838,7 @@ export async function editProvider(
     disable_session_reuse?: boolean;
     model_redirects?: ProviderModelRedirectRule[] | null;
     cyber_risk_fallback_rules?: ProviderModelRedirectRule[] | null;
+    openrouter_provider_routing?: OpenRouterProviderRouting | null;
     active_time_start?: string | null;
     active_time_end?: string | null;
     allowed_models?: AllowedModelRuleInput[] | null;
@@ -1679,6 +1684,7 @@ const SINGLE_EDIT_PREIMAGE_FIELD_TO_PROVIDER_KEY: Record<
   active_time_end: "activeTimeEnd",
   model_redirects: "modelRedirects",
   cyber_risk_fallback_rules: "cyberRiskFallbackRules",
+  openrouter_provider_routing: "openrouterProviderRouting",
   allowed_models: "allowedModels",
   allowed_clients: "allowedClients",
   blocked_clients: "blockedClients",
@@ -1886,6 +1892,9 @@ function mapApplyUpdatesToRepositoryFormat(
   if (applyUpdates.cyber_risk_fallback_rules !== undefined) {
     result.cyberRiskFallbackRules = applyUpdates.cyber_risk_fallback_rules;
   }
+  if (applyUpdates.openrouter_provider_routing !== undefined) {
+    result.openrouterProviderRouting = applyUpdates.openrouter_provider_routing;
+  }
   if (applyUpdates.allowed_models !== undefined) {
     result.allowedModels = applyUpdates.allowed_models;
   }
@@ -2044,6 +2053,7 @@ const PATCH_FIELD_TO_PROVIDER_KEY: Record<
   group_tag: "groupTag",
   model_redirects: "modelRedirects",
   cyber_risk_fallback_rules: "cyberRiskFallbackRules",
+  openrouter_provider_routing: "openrouterProviderRouting",
   allowed_models: "allowedModels",
   allowed_clients: "allowedClients",
   blocked_clients: "blockedClients",
@@ -2978,6 +2988,7 @@ export interface BatchUpdateProvidersParams {
     group_tag?: string | null;
     model_redirects?: ProviderModelRedirectRule[] | null;
     cyber_risk_fallback_rules?: ProviderModelRedirectRule[] | null;
+    openrouter_provider_routing?: OpenRouterProviderRouting | null;
     allowed_models?: AllowedModelRuleInput[] | null;
     allowed_clients?: string[];
     blocked_clients?: string[];
@@ -3102,6 +3113,15 @@ export async function batchUpdateProviders(
           parsedFallbackRules.data
         );
       }
+    }
+    if (updates.openrouter_provider_routing !== undefined) {
+      const parsedRouting = OPENROUTER_PROVIDER_ROUTING_SCHEMA.safeParse(
+        updates.openrouter_provider_routing
+      );
+      if (!parsedRouting.success) {
+        return { ok: false, error: "OpenRouter provider routing 配置格式无效" };
+      }
+      repositoryUpdates.openrouterProviderRouting = parsedRouting.data ?? null;
     }
     if (updates.allowed_models !== undefined) {
       if (updates.allowed_models === null) {

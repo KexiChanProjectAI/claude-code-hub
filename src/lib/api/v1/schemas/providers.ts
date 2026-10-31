@@ -248,6 +248,12 @@ export const ProviderSummarySchema = z
       .describe(
         "Cyber risk fallback rules. When the upstream rejects a request for possible cybersecurity risk, the first rule whose source matches the execution model switches to the target model and retries the same provider once."
       ),
+    openrouterProviderRouting: z
+      .record(z.string(), z.unknown())
+      .nullable()
+      .describe(
+        "OpenRouter provider routing preferences (OpenRouter wire format: order, only, ignore, allow_fallbacks, require_parameters, data_collection, zdr, enforce_distillable_text, quantizations, sort, max_price, preferred_min_throughput, preferred_max_latency). Injected as the top-level `provider` request field; configured keys override client-sent keys."
+      ),
     activeTimeStart: NullableStringSchema.describe("Scheduled active start time in HH:mm."),
     activeTimeEnd: NullableStringSchema.describe("Scheduled active end time in HH:mm."),
     allowedModels: z.array(z.unknown()).nullable().describe("Allowed model rules."),
@@ -477,6 +483,13 @@ const ProviderBatchUpdateFieldsSchema = z
       .nullable()
       .optional()
       .describe("Cyber risk fallback rules (source = execution model, target = fallback model)."),
+    openrouter_provider_routing: z
+      .record(z.string(), z.unknown())
+      .nullable()
+      .optional()
+      .describe(
+        "OpenRouter provider routing preferences injected as the top-level `provider` request field (null clears)."
+      ),
     allowed_models: z.array(z.unknown()).nullable().optional().describe("Allowed model rules."),
     allowed_clients: z.array(z.string()).optional().describe("Allowed client patterns."),
     blocked_clients: z.array(z.string()).optional().describe("Blocked client patterns."),
@@ -693,6 +706,13 @@ const ProviderCreateObjectSchema = z
       .nullable()
       .optional()
       .describe("Cyber risk fallback rules (source = execution model, target = fallback model)."),
+    openrouter_provider_routing: z
+      .record(z.string(), z.unknown())
+      .nullable()
+      .optional()
+      .describe(
+        "OpenRouter provider routing preferences injected as the top-level `provider` request field (null clears)."
+      ),
     active_time_start: TimeOfDaySchema.nullable()
       .optional()
       .describe("Scheduled active start time."),

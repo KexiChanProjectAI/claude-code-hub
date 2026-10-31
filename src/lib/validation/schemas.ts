@@ -12,6 +12,7 @@ import {
 } from "@/lib/constants/provider.constants";
 import { USER_LIMITS } from "@/lib/constants/user.constants";
 import { normalizeCustomHeadersRecord } from "@/lib/custom-headers";
+import { OPENROUTER_PROVIDER_ROUTING_SCHEMA } from "@/lib/openrouter/provider-routing";
 import { PROVIDER_ALLOWED_MODEL_RULES_SCHEMA } from "@/lib/provider-allowed-model-schema";
 import { PROVIDER_MODEL_REDIRECT_RULES_SCHEMA } from "@/lib/provider-model-redirect-schema";
 import { resolveProviderPatternRegex } from "@/lib/provider-pattern-regex";
@@ -688,6 +689,7 @@ export const CreateProviderSchema = z
     provider_prefix: PROVIDER_PREFIX_SCHEMA,
     model_redirects: PROVIDER_MODEL_REDIRECT_RULES_SCHEMA,
     cyber_risk_fallback_rules: PROVIDER_MODEL_REDIRECT_RULES_SCHEMA,
+    openrouter_provider_routing: OPENROUTER_PROVIDER_ROUTING_SCHEMA,
     // Scheduled active time window (HH:mm format)
     active_time_start: z
       .string()
@@ -947,6 +949,7 @@ export const UpdateProviderSchema = z
     provider_prefix: PROVIDER_PREFIX_SCHEMA,
     model_redirects: PROVIDER_MODEL_REDIRECT_RULES_SCHEMA,
     cyber_risk_fallback_rules: PROVIDER_MODEL_REDIRECT_RULES_SCHEMA,
+    openrouter_provider_routing: OPENROUTER_PROVIDER_ROUTING_SCHEMA,
     active_time_start: z
       .string()
       .regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/, "active_time_start must be HH:mm format")

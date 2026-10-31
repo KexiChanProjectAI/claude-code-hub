@@ -346,3 +346,53 @@ describe("provider-patch-contract - cyber risk fallback rules", () => {
     expect(clearUpdates.ok && clearUpdates.data.cyber_risk_fallback_rules).toBeNull();
   });
 });
+
+describe("provider-patch-contract - openrouter_provider_routing", () => {
+  it("normalizes set, clear and no_change drafts", () => {
+    const set = normalizeProviderBatchPatchDraft({
+      openrouter_provider_routing: { set: { sort: "price", zdr: true } },
+    });
+    expect(set.ok && set.data.openrouter_provider_routing).toEqual({
+      mode: "set",
+      value: { sort: "price", zdr: true },
+    });
+
+    const clear = normalizeProviderBatchPatchDraft({
+      openrouter_provider_routing: { clear: true },
+    });
+    expect(clear.ok && clear.data.openrouter_provider_routing).toEqual({ mode: "clear" });
+
+    const none = normalizeProviderBatchPatchDraft({});
+    expect(none.ok && none.data.openrouter_provider_routing).toEqual({ mode: "no_change" });
+  });
+
+  it.each([[{ sort: "cheap" }], [{ unknown: 1 }], [{}], ["not-an-object"]])(
+    "rejects an invalid set value %j",
+    (value) => {
+      const result = normalizeProviderBatchPatchDraft({
+        openrouter_provider_routing: { set: value as never },
+      });
+      expect(result.ok).toBe(false);
+    }
+  );
+
+  it("builds apply updates for set and clear (clear writes null)", () => {
+    const set = normalizeProviderBatchPatchDraft({
+      openrouter_provider_routing: { set: { order: [" groq "], quantizations: ["fp8"] } },
+    });
+    if (!set.ok) throw new Error("expected ok");
+    const setUpdates = buildProviderBatchApplyUpdates(set.data);
+    expect(setUpdates.ok && setUpdates.data.openrouter_provider_routing).toEqual({
+      order: ["groq"],
+      quantizations: ["fp8"],
+    });
+    expect(hasProviderBatchPatchChanges(set.data)).toBe(true);
+
+    const clear = normalizeProviderBatchPatchDraft({
+      openrouter_provider_routing: { clear: true },
+    });
+    if (!clear.ok) throw new Error("expected ok");
+    const clearUpdates = buildProviderBatchApplyUpdates(clear.data);
+    expect(clearUpdates.ok && clearUpdates.data.openrouter_provider_routing).toBeNull();
+  });
+});

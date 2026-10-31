@@ -20,6 +20,7 @@ import type { HedgeLoserBilling, StoredCostBreakdown } from '@/types/cost-breakd
 import type { ResponseFixerConfig } from '@/types/system-config';
 import type {
   AllowedModelRuleInput,
+  OpenRouterProviderRouting,
   ProviderModelRedirectRule,
   ProviderType,
   ReasoningEffortOverrideRule,
@@ -248,6 +249,10 @@ export const providers = pgTable('providers', {
   // Cyber risk fallback：上游返回 cybersecurity risk 拒绝时，按执行模型匹配规则切换到 fallback 模型，
   // 并对同一供应商重试一次（null 或空数组 = 关闭）
   cyberRiskFallbackRules: jsonb('cyber_risk_fallback_rules').$type<ProviderModelRedirectRule[] | null>(),
+
+  // OpenRouter provider routing：作为顶层 `provider` 字段注入上游请求体（精度/价格/提供商/ZDR 等过滤）
+  // null = 不注入；配置的键覆盖客户端同名键
+  openrouterProviderRouting: jsonb('openrouter_provider_routing').$type<OpenRouterProviderRouting | null>(),
 
   // 模型列表：双重语义
   // - Anthropic 提供商：白名单（管理员限制可调度的模型，可选）

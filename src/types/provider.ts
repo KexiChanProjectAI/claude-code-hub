@@ -163,6 +163,7 @@ export type ProviderBatchPatchField =
   | "group_tag"
   | "model_redirects"
   | "cyber_risk_fallback_rules"
+  | "openrouter_provider_routing"
   | "allowed_models"
   | "allowed_clients"
   | "blocked_clients"
@@ -223,6 +224,7 @@ export interface ProviderBatchPatchDraft {
   group_tag?: ProviderPatchDraftInput<string>;
   model_redirects?: ProviderPatchDraftInput<ProviderModelRedirectRule[]>;
   cyber_risk_fallback_rules?: ProviderPatchDraftInput<ProviderModelRedirectRule[]>;
+  openrouter_provider_routing?: ProviderPatchDraftInput<OpenRouterProviderRouting>;
   allowed_models?: ProviderPatchDraftInput<AllowedModelRuleInput[]>;
   allowed_clients?: ProviderPatchDraftInput<string[]>;
   blocked_clients?: ProviderPatchDraftInput<string[]>;
@@ -284,6 +286,7 @@ export interface ProviderBatchPatch {
   group_tag: ProviderPatchOperation<string>;
   model_redirects: ProviderPatchOperation<ProviderModelRedirectRule[]>;
   cyber_risk_fallback_rules: ProviderPatchOperation<ProviderModelRedirectRule[]>;
+  openrouter_provider_routing: ProviderPatchOperation<OpenRouterProviderRouting>;
   allowed_models: ProviderPatchOperation<AllowedModelRuleInput[]>;
   allowed_clients: ProviderPatchOperation<string[]>;
   blocked_clients: ProviderPatchOperation<string[]>;
@@ -346,6 +349,8 @@ export interface ProviderBatchApplyUpdates {
   model_redirects?: ProviderModelRedirectRule[] | null;
   // 命中 cyber risk 拒绝时：按执行模型匹配规则，切换到 fallback 模型并对同供应商重试一次
   cyber_risk_fallback_rules?: ProviderModelRedirectRule[] | null;
+  // OpenRouter provider routing preferences, injected as the top-level `provider` request field
+  openrouter_provider_routing?: OpenRouterProviderRouting | null;
   allowed_models?: AllowedModelRuleInput[] | null;
   allowed_clients?: string[];
   blocked_clients?: string[];
@@ -404,6 +409,44 @@ export interface ProviderBatchApplyUpdates {
 // - "disabled": force remove googleSearch tool from request
 export type GeminiGoogleSearchPreference = "inherit" | "enabled" | "disabled";
 
+export type OpenRouterQuantization =
+  | "int4"
+  | "int8"
+  | "fp4"
+  | "fp6"
+  | "fp8"
+  | "fp16"
+  | "bf16"
+  | "fp32"
+  | "unknown";
+export type OpenRouterSort = "price" | "throughput" | "latency";
+export type OpenRouterMaxPriceKey = "prompt" | "completion" | "request" | "image";
+
+/**
+ * OpenRouter provider routing preferences, stored in OpenRouter wire format (snake_case).
+ * Injected as the top-level `provider` object of the upstream request body.
+ * Absent keys are not sent; configured keys override the same keys sent by the client.
+ * See https://openrouter.ai/docs/features/provider-routing
+ */
+export interface OpenRouterProviderRouting {
+  order?: string[];
+  only?: string[];
+  ignore?: string[];
+  allow_fallbacks?: boolean;
+  require_parameters?: boolean;
+  data_collection?: "allow" | "deny";
+  zdr?: boolean;
+  enforce_distillable_text?: boolean;
+  quantizations?: OpenRouterQuantization[];
+  sort?: OpenRouterSort;
+  // USD per million tokens (prompt / completion), USD per request / per image
+  max_price?: Partial<Record<OpenRouterMaxPriceKey, number>>;
+  // tokens per second
+  preferred_min_throughput?: number;
+  // seconds
+  preferred_max_latency?: number;
+}
+
 // MCP 透传类型枚举
 export type McpPassthroughType = "none" | "minimax" | "glm" | "custom";
 
@@ -443,6 +486,8 @@ export interface Provider {
   modelRedirects: ProviderModelRedirectRule[] | null;
   // 命中 cyber risk 拒绝时的 fallback 模型规则（source 匹配执行模型，target 为 fallback 模型；null/空 = 关闭）
   cyberRiskFallbackRules: ProviderModelRedirectRule[] | null;
+  // OpenRouter provider routing preferences (null = do not inject `provider`)
+  openrouterProviderRouting: OpenRouterProviderRouting | null;
   // 供应商前缀：配置后仅带此前缀的模型 ID 才能命中，转发上游前剥离
   providerPrefix: string | null;
 
@@ -586,6 +631,8 @@ export interface ProviderDisplay {
   modelRedirects: ProviderModelRedirectRule[] | null;
   // 命中 cyber risk 拒绝时的 fallback 模型规则（source 匹配执行模型，target 为 fallback 模型；null/空 = 关闭）
   cyberRiskFallbackRules: ProviderModelRedirectRule[] | null;
+  // OpenRouter provider routing preferences (null = do not inject `provider`)
+  openrouterProviderRouting: OpenRouterProviderRouting | null;
   providerPrefix: string | null;
   // Scheduled active time window
   activeTimeStart: string | null;
@@ -717,6 +764,8 @@ export interface CreateProviderData {
   model_redirects?: ProviderModelRedirectRule[] | null;
   // 命中 cyber risk 拒绝时：按执行模型匹配规则，切换到 fallback 模型并对同供应商重试一次
   cyber_risk_fallback_rules?: ProviderModelRedirectRule[] | null;
+  // OpenRouter provider routing preferences, injected as the top-level `provider` request field
+  openrouter_provider_routing?: OpenRouterProviderRouting | null;
   // 供应商前缀（规范化为以 "/" 结尾；null 表示未配置）
   provider_prefix?: string | null;
   active_time_start?: string | null;
@@ -812,6 +861,8 @@ export interface UpdateProviderData {
   model_redirects?: ProviderModelRedirectRule[] | null;
   // 命中 cyber risk 拒绝时：按执行模型匹配规则，切换到 fallback 模型并对同供应商重试一次
   cyber_risk_fallback_rules?: ProviderModelRedirectRule[] | null;
+  // OpenRouter provider routing preferences, injected as the top-level `provider` request field
+  openrouter_provider_routing?: OpenRouterProviderRouting | null;
   // 供应商前缀（规范化为以 "/" 结尾；null 表示未配置）
   provider_prefix?: string | null;
   active_time_start?: string | null;

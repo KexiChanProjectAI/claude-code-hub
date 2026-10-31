@@ -1,4 +1,5 @@
 import { PROVIDER_TIMEOUT_DEFAULTS } from "@/lib/constants/provider.constants";
+import { normalizeOpenRouterProviderRouting } from "@/lib/openrouter/provider-routing";
 import { normalizeProviderModelRedirectRules } from "@/lib/provider-model-redirects";
 import { DEFAULT_SITE_TITLE } from "@/lib/site-title";
 import { formatCostForStorage } from "@/lib/utils/currency";
@@ -121,6 +122,9 @@ export function toProvider(dbProvider: any): ProviderWithReasoningEffortOverride
     overwriteResponseModel: dbProvider?.overwriteResponseModel ?? false,
     modelRedirects: normalizeProviderModelRedirectRules(dbProvider?.modelRedirects),
     cyberRiskFallbackRules: normalizeProviderModelRedirectRules(dbProvider?.cyberRiskFallbackRules),
+    openrouterProviderRouting: normalizeOpenRouterProviderRouting(
+      dbProvider?.openrouterProviderRouting
+    ),
     activeTimeStart: dbProvider?.activeTimeStart ?? null,
     activeTimeEnd: dbProvider?.activeTimeEnd ?? null,
     mcpPassthroughType: dbProvider?.mcpPassthroughType ?? "none",

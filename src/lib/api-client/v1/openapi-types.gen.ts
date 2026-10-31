@@ -4524,6 +4524,10 @@ export interface operations {
                             modelRedirects: unknown[] | null;
                             /** @description Cyber risk fallback rules. When the upstream rejects a request for possible cybersecurity risk, the first rule whose source matches the execution model switches to the target model and retries the same provider once. */
                             cyberRiskFallbackRules: unknown[] | null;
+                            /** @description OpenRouter provider routing preferences (OpenRouter wire format: order, only, ignore, allow_fallbacks, require_parameters, data_collection, zdr, enforce_distillable_text, quantizations, sort, max_price, preferred_min_throughput, preferred_max_latency). Injected as the top-level `provider` request field; configured keys override client-sent keys. */
+                            openrouterProviderRouting: {
+                                [key: string]: unknown;
+                            } | null;
                             /** @description Scheduled active start time in HH:mm. */
                             activeTimeStart: string | null;
                             /** @description Scheduled active end time in HH:mm. */
@@ -4897,6 +4901,10 @@ export interface operations {
                     model_redirects?: unknown[] | null;
                     /** @description Cyber risk fallback rules (source = execution model, target = fallback model). */
                     cyber_risk_fallback_rules?: unknown[] | null;
+                    /** @description OpenRouter provider routing preferences injected as the top-level `provider` request field (null clears). */
+                    openrouter_provider_routing?: {
+                        [key: string]: unknown;
+                    } | null;
                     /** @description Scheduled active start time. */
                     active_time_start?: string | null;
                     /** @description Scheduled active end time. */
@@ -5107,6 +5115,10 @@ export interface operations {
                         modelRedirects: unknown[] | null;
                         /** @description Cyber risk fallback rules. When the upstream rejects a request for possible cybersecurity risk, the first rule whose source matches the execution model switches to the target model and retries the same provider once. */
                         cyberRiskFallbackRules: unknown[] | null;
+                        /** @description OpenRouter provider routing preferences (OpenRouter wire format: order, only, ignore, allow_fallbacks, require_parameters, data_collection, zdr, enforce_distillable_text, quantizations, sort, max_price, preferred_min_throughput, preferred_max_latency). Injected as the top-level `provider` request field; configured keys override client-sent keys. */
+                        openrouterProviderRouting: {
+                            [key: string]: unknown;
+                        } | null;
                         /** @description Scheduled active start time in HH:mm. */
                         activeTimeStart: string | null;
                         /** @description Scheduled active end time in HH:mm. */
@@ -5488,6 +5500,10 @@ export interface operations {
                         modelRedirects: unknown[] | null;
                         /** @description Cyber risk fallback rules. When the upstream rejects a request for possible cybersecurity risk, the first rule whose source matches the execution model switches to the target model and retries the same provider once. */
                         cyberRiskFallbackRules: unknown[] | null;
+                        /** @description OpenRouter provider routing preferences (OpenRouter wire format: order, only, ignore, allow_fallbacks, require_parameters, data_collection, zdr, enforce_distillable_text, quantizations, sort, max_price, preferred_min_throughput, preferred_max_latency). Injected as the top-level `provider` request field; configured keys override client-sent keys. */
+                        openrouterProviderRouting: {
+                            [key: string]: unknown;
+                        } | null;
                         /** @description Scheduled active start time in HH:mm. */
                         activeTimeStart: string | null;
                         /** @description Scheduled active end time in HH:mm. */
@@ -6036,6 +6052,10 @@ export interface operations {
                     model_redirects?: unknown[] | null;
                     /** @description Cyber risk fallback rules (source = execution model, target = fallback model). */
                     cyber_risk_fallback_rules?: unknown[] | null;
+                    /** @description OpenRouter provider routing preferences injected as the top-level `provider` request field (null clears). */
+                    openrouter_provider_routing?: {
+                        [key: string]: unknown;
+                    } | null;
                     /** @description Scheduled active start time. */
                     active_time_start?: string | null;
                     /** @description Scheduled active end time. */
@@ -6252,6 +6272,10 @@ export interface operations {
                         modelRedirects: unknown[] | null;
                         /** @description Cyber risk fallback rules. When the upstream rejects a request for possible cybersecurity risk, the first rule whose source matches the execution model switches to the target model and retries the same provider once. */
                         cyberRiskFallbackRules: unknown[] | null;
+                        /** @description OpenRouter provider routing preferences (OpenRouter wire format: order, only, ignore, allow_fallbacks, require_parameters, data_collection, zdr, enforce_distillable_text, quantizations, sort, max_price, preferred_min_throughput, preferred_max_latency). Injected as the top-level `provider` request field; configured keys override client-sent keys. */
+                        openrouterProviderRouting: {
+                            [key: string]: unknown;
+                        } | null;
                         /** @description Scheduled active start time in HH:mm. */
                         activeTimeStart: string | null;
                         /** @description Scheduled active end time in HH:mm. */
@@ -9343,6 +9367,10 @@ export interface operations {
                         model_redirects?: unknown[] | null;
                         /** @description Cyber risk fallback rules (source = execution model, target = fallback model). */
                         cyber_risk_fallback_rules?: unknown[] | null;
+                        /** @description OpenRouter provider routing preferences injected as the top-level `provider` request field (null clears). */
+                        openrouter_provider_routing?: {
+                            [key: string]: unknown;
+                        } | null;
                         /** @description Allowed model rules. */
                         allowed_models?: unknown[] | null;
                         /** @description Allowed client patterns. */

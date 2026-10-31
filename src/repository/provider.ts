@@ -14,6 +14,7 @@ import { getCachedProviders } from "@/lib/cache/provider-cache";
 import { PROVIDER_TIMEOUT_DEFAULTS } from "@/lib/constants/provider.constants";
 import { resetEndpointCircuit } from "@/lib/endpoint-circuit-breaker";
 import { logger } from "@/lib/logger";
+import { normalizeOpenRouterProviderRouting } from "@/lib/openrouter/provider-routing";
 import { SENSITIVE_PROVIDER_BATCH_UNDO_KEYS } from "@/lib/provider-batch-patch-error-codes";
 import { normalizeProviderModelRedirectRules } from "@/lib/provider-model-redirects";
 import { normalizeProviderPrefix } from "@/lib/provider-prefix";
@@ -26,6 +27,7 @@ import type {
   AllowedModelRuleInput,
   AnthropicAdaptiveThinkingConfig,
   CreateProviderData,
+  OpenRouterProviderRouting,
   Provider,
   ProviderModelRedirectRule,
   ReasoningEffortOverrideRule,
@@ -236,6 +238,9 @@ export async function createProvider(
     cyberRiskFallbackRules: normalizeProviderModelRedirectRules(
       providerData.cyber_risk_fallback_rules
     ),
+    openrouterProviderRouting: normalizeOpenRouterProviderRouting(
+      providerData.openrouter_provider_routing
+    ),
     allowedModels: normalizeAllowedModelRules(providerData.allowed_models),
     allowedClients: providerData.allowed_clients ?? [],
     blockedClients: providerData.blocked_clients ?? [],
@@ -335,6 +340,7 @@ export async function createProvider(
         overwriteResponseModel: providers.overwriteResponseModel,
         modelRedirects: providers.modelRedirects,
         cyberRiskFallbackRules: providers.cyberRiskFallbackRules,
+        openrouterProviderRouting: providers.openrouterProviderRouting,
         allowedModels: providers.allowedModels,
         allowedClients: providers.allowedClients,
         blockedClients: providers.blockedClients,
@@ -434,6 +440,7 @@ export async function findProviderList(
       overwriteResponseModel: providers.overwriteResponseModel,
       modelRedirects: providers.modelRedirects,
       cyberRiskFallbackRules: providers.cyberRiskFallbackRules,
+      openrouterProviderRouting: providers.openrouterProviderRouting,
       allowedModels: providers.allowedModels,
       allowedClients: providers.allowedClients,
       blockedClients: providers.blockedClients,
@@ -533,6 +540,7 @@ export async function findAllProvidersFresh(): Promise<ProviderWithReasoningEffo
       overwriteResponseModel: providers.overwriteResponseModel,
       modelRedirects: providers.modelRedirects,
       cyberRiskFallbackRules: providers.cyberRiskFallbackRules,
+      openrouterProviderRouting: providers.openrouterProviderRouting,
       allowedModels: providers.allowedModels,
       allowedClients: providers.allowedClients,
       blockedClients: providers.blockedClients,
@@ -638,6 +646,7 @@ export async function findProviderById(
       overwriteResponseModel: providers.overwriteResponseModel,
       modelRedirects: providers.modelRedirects,
       cyberRiskFallbackRules: providers.cyberRiskFallbackRules,
+      openrouterProviderRouting: providers.openrouterProviderRouting,
       allowedModels: providers.allowedModels,
       allowedClients: providers.allowedClients,
       blockedClients: providers.blockedClients,
@@ -741,6 +750,10 @@ export async function updateProvider(
   if (providerData.cyber_risk_fallback_rules !== undefined)
     dbData.cyberRiskFallbackRules = normalizeProviderModelRedirectRules(
       providerData.cyber_risk_fallback_rules
+    );
+  if (providerData.openrouter_provider_routing !== undefined)
+    dbData.openrouterProviderRouting = normalizeOpenRouterProviderRouting(
+      providerData.openrouter_provider_routing
     );
   if (providerData.allowed_models !== undefined)
     dbData.allowedModels = normalizeAllowedModelRules(providerData.allowed_models);
@@ -922,6 +935,7 @@ export async function updateProvider(
         overwriteResponseModel: providers.overwriteResponseModel,
         modelRedirects: providers.modelRedirects,
         cyberRiskFallbackRules: providers.cyberRiskFallbackRules,
+        openrouterProviderRouting: providers.openrouterProviderRouting,
         allowedModels: providers.allowedModels,
         allowedClients: providers.allowedClients,
         blockedClients: providers.blockedClients,
@@ -1186,6 +1200,7 @@ export interface BatchProviderUpdates {
   groupTag?: string | null;
   modelRedirects?: ProviderModelRedirectRule[] | null;
   cyberRiskFallbackRules?: ProviderModelRedirectRule[] | null;
+  openrouterProviderRouting?: OpenRouterProviderRouting | null;
   allowedModels?: AllowedModelRuleInput[] | null;
   allowedClients?: string[] | null;
   blockedClients?: string[] | null;
@@ -1360,6 +1375,9 @@ export async function updateProvidersBatch(
   }
   if (updates.cyberRiskFallbackRules !== undefined) {
     setClauses.cyberRiskFallbackRules = updates.cyberRiskFallbackRules;
+  }
+  if (updates.openrouterProviderRouting !== undefined) {
+    setClauses.openrouterProviderRouting = updates.openrouterProviderRouting;
   }
   if (updates.allowedModels !== undefined) {
     setClauses.allowedModels = updates.allowedModels;
