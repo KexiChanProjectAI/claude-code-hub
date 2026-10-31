@@ -8,6 +8,7 @@
 
 ### 新增
 
+- 供应商新增「OpenRouter 提供商路由」选项（`openrouter_provider_routing`，适用除 Gemini 外的所有供应商类型）：以表单直接配置排序（价格/吞吐/延迟）、精度过滤（quantizations）、提供商顺序/白名单/黑名单、数据收集、ZDR、允许回退、要求参数支持、最高价格与吞吐/延迟阈值，转发时作为顶层 `provider` 字段注入请求体（等价于 `extra_body={"provider": {...}}`），配置的键覆盖客户端同名键，并记录覆写审计。注入只作用于本次发送正文，故障转移到其他供应商时不会携带；配置了该选项的供应商不走 edge 执行器（交回本地转发，edge 故障转移中跳过），避免不带 ZDR 等约束发出请求。OpenRouter 响应（JSON / SSE，含 Chat、Messages、Responses）中的实际执行提供商与 generation ID 会被解析为 `openrouter_upstream_provider` 特殊设置，在日志列表供应商旁以徽标显示，并在详情弹窗中展示
 - 供应商新增「Cyber Risk 降级重试」规则（`cyber_risk_fallback_rules`，适用所有供应商类型）：上游以 cybersecurity risk（`cyber_policy` / "flagged for possible cybersecurity risk"）拒绝请求时，无论是真实 4xx、假 200（如 `FAKE_200_OPENAI_RESPONSE_FAILED`）还是流式门控提交前的错误帧，按规则匹配执行模型（未命中再匹配原始请求模型），切换到备用模型并对同一供应商重试一次；计费仍按原始模型，记录 `cyber_risk_fallback` 审计。未配置规则时保持原有行为（直接返回、不切换供应商）
 - OpenAI Chat Completions（`/v1/chat/completions`）支持按供应商覆写思考强度：`openai-compatible` 供应商复用条件式 reasoning effort 规则（按原始/执行模型与客户端原值匹配），命中后改写顶层 `reasoning_effort`（none/minimal/low/medium/high/xhigh/max），并记录覆写审计；本地转发与 edge 执行器一致
 - Session 调试正文 Redis 占用大幅下降：同一请求原本写入五份内容相同的 key（requestBody、messages、before body/messages、after body），现合并为一个 Hash，相同正文只存一份，messages 读取时由正文派生；before/after 与基准不同时以基准正文为 zstd 字典压缩，只占差异的几百字节。所有留存正文改为 zstd 等级 1 的原始二进制帧（去掉 base64 的 33% 膨胀）。新增 `SESSION_REQUEST_BODY_DEDUP_ENABLED`（默认 true）与 `SESSION_PAYLOAD_ZSTD_LEVEL`（默认 1）；旧 key、base64 信封与明文仍可读回
