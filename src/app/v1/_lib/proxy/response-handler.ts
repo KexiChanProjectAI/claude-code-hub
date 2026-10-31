@@ -76,6 +76,7 @@ import {
 } from "./detached-stream-budget";
 import { isDiscoveryProtocolErrorPayload } from "./discovery-validity";
 import { isClientAbortError, isTransportError } from "./errors";
+import { withOpenRouterUpstreamProvider } from "./openrouter-upstream-provider";
 import {
   overwriteClientFacingJsonResponse,
   overwriteClientFacingStream,
@@ -3680,7 +3681,7 @@ export class ProxyResponseHandler {
             providerId: session.provider?.id, // 更新最终供应商ID（重试切换后）
             context1mApplied: session.getContext1mApplied(),
             swapCacheTtlApplied: session.provider?.swapCacheTtlBilling ?? false,
-            specialSettings: session.getSpecialSettings() ?? undefined,
+            specialSettings: withOpenRouterUpstreamProvider(session, responseText),
           };
           const tracker = ProxyStatusTracker.getInstance();
           try {
@@ -5404,7 +5405,7 @@ export class ProxyResponseHandler {
               providerId: providerIdForPersistence ?? session.provider?.id, // 更新最终供应商ID（重试切换后）
               context1mApplied: session.getContext1mApplied(),
               swapCacheTtlApplied: provider.swapCacheTtlBilling ?? false,
-              specialSettings: session.getSpecialSettings() ?? undefined,
+              specialSettings: withOpenRouterUpstreamProvider(session, allContent),
               ...(cacheScoreFields ?? {}),
             },
             {
@@ -7035,7 +7036,7 @@ export async function settleEdgeStreamCompletion(
       providerId: providerIdForPersistence ?? session.provider?.id,
       context1mApplied: session.getContext1mApplied(),
       swapCacheTtlApplied: provider.swapCacheTtlBilling ?? false,
-      specialSettings: session.getSpecialSettings() ?? undefined,
+      specialSettings: withOpenRouterUpstreamProvider(session, allContent),
       ...(cacheScoreFields ?? {}),
     },
     { onCommitted: scheduleCommittedSideEffects }
@@ -7249,7 +7250,7 @@ export async function settleEdgeNonStreamCompletion(
         providerId: session.provider?.id,
         context1mApplied: session.getContext1mApplied(),
         swapCacheTtlApplied: session.provider?.swapCacheTtlBilling ?? false,
-        specialSettings: session.getSpecialSettings() ?? undefined,
+        specialSettings: withOpenRouterUpstreamProvider(session, responseText),
       },
       onCommitted: scheduleCommittedSideEffects,
     });
@@ -7669,7 +7670,7 @@ export async function finalizeRequestStats(
       providerId: providerIdForPersistence,
       context1mApplied: session.getContext1mApplied(),
       swapCacheTtlApplied: session.provider?.swapCacheTtlBilling ?? false,
-      specialSettings: session.getSpecialSettings() ?? undefined,
+      specialSettings: withOpenRouterUpstreamProvider(session, responseText),
     };
     if (onCommitted) {
       await updateMessageRequestDetailsDurably(messageContext.id, terminalDetails, {
@@ -7795,7 +7796,7 @@ export async function finalizeRequestStats(
     providerId: providerIdForPersistence, // 更新最终供应商ID（重试切换后）
     context1mApplied: session.getContext1mApplied(),
     swapCacheTtlApplied: provider.swapCacheTtlBilling ?? false,
-    specialSettings: session.getSpecialSettings() ?? undefined,
+    specialSettings: withOpenRouterUpstreamProvider(session, responseText),
   };
   if (onCommitted) {
     await updateMessageRequestDetailsDurably(messageContext.id, terminalDetails, { onCommitted });

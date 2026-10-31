@@ -145,6 +145,8 @@ function buildSettingKey(setting: SpecialSetting): string {
         setting.fromModel,
         setting.toModel,
       ]);
+    case "openrouter_upstream_provider":
+      return JSON.stringify([setting.type, setting.upstreamProvider, setting.generationId]);
     case "gemini_google_search_override":
       return JSON.stringify([
         setting.type,
@@ -319,6 +321,21 @@ export function getThinkingSignatureModelDetectionSpecialSetting(
         setting
       ): setting is Extract<SpecialSetting, { type: "thinking_signature_model_detection" }> =>
         setting.type === "thinking_signature_model_detection"
+    ) ?? null
+  );
+}
+
+export function getOpenRouterUpstreamProviderSpecialSetting(
+  specialSettings?: SpecialSetting[] | null
+): Extract<SpecialSetting, { type: "openrouter_upstream_provider" }> | null {
+  if (!Array.isArray(specialSettings) || specialSettings.length === 0) {
+    return null;
+  }
+
+  return (
+    specialSettings.find(
+      (setting): setting is Extract<SpecialSetting, { type: "openrouter_upstream_provider" }> =>
+        setting.type === "openrouter_upstream_provider"
     ) ?? null
   );
 }

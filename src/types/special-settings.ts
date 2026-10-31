@@ -25,6 +25,7 @@ export type SpecialSetting =
   | LongContextPricingSpecialSetting
   | GeminiFunctionIdRectifierSpecialSetting
   | CyberRiskFallbackSpecialSetting
+  | OpenRouterUpstreamProviderSpecialSetting
   | GeminiGoogleSearchOverrideSpecialSetting
   | PricingResolutionSpecialSetting
   | CodexServiceTierResultSpecialSetting
@@ -302,6 +303,19 @@ export type GeminiFunctionIdRectifierSpecialSetting = {
  * 记录：上游以 cybersecurity risk 拒绝请求时，按供应商 cyber_risk_fallback_rules
  * 将执行模型切换为 fallback 模型，并对同供应商重试一次的行为。
  */
+/**
+ * OpenRouter 实际执行的上游提供商（从响应体顶层 `provider` 字段解析）
+ */
+export type OpenRouterUpstreamProviderSpecialSetting = {
+  type: "openrouter_upstream_provider";
+  scope: "response";
+  hit: boolean;
+  /** OpenRouter 实际路由到的提供商名称，如 "DeepInfra" */
+  upstreamProvider: string;
+  /** OpenRouter generation ID（gen-...），可用于 /api/v1/generation 查询 */
+  generationId: string | null;
+};
+
 export type CyberRiskFallbackSpecialSetting = {
   type: "cyber_risk_fallback";
   scope: "request";
