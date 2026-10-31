@@ -37,6 +37,7 @@ import {
   recordDiscoveryControlEvent,
 } from "@/lib/observability/discovery-metrics";
 import { applyOpenAIChatProviderOverridesWithAudit } from "@/lib/openai/provider-overrides";
+import { applyOpenRouterProviderRouting } from "@/lib/openrouter/provider-routing";
 import { resolveOutboundProxyUrl } from "@/lib/outbound-proxy";
 import {
   getEndpointFilterStats,
@@ -4640,6 +4641,20 @@ export class ProxyForwarder {
               messageToSend = injection.message;
               session.addSpecialSetting(injection.audit);
               await persistSpecialSettings(session);
+            }
+          }
+
+          // OpenRouter provider routing: inject the provider-level `provider` object into this
+          // attempt's body only (session.request.message stays untouched, so a fallback to
+          // another provider never inherits it).
+          if (isStandardRequest) {
+            const routing = applyOpenRouterProviderRouting(provider, messageToSend);
+            if (routing.audit) {
+              messageToSend = routing.request;
+              if (applyProviderOverrides) {
+                session.addSpecialSetting(routing.audit);
+                await persistSpecialSettings(session);
+              }
             }
           }
 

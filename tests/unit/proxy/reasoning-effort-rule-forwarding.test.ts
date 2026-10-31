@@ -768,3 +768,115 @@ describe("ProxyForwarder reasoning effort rule forwarding", () => {
     expect(sentBodies[1]?.thinking).toEqual({ type: "disabled" });
   });
 });
+
+describe("ProxyForwarder OpenRouter provider routing", () => {
+  const forwarder = ProxyForwarder as unknown as ForwarderInternals;
+  const sentBodies: Record<string, unknown>[] = [];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sentBodies.length = 0;
+    mocks.getCachedSystemSettings.mockResolvedValue({
+      enableBillingHeaderRectifier: false,
+      enableClaudeMetadataUserIdInjection: false,
+      enableThinkingEffortConflictRectifier: true,
+      enableHighConcurrencyMode: false,
+    });
+    mocks.isHttp2Enabled.mockResolvedValue(false);
+    mocks.getCircuitState.mockReturnValue("closed");
+    mocks.getProviderHealthInfo.mockResolvedValue({
+      health: { failureCount: 0 },
+      config: { failureThreshold: 3 },
+    });
+    mocks.updateSessionBindingSmart.mockResolvedValue({
+      updated: true,
+      reason: "first_success",
+      details: "test",
+    });
+    mocks.updateSessionProvider.mockResolvedValue(undefined);
+    mocks.storeSessionSpecialSettings.mockResolvedValue(undefined);
+    mocks.storeSessionRequestHeaders.mockResolvedValue(undefined);
+    mocks.storeSessionRequestPhaseSnapshot.mockResolvedValue(undefined);
+    mocks.storeSessionUpstreamRequestMeta.mockResolvedValue(undefined);
+    mocks.updateMessageRequestDetails.mockResolvedValue(undefined);
+    mocks.applyAnthropicProviderOverridesWithAudit.mockImplementation(
+      (_provider: unknown, request: Record<string, unknown>) => ({ request, audit: null })
+    );
+  });
+
+  function captureBody(session: ProxySession) {
+    vi.spyOn(forwarder, "fetchWithoutAutoDecode").mockImplementation(async () => {
+      sentBodies.push(JSON.parse(session.forwardedRequestBody ?? "{}"));
+      return okResponse();
+    });
+  }
+
+  test("injects provider routing into the sent Chat Completions body only", async () => {
+    const message = {
+      model: "deepseek/deepseek-chat",
+      messages: [{ role: "user", content: "Hello" }],
+      provider: { order: ["groq"] },
+    };
+    const session = createSession("/v1/chat/completions", message);
+    const provider = createProvider({
+      providerType: "openai-compatible",
+      url: "https://openrouter.ai/api/v1",
+      openrouterProviderRouting: { quantizations: ["fp16", "bf16"], sort: "price", zdr: true },
+    } as Partial<ProviderWithReasoningEffortOverrideRules>);
+    captureBody(session);
+
+    await forwarder.doForward(session, provider, provider.url);
+
+    expect(sentBodies[0]?.provider).toEqual({
+      order: ["groq"],
+      quantizations: ["fp16", "bf16"],
+      sort: "price",
+      zdr: true,
+    });
+    expect(session.request.message.provider).toEqual({ order: ["groq"] });
+    expect(mocks.updateMessageRequestDetails).toHaveBeenCalledWith(123, {
+      specialSettings: expect.arrayContaining([
+        expect.objectContaining({
+          type: "provider_parameter_override",
+          changes: [expect.objectContaining({ path: "provider", changed: true })],
+        }),
+      ]),
+    });
+  });
+
+  test("injects provider routing for Anthropic Messages providers", async () => {
+    const session = createSession("/v1/messages", {
+      model: "anthropic/claude-sonnet-4.5",
+      max_tokens: 10,
+      messages: [{ role: "user", content: "Hello" }],
+    });
+    const provider = createProvider({
+      providerType: "claude",
+      url: "https://openrouter.ai/api",
+      openrouterProviderRouting: { only: ["anthropic"], data_collection: "deny" },
+    } as Partial<ProviderWithReasoningEffortOverrideRules>);
+    captureBody(session);
+
+    await forwarder.doForward(session, provider, provider.url);
+
+    expect(sentBodies[0]?.provider).toEqual({ only: ["anthropic"], data_collection: "deny" });
+    expect(session.request.message).not.toHaveProperty("provider");
+  });
+
+  test("leaves the body untouched without routing", async () => {
+    const session = createSession("/v1/chat/completions", {
+      model: "gpt-5",
+      messages: [{ role: "user", content: "Hello" }],
+    });
+    const provider = createProvider({
+      providerType: "openai-compatible",
+      url: "https://provider.example.com/v1",
+      openrouterProviderRouting: null,
+    } as Partial<ProviderWithReasoningEffortOverrideRules>);
+    captureBody(session);
+
+    await forwarder.doForward(session, provider, provider.url);
+
+    expect(sentBodies[0]).not.toHaveProperty("provider");
+  });
+});

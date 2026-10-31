@@ -7,6 +7,7 @@
  */
 import { getEnvConfig } from "@/lib/config/env.schema";
 import { logger } from "@/lib/logger";
+import { hasOpenRouterProviderRouting } from "@/lib/openrouter/provider-routing";
 import { SessionTracker } from "@/lib/session-tracker";
 import { isVendorTypeCircuitOpen } from "@/lib/vendor-type-circuit-breaker";
 import type { Provider } from "@/types/provider";
@@ -71,6 +72,16 @@ export async function enterProvider(
   const { state, session } = rt;
   state.totalProvidersAttempted += 1;
   session.setProvider(provider);
+
+  if (hasOpenRouterProviderRouting(provider)) {
+    // edge 无法注入 OpenRouter `provider` 路由偏好（如 ZDR / 精度过滤）；
+    // 不带偏好直接发送可能违反数据策略，因此在 edge 故障转移中跳过该供应商
+    logger.warn("[EdgeCoordinator] Provider has OpenRouter routing, skipping on edge", {
+      providerId: provider.id,
+    });
+    ProxyForwarder.markProviderFailed(session, state.failedProviderIds, provider.id);
+    return null;
+  }
 
   const env = getEnvConfig();
   const rawCrossProviderFallbackEnabled = session.isRawCrossProviderFallbackEnabled();

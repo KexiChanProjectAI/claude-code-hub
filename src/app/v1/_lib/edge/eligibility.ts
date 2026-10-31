@@ -7,6 +7,8 @@
  * - 请求级：只读摘要与系统设置（在会话守卫之前）；
  * - 供应商级：需要已选中的供应商（在 provider 守卫之后、messageContext 之前）。
  */
+
+import { hasOpenRouterProviderRouting } from "@/lib/openrouter/provider-routing";
 import type { Provider, ProviderType } from "@/types/provider";
 import type { SystemSettings } from "@/types/system-config";
 import { normalizeEndpointPath, V1_ENDPOINT_PATHS } from "../proxy/endpoint-paths";
@@ -98,6 +100,10 @@ export function evaluateProviderEligibility(params: {
   ) {
     // 图片生成偏好会改写 tools / tool_choice / input 内的嵌套工具，控制面无法以 op 表达
     return reject("codex_image_generation_preference");
+  }
+  if (hasOpenRouterProviderRouting(provider)) {
+    // provider 路由偏好写入顶层 `provider` 字段，edge body op 白名单不含该键，交回本地转发
+    return reject("openrouter_provider_routing");
   }
   if (params.providerBodyFiltersConfigured) return reject("provider_request_filter_body_ops");
   if (

@@ -208,6 +208,27 @@ describe("edge eligibility", () => {
         providerBodyFiltersConfigured: false,
       })
     ).toEqual({ eligible: false, reason: "fake_streaming" });
+    expect(
+      evaluateProviderEligibility({
+        provider: {
+          ...provider,
+          openrouterProviderRouting: { zdr: true },
+        } as unknown as Provider,
+        format: "claude",
+        requestedModel: "m",
+        settings: SETTINGS,
+        providerBodyFiltersConfigured: false,
+      })
+    ).toEqual({ eligible: false, reason: "openrouter_provider_routing" });
+    expect(
+      evaluateProviderEligibility({
+        provider: { ...provider, openrouterProviderRouting: {} } as unknown as Provider,
+        format: "claude",
+        requestedModel: "m",
+        settings: SETTINGS,
+        providerBodyFiltersConfigured: false,
+      })
+    ).toEqual({ eligible: true });
   });
 
   test("provider type must match the client format", () => {
