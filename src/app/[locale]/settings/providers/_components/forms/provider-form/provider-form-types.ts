@@ -14,6 +14,7 @@ import type {
   CodexTextVerbosityPreference,
   GeminiGoogleSearchPreference,
   McpPassthroughType,
+  OpenRouterProviderRouting,
   ProviderDisplay,
   ProviderModelRedirectRule,
   ProviderType,
@@ -73,6 +74,7 @@ export interface RoutingState {
   providerPrefix: string;
   modelRedirects: ProviderModelRedirectRule[];
   cyberRiskFallbackRules: ProviderModelRedirectRule[];
+  openrouterProviderRouting: OpenRouterProviderRouting | null;
   allowedModels: AllowedModelRule[];
   allowedClients: string[];
   blockedClients: string[];
@@ -184,6 +186,7 @@ export type ProviderFormAction =
   | { type: "SET_PROVIDER_PREFIX"; payload: string }
   | { type: "SET_MODEL_REDIRECTS"; payload: ProviderModelRedirectRule[] }
   | { type: "SET_CYBER_RISK_FALLBACK_RULES"; payload: ProviderModelRedirectRule[] }
+  | { type: "SET_OPENROUTER_PROVIDER_ROUTING"; payload: OpenRouterProviderRouting | null }
   | { type: "SET_ALLOWED_MODELS"; payload: AllowedModelRule[] }
   | { type: "SET_ALLOWED_CLIENTS"; payload: string[] }
   | { type: "SET_BLOCKED_CLIENTS"; payload: string[] }

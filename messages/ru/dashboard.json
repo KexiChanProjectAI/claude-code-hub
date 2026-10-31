@@ -596,6 +596,12 @@
         "desc": "Запрос обслужен из Replay-кэша (идентичный запрос уже выполняется или завершён). Обращение к провайдеру не выполнялось, затрат нет.",
         "replayId": "Replay ID",
         "sourceRequestId": "Исходный запрос"
+      },
+      "openrouterUpstream": {
+        "title": "Фактический провайдер OpenRouter",
+        "provider": "Провайдер",
+        "generationId": "Generation ID",
+        "badgeTitle": "OpenRouter направил запрос к: {provider}"
       }
     },
     "providerChain": {

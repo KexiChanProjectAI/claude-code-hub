@@ -427,6 +427,96 @@
         "description": "将因网络安全风险被拒绝的模型映射到备用模型。",
         "emptyState": "暂无降级规则。未配置规则时，cyber risk 拒绝会直接返回给客户端。"
       }
+    },
+    "openrouterRouting": {
+      "title": "OpenRouter 提供商路由",
+      "desc": "为该供应商在请求体中注入 OpenRouter 提供商路由偏好（精度、价格、提供商、ZDR 过滤等）。",
+      "label": "启用 OpenRouter 提供商路由",
+      "help": "以顶层 \"provider\" 字段发送，等价于 extra_body={\"provider\": {...}}。已配置的键覆盖客户端同名键，客户端其他键保留。对 Gemini 类型供应商不生效。",
+      "sort": {
+        "label": "排序",
+        "desc": "按价格、吞吐或延迟优先选择提供商，替代 OpenRouter 默认负载均衡。",
+        "options": {
+          "default": "默认（负载均衡）",
+          "price": "价格最低",
+          "throughput": "吞吐最高",
+          "latency": "延迟最低"
+        }
+      },
+      "dataCollection": {
+        "label": "数据收集",
+        "desc": "deny：仅使用不存储、不用提示词训练的提供商。",
+        "options": {
+          "allow": "允许",
+          "deny": "拒绝"
+        }
+      },
+      "triState": {
+        "inherit": "不设置",
+        "on": "开启",
+        "off": "关闭"
+      },
+      "flags": {
+        "zdr": {
+          "label": "零数据保留（ZDR）",
+          "desc": "开启：仅路由到具备零数据保留策略的端点。"
+        },
+        "allow_fallbacks": {
+          "label": "允许回退",
+          "desc": "关闭：不回退到过滤条件之外的提供商，直接失败。"
+        },
+        "require_parameters": {
+          "label": "要求参数支持",
+          "desc": "开启：仅使用支持请求中全部参数的提供商。"
+        },
+        "enforce_distillable_text": {
+          "label": "仅可蒸馏文本",
+          "desc": "开启：仅使用输出允许用于蒸馏的模型。"
+        }
+      },
+      "quantizations": {
+        "label": "精度（量化）",
+        "desc": "仅路由到提供所选精度的提供商。未选择 = 不过滤。"
+      },
+      "lists": {
+        "order": {
+          "label": "提供商顺序",
+          "placeholder": "例如 deepinfra, together",
+          "desc": "按顺序优先尝试的提供商（逗号分隔的 slug）。"
+        },
+        "only": {
+          "label": "仅允许提供商",
+          "placeholder": "例如 anthropic, google-vertex",
+          "desc": "白名单：只路由到这些提供商。"
+        },
+        "ignore": {
+          "label": "忽略提供商",
+          "placeholder": "例如 novita",
+          "desc": "黑名单：永不路由到这些提供商。"
+        }
+      },
+      "maxPrice": {
+        "label": "最高价格",
+        "prompt": "输入（USD / 1M）",
+        "completion": "输出（USD / 1M）",
+        "request": "每请求（USD）",
+        "image": "每图片（USD）",
+        "desc": "跳过高于这些价格的提供商。留空 = 不限制。"
+      },
+      "performance": {
+        "preferred_min_throughput": {
+          "label": "期望最低吞吐（tokens/s）",
+          "desc": "降低低于该吞吐的提供商优先级。"
+        },
+        "preferred_max_latency": {
+          "label": "期望最高延迟（秒）",
+          "desc": "降低高于该延迟的提供商优先级。"
+        }
+      },
+      "preview": {
+        "label": "注入的请求字段",
+        "empty": "未配置任何项，不会注入字段。"
+      }
     }
   },
   "rateLimit": {

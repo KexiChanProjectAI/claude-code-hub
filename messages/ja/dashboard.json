@@ -596,6 +596,12 @@
         "desc": "このリクエストは Replay キャッシュから直接応答されました(同一リクエストが進行中または完了済み)。上流プロバイダーへの呼び出しは行われず、費用は発生しません。",
         "replayId": "Replay ID",
         "sourceRequestId": "元のリクエスト"
+      },
+      "openrouterUpstream": {
+        "title": "OpenRouter 実際のプロバイダー",
+        "provider": "プロバイダー",
+        "generationId": "Generation ID",
+        "badgeTitle": "OpenRouter のルーティング先: {provider}"
       }
     },
     "providerChain": {

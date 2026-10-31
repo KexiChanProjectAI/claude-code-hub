@@ -1,3 +1,4 @@
+import { normalizeOpenRouterProviderRouting } from "@/lib/openrouter/provider-routing";
 import type { ProviderBatchPatchDraft } from "@/types/provider";
 import type { ProviderFormState } from "../forms/provider-form/provider-form-types";
 
@@ -82,6 +83,11 @@ export function buildPatchDraftFromFormState(
     } else {
       draft.cyber_risk_fallback_rules = { set: rules };
     }
+  }
+
+  if (dirtyFields.has("routing.openrouterProviderRouting")) {
+    const routing = normalizeOpenRouterProviderRouting(state.routing.openrouterProviderRouting);
+    draft.openrouter_provider_routing = routing ? { set: routing } : { clear: true };
   }
   if (dirtyFields.has("routing.allowedModels")) {
     if (state.routing.allowedModels.length === 0) {

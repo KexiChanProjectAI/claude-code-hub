@@ -596,6 +596,12 @@
         "desc": "This request was served from the replay cache (identical request already in flight or completed). No upstream provider call was made and no cost was incurred.",
         "replayId": "Replay ID",
         "sourceRequestId": "Source request"
+      },
+      "openrouterUpstream": {
+        "title": "OpenRouter Upstream Provider",
+        "provider": "Provider",
+        "generationId": "Generation ID",
+        "badgeTitle": "OpenRouter routed to: {provider}"
       }
     },
     "providerChain": {

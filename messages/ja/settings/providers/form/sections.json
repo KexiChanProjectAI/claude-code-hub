@@ -618,6 +618,96 @@
         "regexInvalid": "正規表現が無効です",
         "regexUnsafe": "正規表現に ReDoS のリスクがあります"
       }
+    },
+    "openrouterRouting": {
+      "title": "OpenRouter プロバイダールーティング",
+      "desc": "このプロバイダーのリクエストボディに OpenRouter のプロバイダールーティング設定（精度・価格・プロバイダー・ZDR フィルター等）を注入します。",
+      "label": "OpenRouter プロバイダールーティングを有効化",
+      "help": "トップレベルの \"provider\" フィールドとして送信され、extra_body={\"provider\": {...}} と同等です。設定したキーはクライアントの同名キーを上書きし、その他のキーは保持されます。Gemini プロバイダーには適用されません。",
+      "sort": {
+        "label": "並び順",
+        "desc": "OpenRouter の負荷分散の代わりに、価格・スループット・レイテンシでプロバイダーを優先します。",
+        "options": {
+          "default": "デフォルト（負荷分散）",
+          "price": "最低価格",
+          "throughput": "最高スループット",
+          "latency": "最低レイテンシ"
+        }
+      },
+      "dataCollection": {
+        "label": "データ収集",
+        "desc": "deny：プロンプトを保存・学習に使用しないプロバイダーのみ使用します。",
+        "options": {
+          "allow": "許可",
+          "deny": "拒否"
+        }
+      },
+      "triState": {
+        "inherit": "未設定",
+        "on": "オン",
+        "off": "オフ"
+      },
+      "flags": {
+        "zdr": {
+          "label": "ゼロデータ保持（ZDR）",
+          "desc": "オン：ゼロデータ保持ポリシーのエンドポイントのみにルーティングします。"
+        },
+        "allow_fallbacks": {
+          "label": "フォールバックを許可",
+          "desc": "オフ：フィルター外のプロバイダーへフォールバックせず失敗します。"
+        },
+        "require_parameters": {
+          "label": "パラメーター対応を必須",
+          "desc": "オン：リクエストの全パラメーターに対応するプロバイダーのみ使用します。"
+        },
+        "enforce_distillable_text": {
+          "label": "蒸留可能テキストのみ",
+          "desc": "オン：出力を蒸留に使用できるモデルのみ使用します。"
+        }
+      },
+      "quantizations": {
+        "label": "精度（量子化）",
+        "desc": "選択した精度を提供するプロバイダーのみにルーティングします。未選択 = フィルターなし。"
+      },
+      "lists": {
+        "order": {
+          "label": "プロバイダー順序",
+          "placeholder": "例: deepinfra, together",
+          "desc": "順番に優先して試すプロバイダー（カンマ区切りの slug）。"
+        },
+        "only": {
+          "label": "許可プロバイダー",
+          "placeholder": "例: anthropic, google-vertex",
+          "desc": "許可リスト：これらのプロバイダーのみにルーティングします。"
+        },
+        "ignore": {
+          "label": "除外プロバイダー",
+          "placeholder": "例: novita",
+          "desc": "拒否リスト：これらのプロバイダーには決してルーティングしません。"
+        }
+      },
+      "maxPrice": {
+        "label": "最大価格",
+        "prompt": "入力（USD / 1M）",
+        "completion": "出力（USD / 1M）",
+        "request": "リクエスト単価（USD）",
+        "image": "画像単価（USD）",
+        "desc": "これらの価格を超えるプロバイダーをスキップします。空欄 = 制限なし。"
+      },
+      "performance": {
+        "preferred_min_throughput": {
+          "label": "希望最低スループット（tokens/s）",
+          "desc": "このスループット未満のプロバイダーの優先度を下げます。"
+        },
+        "preferred_max_latency": {
+          "label": "希望最大レイテンシ（秒）",
+          "desc": "このレイテンシを超えるプロバイダーの優先度を下げます。"
+        }
+      },
+      "preview": {
+        "label": "注入されるリクエストフィールド",
+        "empty": "設定がないため、フィールドは注入されません。"
+      }
     }
   },
   "timeout": {

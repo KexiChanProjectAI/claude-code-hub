@@ -9,7 +9,7 @@ vi.mock("framer-motion", () => ({
 }));
 vi.mock("lucide-react", () => {
   const stub = ({ className }: any) => <span data-testid="icon" className={className} />;
-  return { Clock: stub, Info: stub, Settings: stub, ShieldAlert: stub, Timer: stub };
+  return { Clock: stub, Info: stub, Network: stub, Settings: stub, ShieldAlert: stub, Timer: stub };
 });
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock(
@@ -68,6 +68,24 @@ vi.mock("@/app/[locale]/settings/providers/_components/model-redirect-editor", (
       onClick={() => onChange([{ matchType: "exact", source: "gpt-5.5", target: "gpt-5.4" }])}
     >
       Cyber Fallback Rules ({value.length})
+    </button>
+  ),
+}));
+vi.mock("@/app/[locale]/settings/providers/_components/openrouter-routing-editor", () => ({
+  OpenRouterRoutingEditor: ({
+    value,
+    onChange,
+  }: {
+    value: Record<string, unknown>;
+    onChange: (value: Record<string, unknown>) => void;
+  }) => (
+    <button
+      type="button"
+      data-testid="openrouter-routing-editor"
+      data-value={JSON.stringify(value)}
+      onClick={() => onChange({ zdr: true, quantizations: ["fp16"] })}
+    >
+      OpenRouter Routing
     </button>
   ),
 }));
@@ -151,6 +169,7 @@ function createMockState(
       overwriteResponseModel: false,
       modelRedirects: {},
       cyberRiskFallbackRules: [],
+      openrouterProviderRouting: null,
       allowedModels: [],
       allowedClients: [],
       blockedClients: [],
@@ -641,7 +660,7 @@ describe("OptionsSection", () => {
         container.querySelectorAll('[data-testid="switch"]')
       ) as HTMLButtonElement[];
 
-      expect(switches).toHaveLength(6);
+      expect(switches).toHaveLength(7);
       for (const toggle of switches) {
         expect(toggle.hasAttribute("disabled")).toBe(true);
       }
@@ -957,6 +976,88 @@ describe("OptionsSection cyber risk fallback", () => {
     expect(mockDispatch).toHaveBeenCalledWith({
       type: "SET_CYBER_RISK_FALLBACK_RULES",
       payload: [],
+    });
+    unmount();
+  });
+});
+
+describe("OptionsSection OpenRouter provider routing", () => {
+  const LABEL = "sections.routing.openrouterRouting.label";
+
+  function findToggle(container: HTMLDivElement) {
+    return container.querySelector(`[aria-label='${LABEL}']`) as HTMLButtonElement | null;
+  }
+
+  function findEditor(container: HTMLDivElement) {
+    return container.querySelector(
+      "[data-testid='openrouter-routing-editor']"
+    ) as HTMLButtonElement | null;
+  }
+
+  beforeEach(() => {
+    while (document.body.firstChild) {
+      document.body.removeChild(document.body.firstChild);
+    }
+    vi.clearAllMocks();
+  });
+
+  it.each(["claude", "claude-auth", "codex", "openai-compatible"] as const)(
+    "renders the card for %s providers",
+    (providerType) => {
+      const { container, unmount } = renderSection({
+        state: createMockState({ routing: { providerType } }),
+      });
+      expect(getBodyText()).toContain("sections.routing.openrouterRouting.title");
+      expect(findToggle(container)?.getAttribute("aria-checked")).toBe("false");
+      expect(findEditor(container)).toBeNull();
+      unmount();
+    }
+  );
+
+  it.each(["gemini", "gemini-cli"] as const)("hides the card for %s providers", (providerType) => {
+    const { container, unmount } = renderSection({
+      state: createMockState({ routing: { providerType } }),
+    });
+    expect(getBodyText()).not.toContain("sections.routing.openrouterRouting.title");
+    expect(findToggle(container)).toBeNull();
+    unmount();
+  });
+
+  it("enabling starts an empty config and edits dispatch the routing object", () => {
+    const { container, unmount } = renderSection({
+      state: createMockState({ routing: { providerType: "openai-compatible" } }),
+    });
+
+    act(() => findToggle(container)?.click());
+    expect(mockDispatch).toHaveBeenCalledWith({
+      type: "SET_OPENROUTER_PROVIDER_ROUTING",
+      payload: {},
+    });
+    const editor = findEditor(container);
+    expect(editor).not.toBeNull();
+
+    act(() => editor?.click());
+    expect(mockDispatch).toHaveBeenCalledWith({
+      type: "SET_OPENROUTER_PROVIDER_ROUTING",
+      payload: { zdr: true, quantizations: ["fp16"] },
+    });
+    unmount();
+  });
+
+  it("shows a configured routing and disabling clears it", () => {
+    const { container, unmount } = renderSection({
+      state: createMockState({
+        routing: { providerType: "claude", openrouterProviderRouting: { sort: "price" } },
+      }),
+    });
+
+    expect(findEditor(container)?.getAttribute("data-value")).toBe('{"sort":"price"}');
+    const toggle = findToggle(container);
+    expect(toggle?.getAttribute("aria-checked")).toBe("true");
+    act(() => toggle?.click());
+    expect(mockDispatch).toHaveBeenCalledWith({
+      type: "SET_OPENROUTER_PROVIDER_ROUTING",
+      payload: null,
     });
     unmount();
   });

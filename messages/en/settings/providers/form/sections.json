@@ -618,6 +618,96 @@
         "targetPlaceholder": "e.g. gpt-5.4",
         "regexCaptureHint": "Regex rules can reference capture groups in the target: source ^gpt-(.+)-codex$ with target gpt-$1 falls back from gpt-5.5-codex to gpt-5.5."
       }
+    },
+    "openrouterRouting": {
+      "title": "OpenRouter Provider Routing",
+      "desc": "Inject OpenRouter provider routing preferences (precision, price, provider and ZDR filters) into the request body for this provider.",
+      "label": "Enable OpenRouter provider routing",
+      "help": "Sent as the top-level \"provider\" field, equivalent to extra_body={\"provider\": {...}}. Configured keys override the same keys sent by the client; other client keys are kept. Not applied to Gemini providers.",
+      "sort": {
+        "label": "Sort",
+        "desc": "Prefer providers by price, throughput or latency instead of OpenRouter load balancing.",
+        "options": {
+          "default": "Default (load balancing)",
+          "price": "Lowest price",
+          "throughput": "Highest throughput",
+          "latency": "Lowest latency"
+        }
+      },
+      "dataCollection": {
+        "label": "Data collection",
+        "desc": "deny: only use providers that do not store or train on prompts.",
+        "options": {
+          "allow": "Allow",
+          "deny": "Deny"
+        }
+      },
+      "triState": {
+        "inherit": "Not set",
+        "on": "On",
+        "off": "Off"
+      },
+      "flags": {
+        "zdr": {
+          "label": "Zero Data Retention (ZDR)",
+          "desc": "On: only route to endpoints with a zero data retention policy."
+        },
+        "allow_fallbacks": {
+          "label": "Allow fallbacks",
+          "desc": "Off: fail instead of falling back to providers outside your filters."
+        },
+        "require_parameters": {
+          "label": "Require parameters",
+          "desc": "On: only use providers that support every parameter in the request."
+        },
+        "enforce_distillable_text": {
+          "label": "Distillable text only",
+          "desc": "On: only use models whose output may be used for distillation."
+        }
+      },
+      "quantizations": {
+        "label": "Quantizations",
+        "desc": "Only route to providers serving the selected precisions. None selected = no filter."
+      },
+      "lists": {
+        "order": {
+          "label": "Provider order",
+          "placeholder": "e.g. deepinfra, together",
+          "desc": "Providers to try first, in order (comma separated slugs)."
+        },
+        "only": {
+          "label": "Only providers",
+          "placeholder": "e.g. anthropic, google-vertex",
+          "desc": "Allow list: route only to these providers."
+        },
+        "ignore": {
+          "label": "Ignore providers",
+          "placeholder": "e.g. novita",
+          "desc": "Deny list: never route to these providers."
+        }
+      },
+      "maxPrice": {
+        "label": "Max price",
+        "prompt": "Prompt (USD / 1M)",
+        "completion": "Completion (USD / 1M)",
+        "request": "Per request (USD)",
+        "image": "Per image (USD)",
+        "desc": "Skip providers above these prices. Empty = no limit."
+      },
+      "performance": {
+        "preferred_min_throughput": {
+          "label": "Preferred min throughput (tokens/s)",
+          "desc": "Deprioritize providers below this throughput."
+        },
+        "preferred_max_latency": {
+          "label": "Preferred max latency (s)",
+          "desc": "Deprioritize providers above this latency."
+        }
+      },
+      "preview": {
+        "label": "Injected request field",
+        "empty": "Nothing configured; no field will be injected."
+      }
     }
   },
   "timeout": {

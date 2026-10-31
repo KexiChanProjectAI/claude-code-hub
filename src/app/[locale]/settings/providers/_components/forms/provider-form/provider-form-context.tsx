@@ -12,6 +12,7 @@ import {
 } from "react";
 import { normalizeAllowedModelRules } from "@/lib/allowed-model-rules";
 import { stringifyCustomHeadersForTextarea } from "@/lib/custom-headers";
+import { normalizeOpenRouterProviderRouting } from "@/lib/openrouter/provider-routing";
 import { normalizeProviderModelRedirectRules } from "@/lib/provider-model-redirects";
 import { convertLegacyCodexReasoningEffortToRules } from "@/lib/reasoning-effort-override";
 import { convertLegacyCodexServiceTierToRules } from "@/lib/service-tier-override";
@@ -84,6 +85,7 @@ const ACTION_TO_FIELD_PATH: Partial<Record<ProviderFormActionWith5hResetMode["ty
   SET_PROVIDER_PREFIX: "routing.providerPrefix",
   SET_MODEL_REDIRECTS: "routing.modelRedirects",
   SET_CYBER_RISK_FALLBACK_RULES: "routing.cyberRiskFallbackRules",
+  SET_OPENROUTER_PROVIDER_ROUTING: "routing.openrouterProviderRouting",
   SET_ALLOWED_MODELS: "routing.allowedModels",
   SET_ALLOWED_CLIENTS: "routing.allowedClients",
   SET_BLOCKED_CLIENTS: "routing.blockedClients",
@@ -193,6 +195,10 @@ export function createInitialState(
           analysis.routing.cyberRiskFallbackRules.status === "uniform"
             ? analysis.routing.cyberRiskFallbackRules.value
             : [],
+        openrouterProviderRouting:
+          analysis.routing.openrouterProviderRouting.status === "uniform"
+            ? analysis.routing.openrouterProviderRouting.value
+            : null,
         allowedModels:
           analysis.routing.allowedModels.status === "uniform"
             ? analysis.routing.allowedModels.value
@@ -410,6 +416,7 @@ export function createInitialState(
         providerPrefix: "",
         modelRedirects: [],
         cyberRiskFallbackRules: [],
+        openrouterProviderRouting: null,
         allowedModels: [],
         allowedClients: [],
         blockedClients: [],
@@ -505,6 +512,9 @@ export function createInitialState(
       modelRedirects: normalizeProviderModelRedirectRules(sourceProvider?.modelRedirects) ?? [],
       cyberRiskFallbackRules:
         normalizeProviderModelRedirectRules(sourceProvider?.cyberRiskFallbackRules) ?? [],
+      openrouterProviderRouting: normalizeOpenRouterProviderRouting(
+        sourceProvider?.openrouterProviderRouting
+      ),
       allowedModels: normalizeAllowedModelRules(sourceProvider?.allowedModels) ?? [],
       allowedClients: sourceProvider?.allowedClients ?? [],
       blockedClients: sourceProvider?.blockedClients ?? [],
@@ -652,6 +662,8 @@ export function providerFormReducer(
       return { ...state, routing: { ...state.routing, modelRedirects: action.payload } };
     case "SET_CYBER_RISK_FALLBACK_RULES":
       return { ...state, routing: { ...state.routing, cyberRiskFallbackRules: action.payload } };
+    case "SET_OPENROUTER_PROVIDER_ROUTING":
+      return { ...state, routing: { ...state.routing, openrouterProviderRouting: action.payload } };
     case "SET_ALLOWED_MODELS":
       return { ...state, routing: { ...state.routing, allowedModels: action.payload } };
     case "SET_ALLOWED_CLIENTS":

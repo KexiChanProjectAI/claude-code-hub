@@ -14,6 +14,7 @@ import type {
   CodexTextVerbosityPreference,
   GeminiGoogleSearchPreference,
   McpPassthroughType,
+  OpenRouterProviderRouting,
   ProviderDisplay,
   ProviderModelRedirectRule,
   ReasoningEffortOverrideRule,
@@ -40,6 +41,7 @@ export interface BatchSettingsAnalysis {
     overwriteResponseModel: FieldAnalysisResult<boolean>;
     modelRedirects: FieldAnalysisResult<ProviderModelRedirectRule[]>;
     cyberRiskFallbackRules: FieldAnalysisResult<ProviderModelRedirectRule[]>;
+    openrouterProviderRouting: FieldAnalysisResult<OpenRouterProviderRouting | null>;
     allowedModels: FieldAnalysisResult<AllowedModelRule[]>;
     allowedClients: FieldAnalysisResult<string[]>;
     blockedClients: FieldAnalysisResult<string[]>;
@@ -139,6 +141,10 @@ export function analyzeBatchProviderSettings(providers: ProviderDisplay[]): Batc
       overwriteResponseModel: analyzeField(providers, (p) => p.overwriteResponseModel),
       modelRedirects: analyzeField(providers, (p) => p.modelRedirects ?? []),
       cyberRiskFallbackRules: analyzeField(providers, (p) => p.cyberRiskFallbackRules ?? []),
+      openrouterProviderRouting: analyzeField(
+        providers,
+        (p) => p.openrouterProviderRouting ?? null
+      ),
       allowedModels: analyzeField(
         providers,
         (p) => normalizeAllowedModelRules(p.allowedModels) ?? []

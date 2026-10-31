@@ -33,6 +33,7 @@ import { buildHedgeBillingTable } from "@/lib/utils/hedge-billing";
 import { resolveModelAuditDisplay } from "@/lib/utils/model-audit-display";
 import { calculateOutputRate, shouldHideOutputRate } from "@/lib/utils/performance-formatter";
 import {
+  getOpenRouterUpstreamProviderSpecialSetting,
   getPricingResolutionSpecialSetting,
   getThinkingSignatureModelDetectionSpecialSetting,
   hasPriorityServiceTierSpecialSetting,
@@ -144,6 +145,7 @@ export function SummaryTab({
   const showNoSignatureBadge =
     thinkingSignatureDetection?.source === "fallback_no_signature_with_thinking";
   const thinkingEffortInfo = extractThinkingEffortInfo(specialSettings);
+  const openrouterUpstream = getOpenRouterUpstreamProviderSpecialSetting(specialSettings);
   const effortMessageKey =
     thinkingEffortInfo?.source === "codex"
       ? "reasoningEffort"
@@ -895,6 +897,34 @@ export function SummaryTab({
             <pre className="text-xs whitespace-pre-wrap break-words font-mono">
               {specialSettingsContent}
             </pre>
+          </div>
+        </div>
+      )}
+
+      {/* OpenRouter actual upstream provider */}
+      {openrouterUpstream && (
+        <div className="space-y-2" data-testid="openrouter-upstream-section">
+          <h4 className="text-sm font-semibold flex items-center gap-2">
+            <Settings2 className="h-4 w-4 text-sky-600" />
+            {t("openrouterUpstream.title")}
+          </h4>
+          <div className="rounded-lg border bg-card p-3 space-y-1.5 text-sm">
+            <div className="flex items-baseline gap-2">
+              <span className="text-xs text-muted-foreground min-w-[6rem]">
+                {t("openrouterUpstream.provider")}
+              </span>
+              <span className="font-mono break-all">{openrouterUpstream.upstreamProvider}</span>
+            </div>
+            {openrouterUpstream.generationId && (
+              <div className="flex items-baseline gap-2">
+                <span className="text-xs text-muted-foreground min-w-[6rem]">
+                  {t("openrouterUpstream.generationId")}
+                </span>
+                <span className="font-mono text-xs break-all">
+                  {openrouterUpstream.generationId}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       )}

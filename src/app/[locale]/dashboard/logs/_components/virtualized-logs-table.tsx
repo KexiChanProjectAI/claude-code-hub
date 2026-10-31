@@ -44,6 +44,7 @@ import type { UsageLogRow, UsageLogsBatchResult } from "@/repository/usage-logs"
 import type { BillingModelSource } from "@/types/system-config";
 import { ErrorDetailsDialog } from "./error-details-dialog";
 import { ModelDisplayWithRedirect } from "./model-display-with-redirect";
+import { OpenRouterUpstreamBadge } from "./openrouter-upstream-badge";
 import { ProviderChainPopover } from "./provider-chain-popover";
 import { ThinkingEffortDisplay } from "./thinking-effort-display";
 
@@ -1056,6 +1057,9 @@ export function VirtualizedLogsTable({
                                         x{multiplier!.toFixed(2)}
                                       </Badge>
                                     )}
+                                    <OpenRouterUpstreamBadge
+                                      specialSettings={log.specialSettings}
+                                    />
                                   </>
                                 );
                               })()}

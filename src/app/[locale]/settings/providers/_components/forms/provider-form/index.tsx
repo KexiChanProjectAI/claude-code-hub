@@ -29,6 +29,7 @@ import {
   type CustomHeadersValidationErrorCode,
   parseCustomHeadersJsonText,
 } from "@/lib/custom-headers";
+import { normalizeOpenRouterProviderRouting } from "@/lib/openrouter/provider-routing";
 import { PROVIDER_BATCH_PATCH_ERROR_CODES } from "@/lib/provider-batch-patch-error-codes";
 import { normalizeProviderPrefix } from "@/lib/provider-prefix";
 import { buildUpstreamQuotaProbeOptions } from "@/lib/provider-upstream-quota/options";
@@ -377,6 +378,9 @@ function ProviderFormContent({
             );
             return rules.length > 0 ? rules : null;
           })(),
+          openrouter_provider_routing: normalizeOpenRouterProviderRouting(
+            state.routing.openrouterProviderRouting
+          ),
           allowed_models:
             state.routing.allowedModels.length > 0 ? state.routing.allowedModels : null,
           allowed_clients: state.routing.allowedClients,
@@ -624,6 +628,7 @@ function ProviderFormContent({
       state.routing.serviceTierOverrideRules !== null ||
       // Cyber risk fallback rules
       state.routing.cyberRiskFallbackRules.length > 0 ||
+      state.routing.openrouterProviderRouting !== null ||
       // Gemini overrides
       state.routing.geminiGoogleSearchPreference !== "inherit" ||
       // Active time

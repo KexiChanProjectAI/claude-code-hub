@@ -618,6 +618,96 @@
         "regexInvalid": "正則表達式無效",
         "regexUnsafe": "正則表達式存在 ReDoS 風險"
       }
+    },
+    "openrouterRouting": {
+      "title": "OpenRouter 供應商路由",
+      "desc": "為此供應商在請求內容中注入 OpenRouter 供應商路由偏好（精度、價格、供應商、ZDR 篩選等）。",
+      "label": "啟用 OpenRouter 供應商路由",
+      "help": "以頂層 \"provider\" 欄位傳送，等同於 extra_body={\"provider\": {...}}。已設定的鍵覆寫客戶端同名鍵，客戶端其他鍵保留。對 Gemini 類型供應商不生效。",
+      "sort": {
+        "label": "排序",
+        "desc": "依價格、吞吐量或延遲優先選擇供應商，取代 OpenRouter 預設負載平衡。",
+        "options": {
+          "default": "預設（負載平衡）",
+          "price": "價格最低",
+          "throughput": "吞吐量最高",
+          "latency": "延遲最低"
+        }
+      },
+      "dataCollection": {
+        "label": "資料收集",
+        "desc": "deny：僅使用不儲存、不以提示詞訓練的供應商。",
+        "options": {
+          "allow": "允許",
+          "deny": "拒絕"
+        }
+      },
+      "triState": {
+        "inherit": "不設定",
+        "on": "開啟",
+        "off": "關閉"
+      },
+      "flags": {
+        "zdr": {
+          "label": "零資料保留（ZDR）",
+          "desc": "開啟：僅路由至具備零資料保留政策的端點。"
+        },
+        "allow_fallbacks": {
+          "label": "允許回退",
+          "desc": "關閉：不回退至篩選條件以外的供應商，直接失敗。"
+        },
+        "require_parameters": {
+          "label": "要求參數支援",
+          "desc": "開啟：僅使用支援請求中全部參數的供應商。"
+        },
+        "enforce_distillable_text": {
+          "label": "僅可蒸餾文字",
+          "desc": "開啟：僅使用輸出允許用於蒸餾的模型。"
+        }
+      },
+      "quantizations": {
+        "label": "精度（量化）",
+        "desc": "僅路由至提供所選精度的供應商。未選擇 = 不篩選。"
+      },
+      "lists": {
+        "order": {
+          "label": "供應商順序",
+          "placeholder": "例如 deepinfra, together",
+          "desc": "依序優先嘗試的供應商（逗號分隔的 slug）。"
+        },
+        "only": {
+          "label": "僅允許供應商",
+          "placeholder": "例如 anthropic, google-vertex",
+          "desc": "允許清單：只路由至這些供應商。"
+        },
+        "ignore": {
+          "label": "忽略供應商",
+          "placeholder": "例如 novita",
+          "desc": "封鎖清單：永不路由至這些供應商。"
+        }
+      },
+      "maxPrice": {
+        "label": "最高價格",
+        "prompt": "輸入（USD / 1M）",
+        "completion": "輸出（USD / 1M）",
+        "request": "每請求（USD）",
+        "image": "每圖片（USD）",
+        "desc": "略過高於這些價格的供應商。留空 = 不限制。"
+      },
+      "performance": {
+        "preferred_min_throughput": {
+          "label": "期望最低吞吐量（tokens/s）",
+          "desc": "降低低於此吞吐量的供應商優先順序。"
+        },
+        "preferred_max_latency": {
+          "label": "期望最高延遲（秒）",
+          "desc": "降低高於此延遲的供應商優先順序。"
+        }
+      },
+      "preview": {
+        "label": "注入的請求欄位",
+        "empty": "未設定任何項目，不會注入欄位。"
+      }
     }
   },
   "timeout": {

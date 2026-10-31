@@ -596,6 +596,12 @@
         "desc": "该请求由 Replay 缓存直接服务（相同请求正在进行或已完成），未发起上游供应商调用，不产生费用。",
         "replayId": "Replay ID",
         "sourceRequestId": "源请求"
+      },
+      "openrouterUpstream": {
+        "title": "OpenRouter 实际提供商",
+        "provider": "提供商",
+        "generationId": "Generation ID",
+        "badgeTitle": "OpenRouter 实际路由到：{provider}"
       }
     },
     "providerChain": {

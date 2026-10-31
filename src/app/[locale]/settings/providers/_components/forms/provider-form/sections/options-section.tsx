@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Clock, Info, Settings, ShieldAlert, Timer } from "lucide-react";
+import { Clock, Info, Network, Settings, ShieldAlert, Timer } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +25,7 @@ import type {
   GeminiGoogleSearchPreference,
 } from "@/types/provider";
 import { ModelRedirectEditor } from "../../../model-redirect-editor";
+import { OpenRouterRoutingEditor } from "../../../openrouter-routing-editor";
 import { ReasoningEffortRuleEditor } from "../../../reasoning-effort-rule-editor";
 import { ServiceTierRuleEditor } from "../../../service-tier-rule-editor";
 import { ThinkingBudgetEditor } from "../../../thinking-budget-editor";
@@ -49,6 +50,13 @@ export function OptionsSection({ subSectionRefs }: OptionsSectionProps) {
     cyberRiskFallbackRules.length > 0
   );
   const showCyberRiskFallbackEditor = cyberRiskFallbackEnabled || cyberRiskFallbackRules.length > 0;
+  const openrouterRouting = state.routing.openrouterProviderRouting;
+  const [openrouterRoutingEnabled, setOpenrouterRoutingEnabled] = useState(
+    openrouterRouting !== null
+  );
+  const showOpenrouterRoutingEditor = openrouterRoutingEnabled || openrouterRouting !== null;
+  const supportsOpenrouterRouting =
+    isBatch || (providerType !== "gemini" && providerType !== "gemini-cli");
 
   return (
     <TooltipProvider>
@@ -559,6 +567,45 @@ export function OptionsSection({ subSectionRefs }: OptionsSectionProps) {
                   </SelectContent>
                 </Select>
               </SmartInputWrapper>
+            </SectionCard>
+          )}
+
+          {/* OpenRouter provider routing - non-Gemini provider types */}
+          {supportsOpenrouterRouting && (
+            <SectionCard
+              title={t("sections.routing.openrouterRouting.title")}
+              description={t("sections.routing.openrouterRouting.desc")}
+              icon={Network}
+            >
+              <div className="space-y-4">
+                <ToggleRow
+                  label={t("sections.routing.openrouterRouting.label")}
+                  description={t("sections.routing.openrouterRouting.help")}
+                >
+                  <Switch
+                    checked={showOpenrouterRoutingEditor}
+                    onCheckedChange={(checked) => {
+                      setOpenrouterRoutingEnabled(checked);
+                      dispatch({
+                        type: "SET_OPENROUTER_PROVIDER_ROUTING",
+                        payload: checked ? (openrouterRouting ?? {}) : null,
+                      });
+                    }}
+                    disabled={state.ui.isPending}
+                    aria-label={t("sections.routing.openrouterRouting.label")}
+                    data-testid="openrouter-routing-switch"
+                  />
+                </ToggleRow>
+                {showOpenrouterRoutingEditor && (
+                  <OpenRouterRoutingEditor
+                    value={openrouterRouting ?? {}}
+                    onChange={(routing) =>
+                      dispatch({ type: "SET_OPENROUTER_PROVIDER_ROUTING", payload: routing })
+                    }
+                    disabled={state.ui.isPending}
+                  />
+                )}
+              </div>
             </SectionCard>
           )}
 

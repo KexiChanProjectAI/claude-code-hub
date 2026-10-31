@@ -17,6 +17,7 @@ function createBatchState(): ProviderFormState {
       overwriteResponseModel: false,
       modelRedirects: [],
       cyberRiskFallbackRules: [],
+      openrouterProviderRouting: null,
       allowedModels: [],
       allowedClients: [],
       blockedClients: [],
@@ -215,6 +216,31 @@ describe("buildPatchDraftFromFormState", () => {
     expect(draft.cyber_risk_fallback_rules).toEqual({
       set: [{ matchType: "exact", source: "gpt-5.5", target: "gpt-5.4" }],
     });
+  });
+
+  it("clears openrouterProviderRouting when dirty and empty", () => {
+    const state = createBatchState();
+    state.routing.openrouterProviderRouting = {};
+    const draft = buildPatchDraftFromFormState(
+      state,
+      new Set(["routing.openrouterProviderRouting"])
+    );
+    expect(draft.openrouter_provider_routing).toEqual({ clear: true });
+  });
+
+  it("sets a normalized openrouterProviderRouting when dirty", () => {
+    const state = createBatchState();
+    state.routing.openrouterProviderRouting = { zdr: true, order: [" deepinfra "] };
+    const draft = buildPatchDraftFromFormState(
+      state,
+      new Set(["routing.openrouterProviderRouting"])
+    );
+    expect(draft.openrouter_provider_routing).toEqual({
+      set: { zdr: true, order: ["deepinfra"] },
+    });
+    expect(buildPatchDraftFromFormState(state, new Set()).openrouter_provider_routing).toBe(
+      undefined
+    );
   });
 
   it("omits cyberRiskFallbackRules when not dirty", () => {

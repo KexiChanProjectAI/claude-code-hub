@@ -40,6 +40,7 @@ import type { UsageLogRow } from "@/repository/usage-logs";
 import type { BillingModelSource } from "@/types/system-config";
 import { ErrorDetailsDialog } from "./error-details-dialog";
 import { ModelDisplayWithRedirect } from "./model-display-with-redirect";
+import { OpenRouterUpstreamBadge } from "./openrouter-upstream-badge";
 import { ProviderChainPopover } from "./provider-chain-popover";
 import { ThinkingEffortDisplay } from "./thinking-effort-display";
 
@@ -272,6 +273,7 @@ export function UsageLogsTable({
                                 }}
                               />
                             </div>
+                            <OpenRouterUpstreamBadge specialSettings={log.specialSettings} />
                             {/* 摘要文字（第二行显示，左对齐） */}
                             {log.providerChain &&
                               log.providerChain.length > 0 &&
