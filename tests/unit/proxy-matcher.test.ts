@@ -25,6 +25,8 @@ describe("proxy matcher", () => {
       "/models",
       "/messages",
       "/messages/count_tokens",
+      "/codex",
+      "/codex/models",
     ])("does not match %s", (pathname) => {
       expect(matcher.test(pathname)).toBe(false);
     });
@@ -37,6 +39,7 @@ describe("proxy matcher", () => {
       "/gateway/responses",
       "/gateway/chat/completions",
       "/gateway/models",
+      "/gateway/codex/models",
       "/ai/gateway/v1/messages",
     ])("matches %s", (pathname) => {
       expect(matcher.test(pathname)).toBe(true);
@@ -54,6 +57,8 @@ describe("proxy matcher", () => {
       "/messaging",
       "/models-archive",
       "/response",
+      "/codexy",
+      "/codex-models",
     ])("matches %s", (pathname) => {
       expect(matcher.test(pathname)).toBe(true);
     });

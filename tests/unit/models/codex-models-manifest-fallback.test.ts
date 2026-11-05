@@ -25,6 +25,10 @@ vi.mock("@/app/v1/_lib/proxy/provider-selector", () => ({
   checkProviderGroupMatch: vi.fn().mockReturnValue(true),
 }));
 
+vi.mock("@/lib/cache/provider-cache", () => ({
+  getProviderCacheStats: () => ({ version: 0 }),
+}));
+
 vi.mock("next-intl/server", () => ({
   getLocale: vi.fn().mockResolvedValue("en"),
 }));
@@ -41,9 +45,10 @@ vi.mock("@/lib/utils/error-messages", async () => {
 
 import { handleAvailableModels } from "@/app/v1/_lib/models/available-models";
 import { resolveApiKeyAuthOutcome } from "@/repository/key";
+import { resetCodexCatalogCacheForTests } from "@/lib/codex-catalog/cache";
 import { findAllProviders } from "@/repository/provider";
 
-const CODEX_MODELS_ETAG = 'W/"cch-codex-bundled-v1"';
+const EMPTY_CATALOG_ETAG_PATTERN = /^"cch-codex-[0-9a-f]{32}"$/;
 
 function createApp() {
   const app = new Hono();
@@ -63,6 +68,7 @@ function authenticatedRequest(path: string, headers?: Record<string, string>) {
 
 describe("Codex models manifest fallback", () => {
   beforeEach(() => {
+    resetCodexCatalogCacheForTests();
     vi.mocked(resolveApiKeyAuthOutcome).mockResolvedValue({
       ok: true,
       user: { id: 1, providerGroup: null, isEnabled: true, expiresAt: null },
@@ -71,27 +77,29 @@ describe("Codex models manifest fallback", () => {
     vi.mocked(findAllProviders).mockResolvedValue([]);
   });
 
-  it("returns an empty Codex manifest for a non-empty client_version", async () => {
+  it("returns the Codex model catalog for a non-empty client_version", async () => {
     const response = await authenticatedRequest("/v1/models?client_version=0.144.1");
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ models: [] });
-    expect(response.headers.get("etag")).toBe(CODEX_MODELS_ETAG);
+    expect(response.headers.get("etag")).toMatch(EMPTY_CATALOG_ETAG_PATTERN);
     expect(response.headers.get("cache-control")).toBe("no-cache");
-    expect(findAllProviders).not.toHaveBeenCalled();
+    expect(findAllProviders).toHaveBeenCalled();
   });
 
   it("returns 304 for matching If-None-Match validators", async () => {
-    for (const ifNoneMatch of [CODEX_MODELS_ETAG, `"other", ${CODEX_MODELS_ETAG}`, "*"]) {
+    const etag = (await authenticatedRequest("/v1/models?client_version=0.144.1")).headers.get(
+      "etag"
+    )!;
+    for (const ifNoneMatch of [etag, `W/${etag}`, `"other", ${etag}`, "*"]) {
       const response = await authenticatedRequest("/v1/models?client_version=0.144.1", {
         "if-none-match": ifNoneMatch,
       });
 
       expect(response.status).toBe(304);
-      expect(response.headers.get("etag")).toBe(CODEX_MODELS_ETAG);
+      expect(response.headers.get("etag")).toBe(etag);
       expect(response.headers.get("cache-control")).toBe("no-cache");
       expect(await response.text()).toBe("");
-      expect(findAllProviders).not.toHaveBeenCalled();
     }
   });
 

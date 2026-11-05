@@ -29,6 +29,11 @@ vi.mock("@/app/v1/_lib/models/available-models", () => ({
   handleOpenAICompatibleModels: () => Response.json({ data: [] }),
 }));
 
+vi.mock("@/app/v1/_lib/codex-catalog/handle-codex-catalog", () => ({
+  handleCodexModelCatalog: () => Response.json({ models: [] }),
+  handleCodexNotFound: () => Response.json({ error: {} }, { status: 404 }),
+}));
+
 vi.mock("@/app/v1/_lib/catalog/handle-catalog", () => ({
   handleModelCatalog: () => Response.json({ catalog: [] }),
 }));

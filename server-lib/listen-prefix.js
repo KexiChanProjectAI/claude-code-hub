@@ -29,6 +29,7 @@ const PROXY_PATH_ROOTS = [
   "/responses",
   "/models",
   "/messages",
+  "/codex",
 ];
 
 // A prefix whose first segment is one of these would shadow an existing route:
@@ -49,6 +50,7 @@ const RESERVED_FIRST_SEGMENTS = new Set([
   "responses",
   "models",
   "messages",
+  "codex",
   "zh-CN",
   "zh-TW",
   "en",

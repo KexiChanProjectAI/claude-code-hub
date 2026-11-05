@@ -39,6 +39,7 @@
     "test:v1": "vitest run --config tests/configs/v1.config.mts --coverage --reporter=verbose --configLoader bundle && bun scripts/check-v1-critical-coverage.ts",
     "openapi:generate": "bun scripts/generate-v1-types.ts",
     "openapi:check": "bun scripts/generate-v1-types.ts --check",
+    "codex-models:sync": "bun scripts/sync-codex-models.ts",
     "openapi:lint": "bun scripts/lint-openapi.ts",
     "cui": "npx cui-server --host 0.0.0.0 --port 30000 --token a7564bc8882aa9a2d25d8b4ea6ea1e2e",
     "db:generate": "drizzle-kit generate && node scripts/validate-migrations.mjs",

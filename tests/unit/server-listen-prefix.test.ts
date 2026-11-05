@@ -99,6 +99,7 @@ describe("stripListenPrefix", () => {
     ["/gw/models", "/models"],
     ["/gw/messages", "/messages"],
     ["/gw/messages/count_tokens", "/messages/count_tokens"],
+    ["/gw/codex/models", "/codex/models"],
     ["/gw/v1/responses/", "/v1/responses/"],
     ["/ai/gateway/v1/messages", "/v1/messages"],
   ])("strips %s", (pathname, expected) => {

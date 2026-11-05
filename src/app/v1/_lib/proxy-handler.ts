@@ -17,6 +17,7 @@ import { detectClientFormat, detectFormatByEndpoint } from "./proxy/format-mappe
 import { ProxyForwarder } from "./proxy/forwarder";
 import { GuardPipelineBuilder } from "./proxy/guard-pipeline";
 import { recordPreAuthLocalCapacityRejection } from "./proxy/local-capacity-log";
+import { attachModelsEtag } from "./proxy/models-etag";
 import { ProxyResponseHandler } from "./proxy/response-handler";
 import { normalizeResponseInput } from "./proxy/response-input-rectifier";
 import { ProxyResponses } from "./proxy/responses";
@@ -192,12 +193,18 @@ async function handleOwnedProxyRequest(c: Context): Promise<Response> {
     if (cachedSystemSettings && !isRawPassthroughEndpointPolicy(session.getEndpointPolicy())) {
       const fakeStreamingResponse = await tryFakeStreamingPath(session, cachedSystemSettings);
       if (fakeStreamingResponse) {
-        return await attachSessionIdToErrorResponse(session.sessionId, fakeStreamingResponse);
+        return await attachSessionIdToErrorResponse(
+          session.sessionId,
+          attachModelsEtag(session, fakeStreamingResponse)
+        );
       }
     }
 
     const response = await ProxyForwarder.send(session);
-    const handled = await ProxyResponseHandler.dispatch(session, response);
+    const handled = attachModelsEtag(
+      session,
+      await ProxyResponseHandler.dispatch(session, response)
+    );
     const finalResponse = await attachSessionIdToErrorResponse(session.sessionId, handled);
 
     return finalResponse;

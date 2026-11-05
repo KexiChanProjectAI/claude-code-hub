@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { GET as chatGet, POST as chatPost } from "@/app/chat/completions/[[...route]]/route";
+import { GET as codexGet, POST as codexPost } from "@/app/codex/[[...route]]/route";
 import { GET as messagesGet, POST as messagesPost } from "@/app/messages/[[...route]]/route";
 import { GET as modelsGet, POST as modelsPost } from "@/app/models/[[...route]]/route";
 import { GET as responsesGet, POST as responsesPost } from "@/app/responses/[[...route]]/route";
@@ -20,6 +21,8 @@ describe("mapUnprefixedV1Path", () => {
     ["/messages", "/v1/messages"],
     ["/messages/count_tokens", "/v1/messages/count_tokens"],
     ["/messages/count_tokens/", "/v1/messages/count_tokens"],
+    ["/codex/models", "/v1/codex/models"],
+    ["/codex", "/v1/codex"],
   ])("maps %s to %s", (input, expected) => {
     expect(mapUnprefixedV1Path(input)).toBe(expected);
   });
@@ -35,6 +38,7 @@ describe("mapUnprefixedV1Path", () => {
     "/messaging",
     "/models-archive",
     "/response",
+    "/codexy",
     "/dashboard",
     "/",
   ])("leaves non-alias path unchanged: %s", (pathname) => {
@@ -78,6 +82,8 @@ describe("unprefixed alias App Router routes", () => {
     expect(responsesPost).toBe(v1Post);
     expect(chatGet).toBe(v1Get);
     expect(chatPost).toBe(v1Post);
+    expect(codexGet).toBe(v1Get);
+    expect(codexPost).toBe(v1Post);
   });
 });
 
@@ -106,6 +112,18 @@ describe("Hono /v1 app after alias rewrite", () => {
     expect(rewritten.status).not.toBe(404);
   });
 
+  test("unprefixed /codex/models reaches the Codex catalog handler (401 without a key)", async () => {
+    const response = await v1Get(new Request("http://localhost/codex/models?client_version=0.0.0"));
+    expect(response.status).toBe(401);
+  });
+
+  test("other /codex paths 404 instead of falling through to the proxy", async () => {
+    const response = await v1Post(
+      new Request("http://localhost/codex/anything", { method: "POST" })
+    );
+    expect(response.status).toBe(404);
+  });
+
   test("exported GET handler rewrites unprefixed /models onto the v1 models route", async () => {
     const response = await v1Get(new Request("http://localhost/models"));
     expect(response.status).not.toBe(404);
@@ -131,6 +149,7 @@ describe("listen prefix composes with the unprefixed alias rewrite", () => {
     ["/gw/messages", "/v1/messages"],
     ["/gw/chat/completions", "/v1/chat/completions"],
     ["/gw/v1/models", "/v1/models"],
+    ["/gw/codex/models", "/v1/codex/models"],
   ])("%s canonicalizes to %s", (prefixed, expected) => {
     const stripped = stripListenPrefix(prefixed, prefixes);
     expect(stripped).not.toBeNull();

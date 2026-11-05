@@ -115,6 +115,7 @@
       "!**/drizzle",
       "!**/docs-site",
       "!src/lib/api-client/v1/openapi-types.gen.ts",
+      "!src/lib/codex-catalog/data/*.json",
       "!tests/fixtures/edge"
     ]
   }

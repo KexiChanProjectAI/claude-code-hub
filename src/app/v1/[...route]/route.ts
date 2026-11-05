@@ -2,6 +2,10 @@ import "@/lib/polyfills/file";
 import { Hono } from "hono";
 import { handle } from "hono/vercel";
 import { handleModelCatalog } from "@/app/v1/_lib/catalog/handle-catalog";
+import {
+  handleCodexModelCatalog,
+  handleCodexNotFound,
+} from "@/app/v1/_lib/codex-catalog/handle-codex-catalog";
 import { registerCors } from "@/app/v1/_lib/cors";
 import {
   handleAvailableModels,
@@ -50,6 +54,11 @@ app.get("/models", handleAvailableModels); // 聚合式，返回用户可用的�
 app.get("/responses/models", handleCodexModels); // 只返回 codex 类型（用于 /v1/responses）
 app.get("/chat/completions/models", handleOpenAICompatibleModels); // 只返回 openai-compatible 类型
 app.get("/chat/models", handleOpenAICompatibleModels); // 简写路径
+
+// Codex CLI 模型目录（model_catalog_url）；/codex 下其他路径直接 404，不进入代理链路
+app.get("/codex/models", handleCodexModelCatalog);
+app.all("/codex", handleCodexNotFound);
+app.all("/codex/*", handleCodexNotFound);
 
 // OpenAI Compatible API 路由
 app.post("/chat/completions", handleProxyRequest);

@@ -1,6 +1,7 @@
 /**
  * Clients that set base_url without `/v1` call `/chat/completions`, `/responses`,
- * `/models`, and `/messages` instead of the canonical `/v1/...` endpoints.
+ * `/models`, and `/messages` instead of the canonical `/v1/...` endpoints. `/codex` serves the
+ * Codex CLI model catalog (`model_catalog_url = "https://host/codex/models"`).
  *
  * Next.js serves those paths via sibling App Router route files; this helper
  * rewrites the Request URL so the Hono app (basePath `/v1`) and the rest of
@@ -11,6 +12,7 @@ export const UNPREFIXED_V1_ALIASES = [
   "/responses",
   "/models",
   "/messages",
+  "/codex",
 ] as const;
 
 type RequestDuplexInit = RequestInit & { duplex?: "half" };
