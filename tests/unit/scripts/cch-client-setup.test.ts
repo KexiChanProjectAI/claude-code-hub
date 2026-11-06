@@ -1,0 +1,251 @@
+// @vitest-environment node
+import { spawn } from "node:child_process";
+import fs from "node:fs";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
+import os from "node:os";
+import path from "node:path";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+
+const SCRIPT = path.resolve(__dirname, "../../../scripts/cch-client-setup.sh");
+const GOOD_KEY = "sk-good-0123456789abcdef";
+
+const codexCatalog = {
+  models: [
+    { slug: "gpt-6.1-sol", visibility: "list" },
+    { slug: "deepseek-flash", visibility: "list" },
+  ],
+};
+const discovery = (ids: string[]) => ({
+  object: "list",
+  data: ids.map((id) => ({ id, metadata: { display_name: id } })),
+});
+
+let server: http.Server;
+let baseUrl = "";
+const requests: { path: string; auth: string | undefined }[] = [];
+
+beforeAll(async () => {
+  server = http.createServer((req, res) => {
+    requests.push({ path: req.url ?? "", auth: req.headers.authorization });
+    if (req.headers.authorization !== `Bearer ${GOOD_KEY}`) {
+      res.writeHead(401, { "content-type": "application/json" });
+      res.end('{"error":{"type":"invalid_api_key"}}');
+      return;
+    }
+    const url = new URL(req.url ?? "/", "http://x");
+    const bodies: Record<string, unknown> = {
+      "/codex/models": codexCatalog,
+      "/anthropic/v1/models": discovery(["claude-x", "deepseek-flash"]),
+      "/chat/v1/models": discovery([]),
+      "/responses/v1/models": discovery(["gpt-6.1-sol"]),
+    };
+    const body = bodies[url.pathname];
+    res.writeHead(body ? 200 : 404, { "content-type": "application/json" });
+    res.end(JSON.stringify(body ?? { error: "not found" }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+});
+
+afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
+
+let home = "";
+beforeEach(() => {
+  home = fs.mkdtempSync(path.join(os.tmpdir(), "cch-setup-"));
+  requests.length = 0;
+});
+
+function run(
+  args: string[],
+  input: string,
+  env: Record<string, string | undefined> = {}
+): Promise<{ code: number | null; stderr: string }> {
+  return new Promise((resolve) => {
+    // detached: new session without a controlling terminal, so the script reads stdin.
+    const child = spawn("bash", [SCRIPT, ...args], {
+      detached: true,
+      stdio: ["pipe", "pipe", "pipe"],
+      env: {
+        PATH: "/usr/bin:/bin",
+        HOME: home,
+        CCH_HOST: baseUrl,
+        ...env,
+      },
+    });
+    let stderr = "";
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.stdout.on("data", () => {});
+    child.on("close", (code) => resolve({ code, stderr }));
+    // The script may exit before reading stdin (e.g. missing CCH_HOST); ignore EPIPE then.
+    child.stdin.on("error", () => {});
+    child.stdin.end(input);
+  });
+}
+
+const read = (...parts: string[]) => fs.readFileSync(path.join(home, ...parts), "utf8");
+const mode = (...parts: string[]) => fs.statSync(path.join(home, ...parts)).mode & 0o777;
+const backups = (dir: string, base: string) =>
+  fs.readdirSync(path.join(home, dir)).filter((name) => name.startsWith(`${base}.bak.`));
+
+describe("cch-client-setup.sh", () => {
+  it("requires CCH_HOST", async () => {
+    const result = await run(["codex"], `${GOOD_KEY}\n`, { CCH_HOST: undefined });
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).toContain("set CCH_HOST");
+  });
+
+  it("rejects an unknown client", async () => {
+    const result = await run(["vim"], `${GOOD_KEY}\n`);
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).toContain("unknown client");
+  });
+
+  it("writes a fresh Codex config with the catalog URL", async () => {
+    const result = await run(["codex"], `${GOOD_KEY}\n`, { CCH_HOST: `${baseUrl}/v1/` });
+    expect(result.code, result.stderr).toBe(0);
+    const config = read(".codex", "config.toml");
+    expect(config).toContain('model_provider = "cch"');
+    expect(config).toContain("[model_providers.cch]");
+    expect(config).toContain(`base_url = "${baseUrl}/v1"`);
+    expect(config).toContain('wire_api = "responses"');
+    expect(config).toContain(`experimental_bearer_token = "${GOOD_KEY}"`);
+    expect(config).toContain(`model_catalog_url = "${baseUrl}/codex/models"`);
+    expect(config).not.toMatch(/^model = /m);
+    expect(mode(".codex", "config.toml")).toBe(0o600);
+    expect(result.stderr).toContain("2 models");
+    expect(result.stderr).not.toContain(GOOD_KEY);
+    expect(requests[0]?.path).toBe("/codex/models?client_version=0.0.0");
+  });
+
+  it("keeps unrelated Codex settings, replaces its own, and is idempotent", async () => {
+    fs.mkdirSync(path.join(home, ".codex"));
+    fs.writeFileSync(
+      path.join(home, ".codex", "config.toml"),
+      [
+        'model = "openai/test/gpt-6.1-sol"',
+        'model_provider = "zenkexi"',
+        'approval_policy = "never"',
+        "",
+        "[model_providers.zenkexi]",
+        'name = "zenkexi"',
+        'base_url = "https://old.example.com/v1"',
+        "",
+        "[model_providers.cch]",
+        'base_url = "https://stale.example.com/v1"',
+        "",
+        "[tui]",
+        "screen_reader_detection_done = true",
+        "",
+      ].join("\n")
+    );
+    for (let i = 0; i < 2; i++) {
+      const result = await run(["codex"], `${GOOD_KEY}\n`, { CCH_MODEL: "deepseek-flash" });
+      expect(result.code, result.stderr).toBe(0);
+    }
+    const config = read(".codex", "config.toml");
+    expect(config.match(/^model_provider = /gm)).toEqual(["model_provider = "]);
+    expect(config).toContain('model_provider = "cch"');
+    expect(config).toContain('model = "deepseek-flash"');
+    expect(config).not.toContain("openai/test/gpt-6.1-sol");
+    expect(config).toContain('approval_policy = "never"');
+    expect(config).toContain("[model_providers.zenkexi]");
+    expect(config).toContain("[tui]");
+    expect(config).not.toContain("stale.example.com");
+    expect(config.match(/\[model_providers\.cch\]/g)).toHaveLength(1);
+    // top-level keys stay above every table
+    expect(config.indexOf('model_provider = "cch"')).toBeLessThan(config.indexOf("["));
+    expect(backups(".codex", "config.toml").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("retries a rejected key and then succeeds", async () => {
+    const result = await run(["codex"], `sk-bad\nsk-also-bad\n${GOOD_KEY}\n`);
+    expect(result.code, result.stderr).toBe(0);
+    expect(result.stderr.match(/rejected this key/g)).toHaveLength(2);
+  });
+
+  it("gives up after three rejected keys without writing anything", async () => {
+    const result = await run(["codex"], "a\nb\nc\n");
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).toContain("no valid API key");
+    expect(fs.existsSync(path.join(home, ".codex"))).toBe(false);
+  });
+
+  it("refuses keys with quotes or spaces", async () => {
+    const result = await run(["codex"], `sk "x\n${GOOD_KEY}\n`);
+    expect(result.code, result.stderr).toBe(0);
+    expect(result.stderr).toContain("spaces, quotes or backslashes");
+  });
+
+  it("writes omp providers only for protocols that have models", async () => {
+    const result = await run(["omp"], `${GOOD_KEY}\n`);
+    expect(result.code, result.stderr).toBe(0);
+    const yml = read(".omp", "agent", "models.yml");
+    expect(yml.startsWith("providers:\n")).toBe(true);
+    expect(yml).toContain("  cch-anthropic:\n");
+    expect(yml).toContain(`    baseUrl: ${baseUrl}/anthropic/v1\n`);
+    expect(yml).toContain("    api: anthropic-messages\n    auth: apiKey\n");
+    expect(yml).toContain("  cch-responses:\n");
+    expect(yml).toContain(`    baseUrl: ${baseUrl}/responses/v1\n`);
+    expect(yml).toContain("    api: openai-responses\n");
+    expect(yml).toContain(`    apiKey: "${GOOD_KEY}"\n`);
+    expect(yml).toContain("    discovery: { type: openai-models-list }\n");
+    expect(yml).not.toContain("cch-chat");
+    expect(result.stderr).toContain("skip cch-chat: no models");
+    expect(mode(".omp", "agent", "models.yml")).toBe(0o600);
+  });
+
+  it("merges into an existing omp providers map and is idempotent", async () => {
+    fs.mkdirSync(path.join(home, ".omp", "agent"), { recursive: true });
+    fs.writeFileSync(
+      path.join(home, ".omp", "agent", "models.yml"),
+      "providers:\n  mine:\n    baseUrl: https://mine.example.com/v1\n    api: openai-completions\n"
+    );
+    for (let i = 0; i < 2; i++) {
+      const result = await run(["omp"], `${GOOD_KEY}\n`, { PI_CODING_AGENT_DIR: undefined });
+      expect(result.code, result.stderr).toBe(0);
+    }
+    const yml = read(".omp", "agent", "models.yml");
+    expect(yml.match(/^providers:/gm)).toHaveLength(1);
+    expect(yml.match(/ {2}cch-responses:/g)).toHaveLength(1);
+    expect(yml).toContain("  mine:\n    baseUrl: https://mine.example.com/v1\n");
+    expect(backups(path.join(".omp", "agent"), "models.yml").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("appends a providers map to an omp file without one, and refuses inline maps", async () => {
+    fs.mkdirSync(path.join(home, ".omp", "agent"), { recursive: true });
+    const file = path.join(home, ".omp", "agent", "models.yml");
+    fs.writeFileSync(file, "# settings\n");
+    expect((await run(["omp"], `${GOOD_KEY}\n`)).code).toBe(0);
+    expect(read(".omp", "agent", "models.yml")).toMatch(/^# settings\n\nproviders:\n/);
+
+    fs.writeFileSync(file, "providers: {}\n");
+    const inline = await run(["omp"], `${GOOD_KEY}\n`);
+    expect(inline.code).not.toBe(0);
+    expect(inline.stderr).toContain("inline providers map");
+    expect(read(".omp", "agent", "models.yml")).toBe("providers: {}\n");
+  });
+
+  it("configures both clients with a custom provider name and directories", async () => {
+    const codexHome = path.join(home, "codex-alt");
+    const ompDir = path.join(home, "omp-alt");
+    const result = await run(["both"], `${GOOD_KEY}\n`, {
+      CCH_PROVIDER_NAME: "hub",
+      CODEX_HOME: codexHome,
+      PI_CODING_AGENT_DIR: ompDir,
+    });
+    expect(result.code, result.stderr).toBe(0);
+    expect(fs.readFileSync(path.join(codexHome, "config.toml"), "utf8")).toContain(
+      "[model_providers.hub]"
+    );
+    expect(fs.readFileSync(path.join(ompDir, "models.yml"), "utf8")).toContain("  hub-responses:");
+  });
+
+  it("reports an unreachable gateway", async () => {
+    const result = await run(["codex"], `${GOOD_KEY}\n`, { CCH_HOST: "http://127.0.0.1:1" });
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).toContain("cannot reach");
+  });
+});
