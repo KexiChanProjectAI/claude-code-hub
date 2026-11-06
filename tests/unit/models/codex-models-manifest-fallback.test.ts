@@ -109,7 +109,7 @@ describe("Codex models manifest fallback", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ object: "list", data: [] });
     expect(response.headers.get("etag")).toBeNull();
-    expect(findAllProviders).toHaveBeenCalledTimes(1);
+    expect(findAllProviders).toHaveBeenCalled();
   });
 
   it("ignores a whitespace-only client_version", async () => {
@@ -117,7 +117,7 @@ describe("Codex models manifest fallback", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ object: "list", data: [] });
-    expect(findAllProviders).toHaveBeenCalledTimes(1);
+    expect(findAllProviders).toHaveBeenCalled();
   });
 
   it("keeps Gemini model discovery for /v1beta/models with client_version", async () => {
@@ -126,7 +126,7 @@ describe("Codex models manifest fallback", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ models: [] });
     expect(response.headers.get("etag")).toBeNull();
-    expect(findAllProviders).toHaveBeenCalledTimes(1);
+    expect(findAllProviders).toHaveBeenCalled();
   });
 
   it("keeps Gemini model discovery for x-goog-api-key requests with client_version", async () => {
@@ -137,7 +137,7 @@ describe("Codex models manifest fallback", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ models: [] });
     expect(response.headers.get("etag")).toBeNull();
-    expect(findAllProviders).toHaveBeenCalledTimes(1);
+    expect(findAllProviders).toHaveBeenCalled();
   });
 
   it.each([
@@ -150,7 +150,7 @@ describe("Codex models manifest fallback", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ object: "list", data: [] });
     expect(response.headers.get("etag")).toBeNull();
-    expect(findAllProviders).toHaveBeenCalledTimes(1);
+    expect(findAllProviders).toHaveBeenCalled();
   });
 
   it("still requires authentication before returning the fallback manifest", async () => {

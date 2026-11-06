@@ -205,9 +205,9 @@ describe("buildCatalogCacheKey", () => {
         user: { id: 1, providerGroup: "a", allowedModels: ["GPT-5", " claude ", "gpt-5", ""] },
         key: { providerGroup: "b" },
       })
-    ).toBe("b|claude,gpt-5");
+    ).toBe("b|claude,gpt-5|");
     expect(
       buildCatalogCacheKey({ user: { id: 1, providerGroup: null }, key: { providerGroup: null } })
-    ).toBe("|");
+    ).toBe("||");
   });
 });

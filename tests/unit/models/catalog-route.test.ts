@@ -16,6 +16,9 @@ vi.mock("@/app/v1/_lib/models/authenticate-request", () => ({
   authenticateApiKeyRequest: mocks.auth,
 }));
 vi.mock("next-intl/server", () => ({ getLocale: mocks.getLocale }));
+vi.mock("@/app/v1/_lib/models/client-scope", () => ({
+  clientScopeForRequest: async () => ({ blockedProviderIds: new Set<number>(), key: "ab" }),
+}));
 
 import { Hono } from "hono";
 import { handleModelCatalog, negotiateCatalogFormat } from "@/app/v1/_lib/catalog/handle-catalog";
@@ -108,6 +111,7 @@ describe("GET /v1/models/catalog", () => {
     expect(mocks.build).toHaveBeenCalledWith({
       user: expect.objectContaining({ id: 1 }),
       key: expect.objectContaining({ providerGroup: "vip" }),
+      clientScope: expect.objectContaining({ key: "ab" }),
     });
   });
 

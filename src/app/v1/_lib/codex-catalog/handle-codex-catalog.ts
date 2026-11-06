@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import { authenticateApiKeyRequest } from "@/app/v1/_lib/models/authenticate-request";
+import { clientScopeForRequest } from "@/app/v1/_lib/models/client-scope";
 import {
   buildCodexCatalogCacheKey,
   type CachedCodexCatalog,
@@ -106,7 +107,8 @@ export async function renderCodexCatalog(
 export async function handleCodexModelCatalog(c: Context): Promise<Response> {
   try {
     const { user, key } = await authenticateApiKeyRequest(c);
-    return await renderCodexCatalog(c, { user, key });
+    const clientScope = await clientScopeForRequest(c);
+    return await renderCodexCatalog(c, { user, key, clientScope });
   } catch (e) {
     if (e instanceof Response) return e;
     // Credential lookup failed for an infrastructure reason (DB/Redis). Never answer 401/403

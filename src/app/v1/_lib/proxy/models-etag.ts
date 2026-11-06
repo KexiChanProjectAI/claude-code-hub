@@ -1,3 +1,4 @@
+import { clientScopeForSession } from "@/app/v1/_lib/models/client-scope";
 import { buildCodexCatalogCacheKey, peekCodexCatalog } from "@/lib/codex-catalog/cache";
 import type { ProxySession } from "./session";
 
@@ -14,24 +15,34 @@ export const MODELS_ETAG_HEADER = "X-Models-Etag";
  *
  * Only headers change; the body (including SSE streams) is passed through untouched.
  */
-export function attachModelsEtag(session: ProxySession, response: Response): Response {
+export async function attachModelsEtag(
+  session: ProxySession,
+  response: Response
+): Promise<Response> {
   if (session.originalFormat !== "response") return response;
 
   const user = session.authState?.user;
   const key = session.authState?.key;
-  const etag =
-    user && key
-      ? peekCodexCatalog(
-          buildCodexCatalogCacheKey({
-            user: {
-              id: user.id,
-              providerGroup: user.providerGroup ?? null,
-              allowedModels: user.allowedModels ?? null,
-            },
-            key: { providerGroup: key.providerGroup ?? null },
-          })
-        )?.etag
-      : undefined;
+  let etag: string | undefined;
+  if (user && key) {
+    try {
+      // Same client scope as the catalog request made by this client (same User-Agent).
+      const clientScope = await clientScopeForSession(session);
+      etag = peekCodexCatalog(
+        buildCodexCatalogCacheKey({
+          user: {
+            id: user.id,
+            providerGroup: user.providerGroup ?? null,
+            allowedModels: user.allowedModels ?? null,
+          },
+          key: { providerGroup: key.providerGroup ?? null },
+          clientScope,
+        })
+      )?.etag;
+    } catch {
+      etag = undefined;
+    }
+  }
 
   const upstreamEtag = response.headers.get(MODELS_ETAG_HEADER);
   if (!etag && upstreamEtag === null) return response;

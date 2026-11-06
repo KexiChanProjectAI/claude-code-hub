@@ -46,6 +46,7 @@ import {
 import { checkProviderGroupMatch } from "@/app/v1/_lib/proxy/provider-selector";
 import { isProviderActiveNow } from "@/lib/utils/provider-schedule";
 import { resolveSystemTimezone } from "@/lib/utils/timezone";
+import { resetClientScopeForTests } from "@/app/v1/_lib/models/client-scope";
 import { resolveApiKeyAuthOutcome } from "@/repository/key";
 import { findAllProviders } from "@/repository/provider";
 import type { Provider } from "@/types/provider";
@@ -84,6 +85,7 @@ function get(path: string, headers: Record<string, string> = {}) {
 describe("Codex model catalog endpoint", () => {
   beforeEach(() => {
     resetCodexCatalogCacheForTests();
+    resetClientScopeForTests();
     vi.mocked(isProviderActiveNow).mockReturnValue(true);
     vi.mocked(checkProviderGroupMatch).mockReturnValue(true);
     vi.mocked(resolveSystemTimezone).mockResolvedValue("UTC");

@@ -195,13 +195,13 @@ async function handleOwnedProxyRequest(c: Context): Promise<Response> {
       if (fakeStreamingResponse) {
         return await attachSessionIdToErrorResponse(
           session.sessionId,
-          attachModelsEtag(session, fakeStreamingResponse)
+          await attachModelsEtag(session, fakeStreamingResponse)
         );
       }
     }
 
     const response = await ProxyForwarder.send(session);
-    const handled = attachModelsEtag(
+    const handled = await attachModelsEtag(
       session,
       await ProxyResponseHandler.dispatch(session, response)
     );

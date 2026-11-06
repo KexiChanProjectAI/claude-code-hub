@@ -1,3 +1,4 @@
+import type { ListingClientScope } from "@/app/v1/_lib/models/client-scope";
 import type { ClientFormat } from "@/app/v1/_lib/proxy/format-mapper";
 
 /** Protocol ids are the proxy's inbound client formats (same values as `/v1/models?format=`). */
@@ -62,4 +63,6 @@ export interface ModelCatalog {
 export interface CatalogAuthState {
   user: { id: number; providerGroup: string | null; allowedModels?: string[] | null };
   key: { providerGroup: string | null };
+  /** Providers the calling client may not use (provider client restrictions). */
+  clientScope?: ListingClientScope;
 }

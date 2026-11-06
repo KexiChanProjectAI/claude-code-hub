@@ -17,6 +17,7 @@ import type { ClientFormat } from "../proxy/format-mapper";
 import { checkProviderGroupMatch } from "../proxy/provider-selector";
 import { isProtocolHint, PROTOCOL_HINT_HEADER } from "../unprefixed-v1-alias";
 import { authenticateApiKeyRequest as authenticateRequest } from "./authenticate-request";
+import { clientScopeForRequest, type ListingClientScope } from "./client-scope";
 
 type ResponseFormat = "openai" | "anthropic" | "gemini" | "codex";
 
@@ -279,10 +280,7 @@ export function getProviderTypesForFormat(clientFormat: ClientFormat): Provider[
  * 4. 聚合这些 provider 的模型列表（去重）
  */
 async function getAvailableModels(
-  authState: {
-    user: { id: number; providerGroup: string | null; allowedModels?: string[] | null };
-    key: { providerGroup: string | null };
-  },
+  authState: ModelsAuthState,
   clientFormat: ClientFormat
 ): Promise<{ models: FetchedModel[]; providerName?: string }> {
   const providerTypes = getProviderTypesForFormat(clientFormat);
@@ -370,6 +368,8 @@ export function filterModelsByUserAllowedModels(
 interface ModelsAuthState {
   user: { id: number; providerGroup: string | null; allowedModels?: string[] | null };
   key: { providerGroup: string | null };
+  /** Providers the calling client may not use (provider client restrictions). */
+  clientScope?: ListingClientScope;
 }
 
 /** 按 providerType 分组的模型列表 */
@@ -400,9 +400,11 @@ export async function getAvailableModelsGroupedByProviderType(
   const providerTypeSet = new Set(providerTypes);
   const systemTimezone = await resolveSystemTimezone();
 
+  const blockedForClient = authState.clientScope?.blockedProviderIds;
   const matchedProviders = allProviders.filter(
     (p) =>
       p.isEnabled &&
+      !blockedForClient?.has(p.id) &&
       providerTypeSet.has(p.providerType) &&
       isProviderActiveNow(p.activeTimeStart, p.activeTimeEnd, systemTimezone) &&
       (!effectiveGroup || checkProviderGroupMatch(p.groupTag, effectiveGroup))
@@ -505,6 +507,7 @@ function createFixedProviderTypesModelsHandler(
   return async (c: Context): Promise<Response> => {
     try {
       const { user, key } = await authenticateRequest(c);
+      const clientScope = await clientScopeForRequest(c);
 
       logger.debug("[AvailableModels] Fixed providerTypes request", {
         userId: user.id,
@@ -513,7 +516,7 @@ function createFixedProviderTypesModelsHandler(
       });
 
       const { models, providerName } = await getAvailableModelsByProviderTypes(
-        { user, key },
+        { user, key, clientScope },
         providerTypes
       );
 
@@ -553,13 +556,14 @@ export const handleOpenAICompatibleModels = createFixedProviderTypesModelsHandle
 export async function handleAvailableModels(c: Context): Promise<Response> {
   try {
     const { user, key } = await authenticateRequest(c);
+    const clientScope = await clientScopeForRequest(c);
 
     // Protocol-hinted discovery (`/anthropic/v1/models`, `/chat/v1/models`,
     // `/responses/v1/models`): models of that protocol only, with per-model metadata rows.
     const protocolHint = c.req.header(PROTOCOL_HINT_HEADER);
     if (c.req.path === "/v1/models" && isProtocolHint(protocolHint)) {
       const { buildProtocolModelList } = await import("@/lib/model-catalog/discovery");
-      return c.json(await buildProtocolModelList({ user, key }, protocolHint));
+      return c.json(await buildProtocolModelList({ user, key, clientScope }, protocolHint));
     }
 
     const responseFormat = detectResponseFormat(c);
@@ -576,7 +580,7 @@ export async function handleAvailableModels(c: Context): Promise<Response> {
       const { renderCodexCatalog } = await import(
         "@/app/v1/_lib/codex-catalog/handle-codex-catalog"
       );
-      return await renderCodexCatalog(c, { user, key });
+      return await renderCodexCatalog(c, { user, key, clientScope });
     }
 
     const clientFormat = clientFormatOverride || mapResponseFormatToClientFormat(responseFormat);
@@ -588,7 +592,10 @@ export async function handleAvailableModels(c: Context): Promise<Response> {
       clientFormatOverride: clientFormatOverride || undefined,
     });
 
-    const { models, providerName } = await getAvailableModels({ user, key }, clientFormat);
+    const { models, providerName } = await getAvailableModels(
+      { user, key, clientScope },
+      clientFormat
+    );
 
     logger.debug("[AvailableModels] Response ready", {
       userId: user.id,

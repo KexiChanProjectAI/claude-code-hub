@@ -12,8 +12,10 @@ import type { CatalogAuthState, CatalogModel } from "./types";
 /**
  * Per-protocol model discovery rows for clients that read model metadata from `/models`
  * (omp `openai-models-list` discovery). The outer shape stays the OpenAI list; each row adds
- * the fields those clients read: `metadata.display_name`, `context_length`, `max_output_tokens`,
- * `input_modalities`, `output_modalities` and the reasoning fields.
+ * the fields those clients read: `metadata.display_name`, `context_length`, `max_output_tokens`
+ * (mirrored as `limits.max_output_tokens`), `input_modalities`, `output_modalities` and the
+ * reasoning fields. Verified against omp 18.17.0 (reads all of them) and 18.10.1 (reads only
+ * context, `limits.max_output_tokens` and modalities; name and reasoning come from its built-ins).
  *
  * Sources, per field:
  * - numeric limits: the price table, else a curated Codex template (Codex built-ins, DeepSeek).
@@ -38,6 +40,8 @@ export interface DiscoveryRow {
   metadata: { display_name: string };
   context_length?: number;
   max_output_tokens?: number;
+  /** Same value as `max_output_tokens`; older omp releases (<= 18.10) read only this one. */
+  limits?: { max_output_tokens: number };
   input_modalities?: string[];
   output_modalities?: string[];
   supported_reasoning_levels?: string[];
@@ -124,6 +128,7 @@ export function toDiscoveryRow(
   const maxOutput = positive(model.maxOutputTokens);
   if (maxOutput) {
     row.max_output_tokens = contextLength ? Math.min(maxOutput, contextLength) : maxOutput;
+    row.limits = { max_output_tokens: row.max_output_tokens };
   }
 
   const inputModalities =

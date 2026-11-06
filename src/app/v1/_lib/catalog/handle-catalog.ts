@@ -1,4 +1,5 @@
 import type { Context } from "hono";
+import { clientScopeForRequest } from "@/app/v1/_lib/models/client-scope";
 import { defaultLocale, locales } from "@/i18n/config";
 import { buildModelCatalog, renderCatalogMarkdown } from "@/lib/model-catalog";
 import { authenticateApiKeyRequest } from "../models/authenticate-request";
@@ -82,7 +83,8 @@ export async function handleModelCatalog(c: Context): Promise<Response> {
 
   try {
     const { user, key } = await authenticateApiKeyRequest(c);
-    const catalog = await buildModelCatalog({ user, key });
+    const clientScope = await clientScopeForRequest(c);
+    const catalog = await buildModelCatalog({ user, key, clientScope });
 
     if (format === "markdown") {
       c.header("Content-Type", "text/markdown; charset=utf-8");

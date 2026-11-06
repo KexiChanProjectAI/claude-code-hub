@@ -38,6 +38,7 @@
 
 ### 修复
 
+- 模型列表遵守供应商的客户端限制（`allowedClients` / `blockedClients`）：`/v1/models`、协议提示路径的 `/models`、`/codex/models`、`/v1/responses/models` 与 `/v1/models/catalog` 按请求方的客户端标识（User-Agent 等，与调度时同一判定）排除该客户端无法使用的供应商。此前列表会列出只有 `gemini-cli` 等白名单客户端可用的模型，Codex 选中后请求返回 503 `No available providers`。协议提示路径的 `/models` 另以 `limits.max_output_tokens` 同步下发输出上限，兼容只读取该字段的 omp 18.10 及更早版本。
 - 修复客户端故障告警对 OpenAI cyber risk 关键词匹配过窄的问题：覆盖完整报错文案、Trusted Access 以及结构化 `cyber_policy` 响应体，样本只保留命中关键词
 - 修复上游响应流发生 error 后 Node/Undici body 未完成销毁的问题：Node-to-Web adapter 和 demand-driven pump
   现在在源流错误终态显式取消、销毁底层流，并为异步 destroy error 保留有界保护；同时将 raw body 的兜底错误监听改为一次性监听，

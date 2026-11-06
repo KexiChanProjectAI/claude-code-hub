@@ -80,6 +80,7 @@ describe("toDiscoveryRow", () => {
       metadata: { display_name: "Acme Sonnet" },
       context_length: 200000,
       max_output_tokens: 64000,
+      limits: { max_output_tokens: 64000 },
       input_modalities: ["text", "image"],
       output_modalities: ["text"],
       supported_reasoning_levels: ["low", "medium", "high"],

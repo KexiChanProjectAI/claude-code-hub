@@ -23,7 +23,7 @@ export function buildCatalogCacheKey(auth: CatalogAuthState): string {
   ]
     .filter(Boolean)
     .sort();
-  return `${effectiveGroup}|${allowed.join(",")}`;
+  return `${effectiveGroup}|${allowed.join(",")}|${auth.clientScope?.key ?? ""}`;
 }
 
 /** Read-through with single-flight so concurrent misses for one key build once. */

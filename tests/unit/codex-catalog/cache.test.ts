@@ -22,7 +22,7 @@ describe("buildCodexCatalogCacheKey", () => {
       user: { id: 1, providerGroup: "user-group", allowedModels: [" B ", "a", "b"] },
       key: { providerGroup: "key-group" },
     });
-    expect(key).toBe("7|key-group|a,b");
+    expect(key).toBe("7|key-group|a,b|");
 
     providerCache.version = 8;
     expect(
@@ -30,7 +30,7 @@ describe("buildCodexCatalogCacheKey", () => {
         user: { id: 2, providerGroup: "user-group" },
         key: { providerGroup: null },
       })
-    ).toBe("8|user-group|");
+    ).toBe("8|user-group||");
   });
 });
 

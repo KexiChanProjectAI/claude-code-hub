@@ -1,9 +1,12 @@
+import type { ListingClientScope } from "@/app/v1/_lib/models/client-scope";
 import { getProviderCacheStats } from "@/lib/cache/provider-cache";
 import { TTLMap } from "@/lib/cache/ttl-map";
 
 export interface CodexCatalogAuthState {
   user: { id: number; providerGroup: string | null; allowedModels?: string[] | null };
   key: { providerGroup: string | null };
+  /** Providers the calling client may not use (provider client restrictions). */
+  clientScope?: ListingClientScope;
 }
 
 export interface CachedCodexCatalog {
@@ -36,7 +39,7 @@ export function buildCodexCatalogCacheKey(auth: CodexCatalogAuthState): string {
   ]
     .filter(Boolean)
     .sort();
-  return `${getProviderCacheStats().version}|${effectiveGroup}|${allowed.join(",")}`;
+  return `${getProviderCacheStats().version}|${effectiveGroup}|${allowed.join(",")}|${auth.clientScope?.key ?? ""}`;
 }
 
 function isFresh(entry: CachedCodexCatalog, now = Date.now()): boolean {
