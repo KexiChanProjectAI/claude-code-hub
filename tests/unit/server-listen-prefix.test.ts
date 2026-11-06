@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
-import { UNPREFIXED_V1_ALIASES } from "@/app/v1/_lib/unprefixed-v1-alias";
+import { PROTOCOL_HINT_ROOTS, UNPREFIXED_V1_ALIASES } from "@/app/v1/_lib/unprefixed-v1-alias";
 import { locales } from "@/i18n/config";
 
 const requireFromHere = createRequire(import.meta.url);
@@ -100,6 +100,9 @@ describe("stripListenPrefix", () => {
     ["/gw/messages", "/messages"],
     ["/gw/messages/count_tokens", "/messages/count_tokens"],
     ["/gw/codex/models", "/codex/models"],
+    ["/gw/anthropic/v1/messages", "/anthropic/v1/messages"],
+    ["/gw/chat/v1/models", "/chat/v1/models"],
+    ["/gw/responses/v1/responses", "/responses/v1/responses"],
     ["/gw/v1/responses/", "/v1/responses/"],
     ["/ai/gateway/v1/messages", "/v1/messages"],
   ])("strips %s", (pathname, expected) => {
@@ -151,10 +154,21 @@ describe("rewriteListenPrefixedUrl", () => {
 });
 
 describe("drift guards", () => {
-  it("covers every unprefixed alias plus both versioned roots", () => {
+  it("covers every unprefixed alias, protocol-hint root and both versioned roots", () => {
     expect(new Set(PROXY_PATH_ROOTS)).toEqual(
-      new Set(["/v1", "/v1beta", ...UNPREFIXED_V1_ALIASES])
+      new Set([
+        "/v1",
+        "/v1beta",
+        ...UNPREFIXED_V1_ALIASES,
+        ...PROTOCOL_HINT_ROOTS.map(({ root }) => `${root}/v1`),
+      ])
     );
+  });
+
+  it("reserves the first segment of every protocol-hint root", () => {
+    for (const { root } of PROTOCOL_HINT_ROOTS) {
+      expect(RESERVED_FIRST_SEGMENTS.has(root.slice(1))).toBe(true);
+    }
   });
 
   it("reserves every supported locale", () => {

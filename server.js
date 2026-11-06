@@ -53,6 +53,8 @@ const INTERNAL_TUNNEL_HOST =
 
 const WS_PATH = "/v1/responses";
 const WS_PATH_UNPREFIXED = "/responses";
+// Protocol-hint root (`/responses/v1` base URL, see src/app/v1/_lib/unprefixed-v1-alias.ts).
+const WS_PATH_HINTED = "/responses/v1/responses";
 const CLIENT_TRANSPORT_HEADER = "x-cch-client-transport";
 const WS_FORWARD_FLAG_HEADER = "x-cch-responses-ws-forward";
 const WS_SESSION_HEADER = "x-cch-responses-ws-session";
@@ -1099,7 +1101,7 @@ function isResponsesWsUpgrade(req, listenPrefixes = []) {
   if (stripped !== null) {
     pathname = stripped.length > 1 && stripped.endsWith("/") ? stripped.slice(0, -1) : stripped;
   }
-  return pathname === WS_PATH || pathname === WS_PATH_UNPREFIXED;
+  return pathname === WS_PATH || pathname === WS_PATH_UNPREFIXED || pathname === WS_PATH_HINTED;
 }
 
 function listenServer(server, options) {

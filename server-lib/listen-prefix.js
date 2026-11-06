@@ -20,8 +20,9 @@
 
 // Canonical proxy path roots. A prefixed path only gets rewritten when the
 // remainder after the prefix is one of these (exact, or followed by `/`).
-// KEEP IN SYNC with UNPREFIXED_V1_ALIASES in src/app/v1/_lib/unprefixed-v1-alias.ts
-// (plus the two versioned Hono basePaths); the unit test asserts no drift.
+// KEEP IN SYNC with UNPREFIXED_V1_ALIASES and PROTOCOL_HINT_ROOTS (as `<root>/v1`) in
+// src/app/v1/_lib/unprefixed-v1-alias.ts (plus the two versioned Hono basePaths); the unit
+// test asserts no drift.
 const PROXY_PATH_ROOTS = [
   "/v1",
   "/v1beta",
@@ -30,6 +31,9 @@ const PROXY_PATH_ROOTS = [
   "/models",
   "/messages",
   "/codex",
+  "/anthropic/v1",
+  "/chat/v1",
+  "/responses/v1",
 ];
 
 // A prefix whose first segment is one of these would shadow an existing route:
@@ -51,6 +55,7 @@ const RESERVED_FIRST_SEGMENTS = new Set([
   "models",
   "messages",
   "codex",
+  "anthropic",
   "zh-CN",
   "zh-TW",
   "en",

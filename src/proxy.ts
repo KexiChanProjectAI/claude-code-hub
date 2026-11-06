@@ -140,6 +140,6 @@ export const config = {
   // `tests/unit/proxy-matcher.test.ts` asserts the two stay in sync. See the
   // matcher module for the full per-segment rationale.
   matcher: [
-    "/((?!api|v1(?:/|$)|v1beta(?:/|$)|chat/completions(?:/|$)|responses(?:/|$)|models(?:/|$)|messages(?:/|$)|codex(?:/|$)|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api|v1(?:/|$)|v1beta(?:/|$)|chat/completions(?:/|$)|responses(?:/|$)|models(?:/|$)|messages(?:/|$)|codex(?:/|$)|anthropic(?:/|$)|chat/v1(?:/|$)|_next/static|_next/image|favicon.ico).*)",
   ],
 };

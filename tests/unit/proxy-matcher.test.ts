@@ -27,6 +27,11 @@ describe("proxy matcher", () => {
       "/messages/count_tokens",
       "/codex",
       "/codex/models",
+      "/anthropic/v1/messages",
+      "/anthropic/v1/models",
+      "/chat/v1/chat/completions",
+      "/chat/v1/models",
+      "/responses/v1/responses",
     ])("does not match %s", (pathname) => {
       expect(matcher.test(pathname)).toBe(false);
     });
@@ -59,6 +64,8 @@ describe("proxy matcher", () => {
       "/response",
       "/codexy",
       "/codex-models",
+      "/anthropics",
+      "/chat/v10",
     ])("matches %s", (pathname) => {
       expect(matcher.test(pathname)).toBe(true);
     });

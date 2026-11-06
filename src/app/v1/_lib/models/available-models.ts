@@ -15,6 +15,7 @@ import type {
 import type { Provider } from "@/types/provider";
 import type { ClientFormat } from "../proxy/format-mapper";
 import { checkProviderGroupMatch } from "../proxy/provider-selector";
+import { isProtocolHint, PROTOCOL_HINT_HEADER } from "../unprefixed-v1-alias";
 import { authenticateApiKeyRequest as authenticateRequest } from "./authenticate-request";
 
 type ResponseFormat = "openai" | "anthropic" | "gemini" | "codex";
@@ -552,6 +553,15 @@ export const handleOpenAICompatibleModels = createFixedProviderTypesModelsHandle
 export async function handleAvailableModels(c: Context): Promise<Response> {
   try {
     const { user, key } = await authenticateRequest(c);
+
+    // Protocol-hinted discovery (`/anthropic/v1/models`, `/chat/v1/models`,
+    // `/responses/v1/models`): models of that protocol only, with per-model metadata rows.
+    const protocolHint = c.req.header(PROTOCOL_HINT_HEADER);
+    if (c.req.path === "/v1/models" && isProtocolHint(protocolHint)) {
+      const { buildProtocolModelList } = await import("@/lib/model-catalog/discovery");
+      return c.json(await buildProtocolModelList({ user, key }, protocolHint));
+    }
+
     const responseFormat = detectResponseFormat(c);
     const clientFormatOverride = detectClientFormatOverride(c);
 

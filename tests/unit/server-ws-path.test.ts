@@ -10,19 +10,27 @@ type ServerJsModule = {
 const { isResponsesWsUpgrade } = requireFromHere("../../server.js") as ServerJsModule;
 
 describe("isResponsesWsUpgrade", () => {
-  test.each(["/v1/responses", "/v1/responses/", "/responses", "/responses/?model=gpt"])(
-    "accepts %s",
-    (url) => {
-      expect(isResponsesWsUpgrade({ url })).toBe(true);
-    }
-  );
+  test.each([
+    "/v1/responses",
+    "/v1/responses/",
+    "/responses",
+    "/responses/?model=gpt",
+    "/responses/v1/responses",
+  ])("accepts %s", (url) => {
+    expect(isResponsesWsUpgrade({ url })).toBe(true);
+  });
 
-  test.each(["/v1/messages", "/v1/chat/completions", "/models", "/dashboard", "/"])(
-    "rejects %s",
-    (url) => {
-      expect(isResponsesWsUpgrade({ url })).toBe(false);
-    }
-  );
+  test.each([
+    "/v1/messages",
+    "/v1/chat/completions",
+    "/models",
+    "/dashboard",
+    "/",
+    "/responses/v1",
+    "/anthropic/v1/messages",
+  ])("rejects %s", (url) => {
+    expect(isResponsesWsUpgrade({ url })).toBe(false);
+  });
 
   test("rejects missing url", () => {
     expect(isResponsesWsUpgrade({})).toBe(false);
@@ -37,6 +45,7 @@ describe("isResponsesWsUpgrade with PROXY_LISTEN_PREFIX", () => {
     "/gw/v1/responses/",
     "/gw/responses",
     "/gw/responses/?model=gpt",
+    "/gw/responses/v1/responses",
     "/v1/responses",
     "/responses",
   ])("accepts %s", (url) => {

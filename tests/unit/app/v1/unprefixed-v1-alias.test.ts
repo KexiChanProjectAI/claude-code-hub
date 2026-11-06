@@ -1,11 +1,19 @@
 import { describe, expect, test } from "vitest";
 import { GET as chatGet, POST as chatPost } from "@/app/chat/completions/[[...route]]/route";
+import { GET as anthropicGet, POST as anthropicPost } from "@/app/anthropic/[[...route]]/route";
+import { GET as chatV1Get, POST as chatV1Post } from "@/app/chat/v1/[[...route]]/route";
 import { GET as codexGet, POST as codexPost } from "@/app/codex/[[...route]]/route";
 import { GET as messagesGet, POST as messagesPost } from "@/app/messages/[[...route]]/route";
 import { GET as modelsGet, POST as modelsPost } from "@/app/models/[[...route]]/route";
 import { GET as responsesGet, POST as responsesPost } from "@/app/responses/[[...route]]/route";
 import { GET as v1Get, POST as v1Post, v1App } from "@/app/v1/[...route]/route";
-import { mapUnprefixedV1Path, rewriteUnprefixedV1Request } from "@/app/v1/_lib/unprefixed-v1-alias";
+import {
+  isProtocolHint,
+  mapUnprefixedV1Path,
+  PROTOCOL_HINT_HEADER,
+  resolveProtocolHintPath,
+  rewriteUnprefixedV1Request,
+} from "@/app/v1/_lib/unprefixed-v1-alias";
 import { stripListenPrefix } from "@/lib/listen-prefix";
 
 describe("mapUnprefixedV1Path", () => {
@@ -23,6 +31,12 @@ describe("mapUnprefixedV1Path", () => {
     ["/messages/count_tokens/", "/v1/messages/count_tokens"],
     ["/codex/models", "/v1/codex/models"],
     ["/codex", "/v1/codex"],
+    ["/anthropic/v1/messages", "/v1/messages"],
+    ["/anthropic/v1/models", "/v1/models"],
+    ["/chat/v1/chat/completions", "/v1/chat/completions"],
+    ["/chat/v1/models/", "/v1/models"],
+    ["/responses/v1/responses", "/v1/responses"],
+    ["/responses/v1", "/v1"],
   ])("maps %s to %s", (input, expected) => {
     expect(mapUnprefixedV1Path(input)).toBe(expected);
   });
@@ -39,6 +53,9 @@ describe("mapUnprefixedV1Path", () => {
     "/models-archive",
     "/response",
     "/codexy",
+    "/anthropic",
+    "/anthropic/v2/messages",
+    "/chat/v10",
     "/dashboard",
     "/",
   ])("leaves non-alias path unchanged: %s", (pathname) => {
@@ -72,6 +89,57 @@ describe("rewriteUnprefixedV1Request", () => {
   });
 });
 
+describe("protocol-hint roots", () => {
+  test.each([
+    ["/anthropic/v1/messages", "/v1/messages", "claude"],
+    ["/chat/v1/models", "/v1/models", "openai"],
+    ["/responses/v1/responses", "/v1/responses", "response"],
+  ])("%s resolves to %s with hint %s", (input, path, hint) => {
+    expect(resolveProtocolHintPath(input)).toEqual({ path, hint });
+  });
+
+  test("plain aliases are not hinted", () => {
+    expect(resolveProtocolHintPath("/responses/models")).toBeNull();
+    expect(resolveProtocolHintPath("/chat/completions")).toBeNull();
+  });
+
+  test("isProtocolHint accepts only known hints", () => {
+    expect(isProtocolHint("claude")).toBe(true);
+    expect(isProtocolHint("gemini")).toBe(false);
+    expect(isProtocolHint(undefined)).toBe(false);
+  });
+
+  test("rewrite sets the hint header and keeps the body", async () => {
+    const req = new Request("http://localhost/anthropic/v1/messages?beta=true", {
+      method: "POST",
+      headers: { "x-api-key": "k", "content-type": "application/json" },
+      body: JSON.stringify({ model: "m" }),
+    });
+    const rewritten = rewriteUnprefixedV1Request(req);
+    const url = new URL(rewritten.url);
+    expect(url.pathname).toBe("/v1/messages");
+    expect(url.search).toBe("?beta=true");
+    expect(rewritten.headers.get(PROTOCOL_HINT_HEADER)).toBe("claude");
+    expect(rewritten.headers.get("x-api-key")).toBe("k");
+    expect(await rewritten.json()).toEqual({ model: "m" });
+  });
+
+  test("rewrite drops a client-sent hint header everywhere else", () => {
+    const spoofed = rewriteUnprefixedV1Request(
+      new Request("http://localhost/v1/models", { headers: { [PROTOCOL_HINT_HEADER]: "claude" } })
+    );
+    expect(spoofed.headers.has(PROTOCOL_HINT_HEADER)).toBe(false);
+    expect(new URL(spoofed.url).pathname).toBe("/v1/models");
+
+    const overridden = rewriteUnprefixedV1Request(
+      new Request("http://localhost/chat/v1/models", {
+        headers: { [PROTOCOL_HINT_HEADER]: "claude" },
+      })
+    );
+    expect(overridden.headers.get(PROTOCOL_HINT_HEADER)).toBe("openai");
+  });
+});
+
 describe("unprefixed alias App Router routes", () => {
   test("re-export the canonical /v1 handlers", () => {
     expect(messagesGet).toBe(v1Get);
@@ -84,6 +152,10 @@ describe("unprefixed alias App Router routes", () => {
     expect(chatPost).toBe(v1Post);
     expect(codexGet).toBe(v1Get);
     expect(codexPost).toBe(v1Post);
+    expect(anthropicGet).toBe(v1Get);
+    expect(anthropicPost).toBe(v1Post);
+    expect(chatV1Get).toBe(v1Get);
+    expect(chatV1Post).toBe(v1Post);
   });
 });
 
@@ -115,6 +187,13 @@ describe("Hono /v1 app after alias rewrite", () => {
   test("unprefixed /codex/models reaches the Codex catalog handler (401 without a key)", async () => {
     const response = await v1Get(new Request("http://localhost/codex/models?client_version=0.0.0"));
     expect(response.status).toBe(401);
+  });
+
+  test("hinted /models reaches the models handler (401 without a key)", async () => {
+    for (const path of ["/anthropic/v1/models", "/chat/v1/models", "/responses/v1/models"]) {
+      const response = await v1Get(new Request(`http://localhost${path}`));
+      expect(response.status, path).toBe(401);
+    }
   });
 
   test("other /codex paths 404 instead of falling through to the proxy", async () => {
@@ -150,6 +229,8 @@ describe("listen prefix composes with the unprefixed alias rewrite", () => {
     ["/gw/chat/completions", "/v1/chat/completions"],
     ["/gw/v1/models", "/v1/models"],
     ["/gw/codex/models", "/v1/codex/models"],
+    ["/gw/anthropic/v1/messages", "/v1/messages"],
+    ["/gw/responses/v1/models", "/v1/models"],
   ])("%s canonicalizes to %s", (prefixed, expected) => {
     const stripped = stripListenPrefix(prefixed, prefixes);
     expect(stripped).not.toBeNull();

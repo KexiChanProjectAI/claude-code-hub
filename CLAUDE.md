@@ -120,6 +120,7 @@ Key components:
 
 ### API Layer
 - **Proxy endpoints**: `/v1/messages`, `/v1/chat/completions`, `/v1/responses`, `/v1/models` (also accepted without the `/v1` prefix)
+- **Protocol-hint roots**: `/anthropic/v1/*`, `/chat/v1/*`, `/responses/v1/*` map to `/v1/*`; their `GET .../models` lists only that protocol's models with per-model metadata rows (`src/lib/model-catalog/discovery.ts`, used by omp `openai-models-list` discovery)
 - **Codex model catalog**: `/codex/models` (also `/v1/codex/models`) - Codex CLI `model_catalog_url` format (`{"models": [...]}`), built from codex providers plus bundled templates in `src/lib/codex-catalog/` (refresh with `bun run codex-models:sync`)
 - **Management API**: `/api/v1/*` - RESTful management surface documented by OpenAPI
 - **Legacy Management API**: `/api/actions/{module}/{action}` - Deprecated Server Action adapter, retained behind `ENABLE_LEGACY_ACTIONS_API`
