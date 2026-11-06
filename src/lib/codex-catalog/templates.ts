@@ -35,8 +35,11 @@ export interface VendorFamily {
   raw: unknown;
   /** Bare slugs of this vendor's series (any version, any casing). */
   matches: RegExp;
-  /** Ordered rules for series members without their own entry; first hit wins. */
-  rules: readonly { pattern: RegExp; slug: string }[];
+  /**
+   * Ordered rules for series members without their own entry; first hit wins. `overrides` are
+   * applied on top of the chosen template (e.g. a smaller context window for older models).
+   */
+  rules: readonly { pattern: RegExp; slug: string; overrides?: Partial<CodexCatalogModel> }[];
   /** Template for every other series member. Pick the most conservative entry. */
   defaultSlug: string;
 }
@@ -45,17 +48,39 @@ export interface VendorFamily {
  * Vendor catalogs merged after the Codex built-ins (built-ins win on a slug conflict).
  *
  * DeepSeek ships entries for `deepseek-flash` (text + image) and `deepseek-v4-pro` (text only).
- * Every other DeepSeek model (`deepseek-chat`, `deepseek-reasoner`, `DeepSeek-V3.2`,
- * `deepseek-v4-flash`, ...) gets DeepSeek's metadata instead of GPT's: flash / vision / VL
- * variants use the image-capable entry, everything else the text-only one, because declaring
- * image input for a text-only model makes the upstream reject image turns.
+ * Every other DeepSeek model gets DeepSeek's metadata instead of GPT's. The rules follow the
+ * per-model capabilities published by OpenRouter (2026-11-06):
+ * - image input only on vision / VL models and V4.1+ flash (`deepseek-v4.1-flash*`);
+ *   `deepseek-v4-flash`, `-0731` and `~deepseek-v4-flash-latest` are text only.
+ * - other V4 and pro models: text only, 1M context, reasoning effort supported.
+ * - older models (`deepseek-chat`, `-reasoner`, `-coder`, V1-V3.x, R1): text only, ~160K
+ *   context and no `reasoning_effort`, so they get a 128K window and no reasoning levels.
+ *   Declaring a larger window stops Codex auto-compaction in time and the upstream fails mid-task.
+ * Unknown names default to the text-only entry: declaring image input for a text-only model
+ * makes the upstream reject image turns.
  */
+const DEEPSEEK_LEGACY_OVERRIDES: Partial<CodexCatalogModel> = {
+  context_window: 131072,
+  max_context_window: 131072,
+  supported_reasoning_levels: [],
+  default_reasoning_level: null,
+};
+
 export const VENDOR_FAMILIES: readonly VendorFamily[] = [
   {
     name: "deepseek",
     raw: deepseekCatalog,
     matches: /^deepseek(?:[-_.:]|$)/i,
-    rules: [{ pattern: /flash|vision|(?:^|[-_.])vl\d*(?:[-_.]|$)/i, slug: "deepseek-flash" }],
+    rules: [
+      { pattern: /vision|(?:^|[-_.])vl\d*(?:[-_.]|$)/i, slug: "deepseek-flash" },
+      { pattern: /v4\.[1-9]\d*.*flash|flash.*v4\.[1-9]/i, slug: "deepseek-flash" },
+      { pattern: /(?:^|[-_.])(?:v4|pro)(?:[-_.]|$)/i, slug: "deepseek-v4-pro" },
+      {
+        pattern: /chat|reasoner|coder|prover|math|(?:^|[-_.])(?:v[1-3](?:\.\d+)?|r1)(?:[-_.]|$)/i,
+        slug: "deepseek-v4-pro",
+        overrides: DEEPSEEK_LEGACY_OVERRIDES,
+      },
+    ],
     defaultSlug: "deepseek-v4-pro",
   },
 ];
@@ -191,7 +216,7 @@ export function findVendorFamilyTemplate(
     const rule = family.rules.find((candidate) => candidate.pattern.test(bareSlug));
     const slug = (rule?.slug ?? family.defaultSlug).toLowerCase();
     const template = templates.find((candidate) => candidate.slug.toLowerCase() === slug);
-    if (template) return template;
+    if (template) return rule?.overrides ? { ...template, ...rule.overrides } : template;
   }
   return null;
 }

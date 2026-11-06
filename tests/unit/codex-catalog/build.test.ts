@@ -129,57 +129,75 @@ describe("DeepSeek models in the catalog", () => {
       ["gpt-5.5", "GPT-5.5", 13],
       ["deepseek/deepseek-flash", "DeepSeek-Flash", 101],
       ["deepseek-v4-pro", "DeepSeek-V4-Pro", 102],
-      ["deepseek-v4-flash", "deepseek-v4-flash", 151],
+      ["deepseek-v4-flash", "deepseek-v4-flash", 152],
     ]);
-    const legacy = models[3];
-    expect(legacy.prefer_websockets).toBe(false);
-    expect(legacy.supported_reasoning_levels.map((l) => l.effort)).toEqual(["low", "high", "max"]);
+    const v4Flash = models[3];
+    expect(v4Flash.prefer_websockets).toBe(false);
+    expect(v4Flash.input_modalities).toEqual(["text"]);
+    expect(v4Flash.context_window).toBe(1048576);
+    expect(v4Flash.supported_reasoning_levels.map((l) => l.effort)).toEqual(["low", "high", "max"]);
   });
 
-  it("give every DeepSeek series model DeepSeek metadata, text-only unless flash or vision", () => {
+  it("give every DeepSeek series model metadata matching its real capabilities", () => {
     const models = buildCodexCatalogModels(
       {
         gatewayIds: [
+          "openrouter/deepseek/deepseek-v4.1-flash",
+          "openrouter/deepseek/deepseek-v4.1-flash-1017",
+          "~deepseek/deepseek-flash-latest",
+          "deepseek-flash-cyber",
+          "deepseek-v4-flash-vision-exp",
+          "deepseek-v4-flash-0731",
+          "~deepseek/deepseek-pro-latest",
+          "deepseek-v4-pro-0813",
           "deepseek-chat",
           "deepseek-reasoner",
           "deepseek-ai/DeepSeek-V3.2",
-          "openrouter/deepseek/deepseek-r1",
-          "deepseek-v4-flash-vision-exp",
+          "openrouter/deepseek/deepseek-r1-0528",
           "my-unknown-model",
         ],
-        providerPrefixes: [],
+        providerPrefixes: ["openrouter/"],
       },
       loadBuiltinTemplates()
     );
     const bySlug = Object.fromEntries(models.map((m) => [m.slug, m]));
-    for (const slug of [
-      "deepseek-chat",
-      "deepseek-reasoner",
-      "deepseek-ai/DeepSeek-V3.2",
-      "openrouter/deepseek/deepseek-r1",
-    ]) {
+    const image = ["text", "image"];
+    const text = ["text"];
+    const expectations: [string, string[], number, number][] = [
+      ["openrouter/deepseek/deepseek-v4.1-flash", image, 1048576, 151],
+      ["openrouter/deepseek/deepseek-v4.1-flash-1017", image, 1048576, 151],
+      ["~deepseek/deepseek-flash-latest", image, 1048576, 101],
+      ["deepseek-flash-cyber", image, 1048576, 101],
+      ["deepseek-v4-flash-vision-exp", image, 1048576, 151],
+      ["deepseek-v4-flash-0731", text, 1048576, 152],
+      ["~deepseek/deepseek-pro-latest", text, 1048576, 152],
+      ["deepseek-v4-pro-0813", text, 1048576, 102],
+      ["deepseek-chat", text, 131072, 152],
+      ["deepseek-reasoner", text, 131072, 152],
+      ["deepseek-ai/DeepSeek-V3.2", text, 131072, 152],
+      ["openrouter/deepseek/deepseek-r1-0528", text, 131072, 152],
+    ];
+    for (const [slug, modalities, contextWindow, priority] of expectations) {
       expect(bySlug[slug], slug).toMatchObject({
-        input_modalities: ["text"],
+        input_modalities: modalities,
+        context_window: contextWindow,
+        max_context_window: contextWindow,
+        priority,
         prefer_websockets: false,
         use_responses_lite: false,
-        context_window: 1048576,
-        priority: 152,
+        tool_mode: null,
       });
+      expect(bySlug[slug].model_messages?.instructions_template?.length, slug).toBeGreaterThan(
+        10_000
+      );
     }
-    expect(bySlug["deepseek-v4-flash-vision-exp"]).toMatchObject({
-      input_modalities: ["text", "image"],
-      priority: 151,
-    });
+    for (const slug of ["deepseek-chat", "openrouter/deepseek/deepseek-r1-0528"]) {
+      expect(bySlug[slug].supported_reasoning_levels).toEqual([]);
+      expect(bySlug[slug].default_reasoning_level).toBeNull();
+    }
+    expect(bySlug["deepseek-v4-flash-0731"].supported_reasoning_levels).toHaveLength(3);
     expect(bySlug["my-unknown-model"].priority).toBe(1000);
     expect(models.at(-1)?.slug).toBe("my-unknown-model");
-  });
-
-  it("make a DeepSeek-only key default to deepseek-flash", () => {
-    const models = buildCodexCatalogModels(
-      { gatewayIds: ["deepseek-v4-pro", "deepseek-flash"], providerPrefixes: [] },
-      loadBuiltinTemplates()
-    );
-    expect(models[0].slug).toBe("deepseek-flash");
   });
 });
 

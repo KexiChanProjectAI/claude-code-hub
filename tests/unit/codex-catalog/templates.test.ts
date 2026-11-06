@@ -92,9 +92,17 @@ describe("findTemplateForSlug", () => {
       makeTemplate({ slug: "deepseek-v4-pro", priority: 102, input_modalities: ["text"] } as never),
     ];
     for (const [slug, expected] of [
-      ["deepseek-v4-flash", "deepseek-flash"],
+      ["deepseek-v4.1-flash", "deepseek-flash"],
+      ["deepseek-v4.1-flash-1017", "deepseek-flash"],
+      ["deepseek-v4.1-flash:batch", "deepseek-flash"],
       ["deepseek-v4-flash-vision-exp", "deepseek-flash"],
       ["DeepSeek-VL2", "deepseek-flash"],
+      ["deepseek-v4-flash", "deepseek-v4-pro"],
+      ["deepseek-v4-flash-0731", "deepseek-v4-pro"],
+      ["deepseek-v4-flash-latest", "deepseek-v4-pro"],
+      ["deepseek-pro-latest", "deepseek-v4-pro"],
+      ["deepseek-pro-cyber", "deepseek-v4-pro"],
+      ["deepseek-v4", "deepseek-v4-pro"],
       ["deepseek-chat", "deepseek-v4-pro"],
       ["deepseek-reasoner", "deepseek-v4-pro"],
       ["DeepSeek-V3.2", "deepseek-v4-pro"],
@@ -105,6 +113,17 @@ describe("findTemplateForSlug", () => {
     ] as const) {
       expect(findTemplateForSlug(slug, withVendor), slug).toMatchObject({
         match: "vendor",
+        template: { slug: expected },
+      });
+    }
+    for (const [slug, expected] of [
+      ["deepseek-flash-cyber", "deepseek-flash"],
+      ["deepseek-flash-latest", "deepseek-flash"],
+      ["deepseek-v4-pro-0813", "deepseek-v4-pro"],
+      ["deepseek-v4-pro-cyber", "deepseek-v4-pro"],
+    ] as const) {
+      expect(findTemplateForSlug(slug, withVendor), slug).toMatchObject({
+        match: "prefix",
         template: { slug: expected },
       });
     }
