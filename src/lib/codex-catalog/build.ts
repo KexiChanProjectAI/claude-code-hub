@@ -5,11 +5,17 @@ import {
   CodexCatalogModelSchema,
   describeCodexCatalogIssue,
 } from "./schema";
-import { deriveBareSlug, findTemplateForSlug } from "./templates";
+import {
+  deriveBareSlug,
+  findTemplateForSlug,
+  type TemplateMatch,
+  VENDOR_FAMILY_PRIORITY_BUMP,
+} from "./templates";
 
 /**
- * Priority for models that only matched the fallback template. Codex picks the first listed
- * model as its default, so models without their own metadata sort after every built-in one.
+ * Priority for models that only matched a family or the fallback template. Codex picks the
+ * first listed model as its default, so models without their own metadata sort after every
+ * model that has it.
  */
 export const CODEX_FALLBACK_PRIORITY = 1000;
 
@@ -18,6 +24,14 @@ export interface CodexCatalogInput {
   gatewayIds: readonly string[];
   /** Normalized provider prefixes of codex providers (e.g. `openai/`). */
   providerPrefixes: readonly string[];
+}
+
+function entryPriority(match: TemplateMatch, templatePriority: number): number {
+  if (match === "vendor") return templatePriority + VENDOR_FAMILY_PRIORITY_BUMP;
+  if (match === "fallback" || match === "family") {
+    return Math.max(CODEX_FALLBACK_PRIORITY, templatePriority);
+  }
+  return templatePriority;
 }
 
 /**
@@ -41,10 +55,7 @@ export function buildCodexCatalogEntry(
     ...cloned,
     slug: gatewayId,
     display_name: match === "exact" ? template.display_name : gatewayId,
-    priority:
-      match === "fallback"
-        ? Math.max(CODEX_FALLBACK_PRIORITY, template.priority)
-        : template.priority,
+    priority: entryPriority(match, template.priority),
     supported_in_api: true,
   };
 }

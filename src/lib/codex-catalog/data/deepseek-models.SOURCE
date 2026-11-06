@@ -1,0 +1,4 @@
+https://cdn.deepseek.com/api-docs/codex-deepseek-setup.sh
+heredoc CODEX_MODELS_JSON (written verbatim to ~/.codex/models.json by the script)
+docs: https://api-docs.deepseek.com/zh-cn/quick_start/agent_integrations/codex/
+fetched 2026-11-06

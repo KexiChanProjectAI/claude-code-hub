@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import builtin from "@/lib/codex-catalog/data/codex-builtin-models.json";
+import deepseek from "@/lib/codex-catalog/data/deepseek-models.json";
 import {
   CodexCatalogModelSchema,
   CodexCatalogResponseSchema,
@@ -12,6 +13,12 @@ describe("Codex catalog schema", () => {
     const parsed = CodexCatalogResponseSchema.safeParse(builtin);
     expect(parsed.success).toBe(true);
     expect(parsed.data?.models.length).toBe(12);
+  });
+
+  it("accepts the bundled DeepSeek catalog", () => {
+    const parsed = CodexCatalogResponseSchema.safeParse(deepseek);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.models.map((m) => m.slug)).toEqual(["deepseek-flash", "deepseek-v4-pro"]);
   });
 
   it("keeps unknown fields untouched", () => {

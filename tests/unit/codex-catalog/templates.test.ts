@@ -8,10 +8,14 @@ import { logger } from "@/lib/logger";
 import {
   deriveBareSlug,
   findTemplateForSlug,
+  findVendorFamilyTemplate,
   loadBuiltinTemplates,
+  mergeTemplates,
+  modelFamily,
   parseTemplates,
   pickFallbackTemplate,
   resetBuiltinTemplatesForTests,
+  VENDOR_TEMPLATE_PRIORITY_OFFSET,
 } from "@/lib/codex-catalog/templates";
 import { makeTemplate } from "./fixtures";
 
@@ -60,7 +64,10 @@ describe("findTemplateForSlug", () => {
       match: "prefix",
       template: { slug: "gpt-6" },
     });
-    expect(findTemplateForSlug("gpt-60", templates)?.match).toBe("fallback");
+    expect(findTemplateForSlug("gpt-60", templates)).toMatchObject({
+      match: "family",
+      template: { slug: "gpt-6.1-sol" },
+    });
   });
 
   it("falls back to the first listed template", () => {
@@ -72,6 +79,79 @@ describe("findTemplateForSlug", () => {
 
   it("returns null without templates", () => {
     expect(findTemplateForSlug("x", [])).toBeNull();
+  });
+
+  it("maps the whole DeepSeek series to DeepSeek templates", () => {
+    const withVendor = [
+      ...templates,
+      makeTemplate({
+        slug: "deepseek-flash",
+        priority: 101,
+        input_modalities: ["text", "image"],
+      } as never),
+      makeTemplate({ slug: "deepseek-v4-pro", priority: 102, input_modalities: ["text"] } as never),
+    ];
+    for (const [slug, expected] of [
+      ["deepseek-v4-flash", "deepseek-flash"],
+      ["deepseek-v4-flash-vision-exp", "deepseek-flash"],
+      ["DeepSeek-VL2", "deepseek-flash"],
+      ["deepseek-chat", "deepseek-v4-pro"],
+      ["deepseek-reasoner", "deepseek-v4-pro"],
+      ["DeepSeek-V3.2", "deepseek-v4-pro"],
+      ["deepseek-r1", "deepseek-v4-pro"],
+      ["deepseek-coder-v2", "deepseek-v4-pro"],
+      ["deepseek_v3", "deepseek-v4-pro"],
+      ["deepseek", "deepseek-v4-pro"],
+    ] as const) {
+      expect(findTemplateForSlug(slug, withVendor), slug).toMatchObject({
+        match: "vendor",
+        template: { slug: expected },
+      });
+    }
+    expect(findTemplateForSlug("deepseeker-1", withVendor)?.match).toBe("fallback");
+    expect(findTemplateForSlug("deepseek-v4-pro-0601", withVendor)).toMatchObject({
+      match: "prefix",
+      template: { slug: "deepseek-v4-pro" },
+    });
+  });
+
+  it("skips families that only have hidden templates", () => {
+    expect(findTemplateForSlug("codex-mini", templates)).toMatchObject({
+      match: "fallback",
+      template: { slug: "gpt-6.1-sol" },
+    });
+  });
+});
+
+describe("modelFamily", () => {
+  it("returns the first dash segment", () => {
+    expect(modelFamily("DeepSeek-V4-Flash")).toBe("deepseek");
+    expect(modelFamily("o3")).toBeNull();
+    expect(modelFamily("-x")).toBeNull();
+  });
+});
+
+describe("findVendorFamilyTemplate", () => {
+  it("skips a vendor whose templates are missing", () => {
+    expect(findVendorFamilyTemplate("deepseek-chat", templates)).toBeNull();
+  });
+});
+
+describe("mergeTemplates", () => {
+  it("appends vendor templates behind the built-ins and lets built-ins win", () => {
+    const merged = mergeTemplates(
+      [makeTemplate({ slug: "gpt-6.1-sol", priority: 1 })],
+      [
+        [
+          makeTemplate({ slug: "deepseek-flash", priority: 1 }),
+          makeTemplate({ slug: "GPT-6.1-SOL", display_name: "vendor copy", priority: 5 }),
+        ],
+      ]
+    );
+    expect(merged.map((t) => [t.slug, t.priority])).toEqual([
+      ["gpt-6.1-sol", 1],
+      ["deepseek-flash", 1 + VENDOR_TEMPLATE_PRIORITY_OFFSET],
+    ]);
   });
 });
 
@@ -110,9 +190,33 @@ describe("parseTemplates / loadBuiltinTemplates", () => {
 
   it("loads and memoizes the bundled templates", () => {
     const first = loadBuiltinTemplates();
-    expect(first.length).toBe(12);
+    expect(first.length).toBe(14);
+    expect(pickFallbackTemplate(first)?.slug).toBe("gpt-6.1-sol");
     expect(loadBuiltinTemplates()).toBe(first);
     const sol = first.find((t) => t.slug === "gpt-6.1-sol");
     expect(sol?.model_messages?.instructions_template?.length).toBeGreaterThan(10_000);
+  });
+
+  it("bundles DeepSeek's own Codex entries", () => {
+    const templates = loadBuiltinTemplates();
+    const flash = templates.find((t) => t.slug === "deepseek-flash");
+    const pro = templates.find((t) => t.slug === "deepseek-v4-pro");
+    expect(flash).toMatchObject({
+      display_name: "DeepSeek-Flash",
+      priority: 1 + VENDOR_TEMPLATE_PRIORITY_OFFSET,
+      prefer_websockets: false,
+      use_responses_lite: false,
+      tool_mode: null,
+      context_window: 1048576,
+      input_modalities: ["text", "image"],
+      experimental_supported_tools: [],
+    });
+    expect(flash?.supported_reasoning_levels.map((l) => l.effort)).toEqual(["low", "high", "max"]);
+    expect(pro).toMatchObject({ input_modalities: ["text"], supports_search_tool: false });
+    expect(flash?.model_messages?.instructions_template?.length).toBeGreaterThan(10_000);
+    const maxBuiltin = Math.max(
+      ...templates.filter((t) => !t.slug.startsWith("deepseek")).map((t) => t.priority)
+    );
+    expect(flash!.priority).toBeGreaterThan(maxBuiltin);
   });
 });

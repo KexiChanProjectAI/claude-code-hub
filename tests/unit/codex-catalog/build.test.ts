@@ -116,6 +116,73 @@ describe("buildCodexCatalogModels", () => {
   });
 });
 
+describe("DeepSeek models in the catalog", () => {
+  it("get DeepSeek metadata and sort after the GPT models", () => {
+    const models = buildCodexCatalogModels(
+      {
+        gatewayIds: ["deepseek/deepseek-flash", "deepseek-v4-pro", "deepseek-v4-flash", "gpt-5.5"],
+        providerPrefixes: ["deepseek/"],
+      },
+      loadBuiltinTemplates()
+    );
+    expect(models.map((m) => [m.slug, m.display_name, m.priority])).toEqual([
+      ["gpt-5.5", "GPT-5.5", 13],
+      ["deepseek/deepseek-flash", "DeepSeek-Flash", 101],
+      ["deepseek-v4-pro", "DeepSeek-V4-Pro", 102],
+      ["deepseek-v4-flash", "deepseek-v4-flash", 151],
+    ]);
+    const legacy = models[3];
+    expect(legacy.prefer_websockets).toBe(false);
+    expect(legacy.supported_reasoning_levels.map((l) => l.effort)).toEqual(["low", "high", "max"]);
+  });
+
+  it("give every DeepSeek series model DeepSeek metadata, text-only unless flash or vision", () => {
+    const models = buildCodexCatalogModels(
+      {
+        gatewayIds: [
+          "deepseek-chat",
+          "deepseek-reasoner",
+          "deepseek-ai/DeepSeek-V3.2",
+          "openrouter/deepseek/deepseek-r1",
+          "deepseek-v4-flash-vision-exp",
+          "my-unknown-model",
+        ],
+        providerPrefixes: [],
+      },
+      loadBuiltinTemplates()
+    );
+    const bySlug = Object.fromEntries(models.map((m) => [m.slug, m]));
+    for (const slug of [
+      "deepseek-chat",
+      "deepseek-reasoner",
+      "deepseek-ai/DeepSeek-V3.2",
+      "openrouter/deepseek/deepseek-r1",
+    ]) {
+      expect(bySlug[slug], slug).toMatchObject({
+        input_modalities: ["text"],
+        prefer_websockets: false,
+        use_responses_lite: false,
+        context_window: 1048576,
+        priority: 152,
+      });
+    }
+    expect(bySlug["deepseek-v4-flash-vision-exp"]).toMatchObject({
+      input_modalities: ["text", "image"],
+      priority: 151,
+    });
+    expect(bySlug["my-unknown-model"].priority).toBe(1000);
+    expect(models.at(-1)?.slug).toBe("my-unknown-model");
+  });
+
+  it("make a DeepSeek-only key default to deepseek-flash", () => {
+    const models = buildCodexCatalogModels(
+      { gatewayIds: ["deepseek-v4-pro", "deepseek-flash"], providerPrefixes: [] },
+      loadBuiltinTemplates()
+    );
+    expect(models[0].slug).toBe("deepseek-flash");
+  });
+});
+
 describe("serializeCodexCatalog", () => {
   it("wraps models and derives a deterministic strong ETag", () => {
     const models = buildCodexCatalogModels(
