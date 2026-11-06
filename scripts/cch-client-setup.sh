@@ -92,12 +92,27 @@ esac
 
 # ---------------------------------------------------------------- key check
 
+# The gateway hides providers whose client rules reject the caller, so discovery requests are
+# sent with the target client's own User-Agent: the script then sees exactly what that client
+# will see. Versions come from the installed client when there is one.
+client_version() { # client_version <command> -> x.y.z or 0.0.0
+  local v=""
+  if command -v "$1" >/dev/null 2>&1; then
+    v="$("$1" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+  fi
+  printf '%s' "${v:-0.0.0}"
+}
+CODEX_VERSION="$(client_version codex)"
+OMP_VERSION="$(client_version omp)"
+CODEX_UA="codex_cli_rs/$CODEX_VERSION"
+OMP_UA="omp/$OMP_VERSION"
+
 HTTP_BODY=""
 HTTP_STATUS=""
-fetch() { # fetch <path> <key>: sets HTTP_STATUS and HTTP_BODY
+fetch() { # fetch <path> <key> <user-agent>: sets HTTP_STATUS and HTTP_BODY
   local out
   out="$(curl -sS --max-time 20 -w '\n%{http_code}' \
-    -H "Authorization: Bearer $2" -H "originator: cch-client-setup" \
+    -H "Authorization: Bearer $2" -H "User-Agent: $3" \
     "$HOST$1" 2>/dev/null)" || out=$'\n000'
   HTTP_STATUS="${out##*$'\n'}"
   HTTP_BODY="${out%$'\n'*}"
@@ -114,7 +129,7 @@ for attempt in 1 2 3; do
   case "$KEY" in
     *[[:space:]]* | *\"* | *\\*) info "The key contains spaces, quotes or backslashes."; KEY=""; continue ;;
   esac
-  fetch "/codex/models?client_version=0.0.0" "$KEY"
+  fetch "/codex/models?client_version=$CODEX_VERSION" "$KEY" "$CODEX_UA"
   case "$HTTP_STATUS" in
     200) break ;;
     401 | 403) info "The gateway rejected this key (HTTP $HTTP_STATUS)." ;;
@@ -195,7 +210,7 @@ configure_omp() {
   for spec in "anthropic|anthropic|anthropic-messages|apiKey" "chat|chat|openai-completions|" \
     "responses|responses|openai-responses|"; do
     IFS='|' read -r name path api auth <<<"$spec"
-    fetch "/$path/v1/models" "$KEY"
+    fetch "/$path/v1/models" "$KEY" "$OMP_UA"
     if [ "$HTTP_STATUS" != "200" ]; then
       info "  skip $PROVIDER-$name: /$path/v1/models returned HTTP $HTTP_STATUS"
       continue

@@ -23,11 +23,15 @@ const discovery = (ids: string[]) => ({
 
 let server: http.Server;
 let baseUrl = "";
-const requests: { path: string; auth: string | undefined }[] = [];
+const requests: { path: string; auth: string | undefined; ua: string | undefined }[] = [];
 
 beforeAll(async () => {
   server = http.createServer((req, res) => {
-    requests.push({ path: req.url ?? "", auth: req.headers.authorization });
+    requests.push({
+      path: req.url ?? "",
+      auth: req.headers.authorization,
+      ua: req.headers["user-agent"],
+    });
     if (req.headers.authorization !== `Bearer ${GOOD_KEY}`) {
       res.writeHead(401, { "content-type": "application/json" });
       res.end('{"error":{"type":"invalid_api_key"}}');
@@ -117,7 +121,10 @@ describe("cch-client-setup.sh", () => {
     expect(mode(".codex", "config.toml")).toBe(0o600);
     expect(result.stderr).toContain("2 models");
     expect(result.stderr).not.toContain(GOOD_KEY);
-    expect(requests[0]?.path).toBe("/codex/models?client_version=0.0.0");
+    expect(requests[0]).toMatchObject({
+      path: "/codex/models?client_version=0.0.0",
+      ua: "codex_cli_rs/0.0.0",
+    });
   });
 
   it("keeps unrelated Codex settings, replaces its own, and is idempotent", async () => {
@@ -241,6 +248,28 @@ describe("cch-client-setup.sh", () => {
       "[model_providers.hub]"
     );
     expect(fs.readFileSync(path.join(ompDir, "models.yml"), "utf8")).toContain("  hub-responses:");
+  });
+
+  it("discovers as the target client, with versions from installed clients", async () => {
+    const bin = path.join(home, "bin");
+    fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(bin, "codex"), "#!/bin/sh\necho 'codex-cli 0.166.0'\n", {
+      mode: 0o755,
+    });
+    fs.writeFileSync(
+      path.join(bin, "omp"),
+      '#!/bin/sh\n[ "$1" = "--version" ] && echo omp/18.17.0\nexit 0\n',
+      { mode: 0o755 }
+    );
+    const result = await run(["both"], `${GOOD_KEY}\n`, { PATH: `${bin}:/usr/bin:/bin` });
+    expect(result.code, result.stderr).toBe(0);
+    expect(requests[0]).toMatchObject({
+      path: "/codex/models?client_version=0.166.0",
+      ua: "codex_cli_rs/0.166.0",
+    });
+    const discovery = requests.filter((r) => r.path.endsWith("/v1/models"));
+    expect(discovery.map((r) => r.ua)).toEqual(["omp/18.17.0", "omp/18.17.0", "omp/18.17.0"]);
+    expect(result.stderr).toContain("omp models refreshed");
   });
 
   it("reports an unreachable gateway", async () => {
