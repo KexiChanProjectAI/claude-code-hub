@@ -1,7 +1,9 @@
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ buildModelCatalog: vi.fn() }));
+const mocks = vi.hoisted(() => ({ buildModelCatalog: vi.fn(), resolvePrices: vi.fn() }));
+
+vi.mock("@/lib/model-catalog/price-join", () => ({ resolvePricesForModels: mocks.resolvePrices }));
 
 vi.mock("@/lib/model-catalog/build", () => ({ buildModelCatalog: mocks.buildModelCatalog }));
 vi.mock("@/repository/key", () => ({ resolveApiKeyAuthOutcome: vi.fn() }));
@@ -19,7 +21,13 @@ vi.mock("@/lib/logger", () => ({
 import { handleAvailableModels } from "@/app/v1/_lib/models/available-models";
 import { PROTOCOL_HINT_HEADER } from "@/app/v1/_lib/unprefixed-v1-alias";
 import { loadBuiltinTemplates } from "@/lib/codex-catalog/templates";
-import { buildProtocolModelList, toDiscoveryRow } from "@/lib/model-catalog/discovery";
+import {
+  bareModelName,
+  buildProtocolModelList,
+  limitDonorCandidates,
+  resolveBorrowedLimits,
+  toDiscoveryRow,
+} from "@/lib/model-catalog/discovery";
 import type { CatalogModel } from "@/lib/model-catalog/types";
 import { resolveApiKeyAuthOutcome } from "@/repository/key";
 import { findAllProviders } from "@/repository/provider";
@@ -249,5 +257,117 @@ describe("/v1/models with a protocol hint", () => {
       headers: { [PROTOCOL_HINT_HEADER]: "claude" },
     });
     expect(response.status).toBe(401);
+  });
+});
+
+describe("borrowed output limits for aliases", () => {
+  const priceRow = (maxInput: number, maxOutput: number) => ({
+    priceData: { max_input_tokens: maxInput, max_output_tokens: maxOutput, mode: "chat" },
+  });
+
+  beforeEach(() => {
+    mocks.resolvePrices.mockReset();
+  });
+
+  it("strips namespaces and gateway suffixes", () => {
+    expect(bareModelName("openrouter/anthropic/deepseek/deepseek-v4.1-flash-1017[1m]")).toBe(
+      "deepseek-v4.1-flash-1017"
+    );
+    expect(bareModelName("deepseek-flash-cyber")).toBe("deepseek-flash-cyber");
+  });
+
+  it("lists donors: bare alias first, then the matched template slug", () => {
+    expect(limitDonorCandidates(model({ id: "deepseek-flash-cyber" }), templates)).toEqual([
+      "deepseek-flash",
+    ]);
+    expect(
+      limitDonorCandidates(
+        model({ id: "openrouter/anthropic/deepseek/deepseek-v4.1-flash-1017[1m]" }),
+        templates
+      )
+    ).toEqual(["deepseek-v4.1-flash-1017", "deepseek-flash"]);
+    expect(limitDonorCandidates(model({ id: "deepseek-v4-pro-cyber" }), templates)).toEqual([
+      "deepseek-v4-pro",
+    ]);
+  });
+
+  it("does not borrow for priced models, older DeepSeek generations or unmatched models", () => {
+    expect(
+      limitDonorCandidates(model({ id: "deepseek-flash-cyber", maxOutputTokens: 8192 }), templates)
+    ).toEqual([]);
+    expect(limitDonorCandidates(model({ id: "deepseek-chat" }), templates)).toEqual([]);
+    expect(
+      limitDonorCandidates(model({ id: "openrouter/deepseek/deepseek-r1" }), templates)
+    ).toEqual([]);
+    expect(limitDonorCandidates(model({ id: "minimax/MiniMax-M3" }), templates)).toEqual([]);
+  });
+
+  it("takes the first donor that has an output limit", async () => {
+    mocks.resolvePrices.mockResolvedValue(
+      new Map<string, unknown>([
+        ["deepseek-v4.1-flash-1017", priceRow(262144, 262144)],
+        ["deepseek-flash", priceRow(1048576, 393216)],
+      ])
+    );
+    const borrowed = await resolveBorrowedLimits(
+      [
+        model({ id: "openrouter/anthropic/deepseek/deepseek-v4.1-flash-1017[1m]" }),
+        model({ id: "deepseek-flash-cyber" }),
+        model({ id: "minimax/MiniMax-M3" }),
+      ],
+      templates
+    );
+    expect(borrowed.get("openrouter/anthropic/deepseek/deepseek-v4.1-flash-1017[1m]")).toEqual({
+      contextWindow: 262144,
+      maxOutputTokens: 262144,
+    });
+    expect(borrowed.get("deepseek-flash-cyber")).toEqual({
+      contextWindow: 1048576,
+      maxOutputTokens: 393216,
+    });
+    expect(borrowed.has("minimax/MiniMax-M3")).toBe(false);
+    expect(mocks.resolvePrices).toHaveBeenCalledTimes(1);
+  });
+
+  it("borrows nothing when the price lookup fails or nothing is needed", async () => {
+    mocks.resolvePrices.mockRejectedValue(new Error("db down"));
+    expect(
+      (await resolveBorrowedLimits([model({ id: "deepseek-flash-cyber" })], templates)).size
+    ).toBe(0);
+    expect((await resolveBorrowedLimits([model({ id: "minimax/x" })], templates)).size).toBe(0);
+  });
+
+  it("emits borrowed limits, capped by the context length", () => {
+    const row = toDiscoveryRow(model({ id: "deepseek-flash-cyber" }), templates, 1, {
+      contextWindow: 1048576,
+      maxOutputTokens: 393216,
+    });
+    expect(row).toMatchObject({
+      context_length: 1048576,
+      max_output_tokens: 393216,
+      limits: { max_output_tokens: 393216 },
+    });
+    const capped = toDiscoveryRow(model({ id: "x", contextWindow: 1000 }), templates, 1, {
+      contextWindow: null,
+      maxOutputTokens: 5000,
+    });
+    expect(capped.max_output_tokens).toBe(1000);
+  });
+
+  it("applies borrowed limits in the protocol list", async () => {
+    mocks.buildModelCatalog.mockResolvedValue({
+      generatedAt: "x",
+      notes: null,
+      protocols: [],
+      models: [model({ id: "deepseek-flash-cyber", protocols: ["claude"] })],
+    });
+    mocks.resolvePrices.mockResolvedValue(
+      new Map<string, unknown>([["deepseek-flash", priceRow(1048576, 393216)]])
+    );
+    const list = await buildProtocolModelList(
+      { user: { id: 1, providerGroup: null }, key: { providerGroup: null } },
+      "claude"
+    );
+    expect(list.data[0]).toMatchObject({ id: "deepseek-flash-cyber", max_output_tokens: 393216 });
   });
 });

@@ -7,6 +7,8 @@ import {
 } from "@/lib/codex-catalog/templates";
 import { inferVendorFromModelName, UNKNOWN_VENDOR } from "@/lib/model-vendor/vendor-inference";
 import { buildModelCatalog } from "./build";
+import { toCatalogMetadata } from "./metadata";
+import { resolvePricesForModels } from "./price-join";
 import type { CatalogAuthState, CatalogModel } from "./types";
 
 /**
@@ -60,6 +62,38 @@ function curatedTemplate(
     : null;
 }
 
+/** Limits borrowed from another price row when the model's own row has none. */
+export interface BorrowedLimits {
+  contextWindow: number | null;
+  maxOutputTokens: number | null;
+}
+
+/** Bare name without gateway suffixes such as `[1m]`: `anthropic/x/y-1017[1m]` -> `y-1017`. */
+export function bareModelName(modelId: string): string {
+  return deriveBareSlug(modelId, [])
+    .replace(/\[[^\]]*\]$/, "")
+    .trim();
+}
+
+/**
+ * Price-row names to borrow limits from, best first, for a model without its own output limit
+ * that matched a curated template: its bare name (an alias of a priced route), then the
+ * template's own slug (`deepseek-flash-cyber` -> `deepseek-flash`). A template carrying
+ * overrides (older DeepSeek generations) is a different model, so it lends nothing.
+ */
+export function limitDonorCandidates(
+  model: CatalogModel,
+  templates: readonly CodexCatalogModel[]
+): string[] {
+  if (positive(model.maxOutputTokens)) return [];
+  const template = curatedTemplate(model.id, templates);
+  if (!template || !templates.includes(template)) return [];
+  const candidates = [bareModelName(model.id), template.slug].filter(
+    (name) => name && name !== model.id
+  );
+  return [...new Set(candidates)];
+}
+
 function positive(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? Math.floor(value)
@@ -105,7 +139,8 @@ function applyReasoning(
 export function toDiscoveryRow(
   model: CatalogModel,
   templates: readonly CodexCatalogModel[],
-  created: number
+  created: number,
+  borrowed?: BorrowedLimits | null
 ): DiscoveryRow {
   const template = curatedTemplate(model.id, templates);
   const inferred = inferVendorFromModelName(model.id);
@@ -123,9 +158,12 @@ export function toDiscoveryRow(
     metadata: { display_name: displayName },
   };
 
-  const contextLength = positive(model.contextWindow) ?? positive(template?.context_window);
+  const contextLength =
+    positive(model.contextWindow) ??
+    positive(template?.context_window) ??
+    positive(borrowed?.contextWindow);
   if (contextLength) row.context_length = contextLength;
-  const maxOutput = positive(model.maxOutputTokens);
+  const maxOutput = positive(model.maxOutputTokens) ?? positive(borrowed?.maxOutputTokens);
   if (maxOutput) {
     row.max_output_tokens = contextLength ? Math.min(maxOutput, contextLength) : maxOutput;
     row.limits = { max_output_tokens: row.max_output_tokens };
@@ -149,8 +187,46 @@ export async function buildProtocolModelList(
   const catalog = await buildModelCatalog(auth);
   const templates = loadBuiltinTemplates();
   const created = Math.floor(Date.now() / 1000);
-  const data = catalog.models
-    .filter((model) => model.protocols.includes(protocol))
-    .map((model) => toDiscoveryRow(model, templates, created));
+  const models = catalog.models.filter((model) => model.protocols.includes(protocol));
+  const borrowed = await resolveBorrowedLimits(models, templates);
+  const data = models.map((model) =>
+    toDiscoveryRow(model, templates, created, borrowed.get(model.id))
+  );
   return { object: "list", data };
+}
+
+/** First donor price row with an output limit, per model. Failures borrow nothing. */
+export async function resolveBorrowedLimits(
+  models: readonly CatalogModel[],
+  templates: readonly CodexCatalogModel[]
+): Promise<Map<string, BorrowedLimits>> {
+  const candidatesById = new Map<string, string[]>();
+  for (const model of models) {
+    const candidates = limitDonorCandidates(model, templates);
+    if (candidates.length > 0) candidatesById.set(model.id, candidates);
+  }
+  const result = new Map<string, BorrowedLimits>();
+  if (candidatesById.size === 0) return result;
+
+  let prices: Awaited<ReturnType<typeof resolvePricesForModels>>;
+  try {
+    prices = await resolvePricesForModels([...new Set([...candidatesById.values()].flat())]);
+  } catch {
+    return result;
+  }
+  for (const [id, candidates] of candidatesById) {
+    for (const name of candidates) {
+      const price = prices.get(name)?.priceData ?? null;
+      if (!price) continue;
+      const metadata = toCatalogMetadata(price, { id: name });
+      if (positive(metadata.maxOutputTokens)) {
+        result.set(id, {
+          contextWindow: metadata.contextWindow,
+          maxOutputTokens: metadata.maxOutputTokens,
+        });
+        break;
+      }
+    }
+  }
+  return result;
 }
