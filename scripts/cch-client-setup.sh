@@ -163,7 +163,7 @@ catalog_has_slug() { # catalog_has_slug <slug>
 }
 
 configure_codex() {
-  local dir="${CODEX_HOME:-$HOME/.codex}" file tmp count model=""
+  local dir="${CODEX_HOME:-$HOME/.codex}" file tmp count model="" keyfile
   file="$dir/config.toml"
   count="$(count_fields "$CODEX_CATALOG" slug)"
   [ "$count" -gt 0 ] || info "warning: the gateway lists no Codex (Responses API) models for this key"
@@ -180,6 +180,16 @@ configure_codex() {
   fi
 
   mkdir -p "$dir"
+  dir="$(cd "$dir" && pwd)"
+  file="$dir/config.toml"
+  # The key is read by a provider auth command instead of `experimental_bearer_token`.
+  # Codex treats command auth as provider-managed: the gateway catalog is always fetched,
+  # even when a client such as Codex Desktop (over remote control) turns off the
+  # `api_key_model_discovery` feature on the shared app-server daemon. With a bearer token the
+  # daemon then lists no models at all ("No additional models are available").
+  keyfile="$dir/$PROVIDER.key"
+  (umask 077 && printf '%s\n' "$KEY" >"$keyfile.tmp") && mv "$keyfile.tmp" "$keyfile"
+  chmod 600 "$keyfile"
   backup "$file"
   tmp="$(mktemp "$dir/.config.toml.XXXXXX")"
   {
@@ -190,14 +200,15 @@ configure_codex() {
     if [ -f "$file" ]; then
       # Drop our previous blocks, the top-level model/model_provider keys (they belong to the
       # provider we replace) and an old [model_providers.<name>] table; keep everything else.
-      awk -v begin="$BEGIN_MARK" -v end="$END_MARK" -v table="[model_providers.$PROVIDER]" '
+      awk -v begin="$BEGIN_MARK" -v end="$END_MARK" -v table="[model_providers.$PROVIDER]" \
+        -v subtable="[model_providers.$PROVIDER." '
         $0 == begin { skip = 1; next }
         $0 == end { skip = 0; next }
         skip { next }
         /^[[:space:]]*\[/ {
           top = 1
           header = $0; gsub(/[[:space:]]/, "", header)
-          intable = (header == table)
+          intable = (header == table || index(header, subtable) == 1)
         }
         intable { next }
         !top && /^[[:space:]]*(model|model_provider)[[:space:]]*=/ { next }
@@ -209,13 +220,20 @@ configure_codex() {
     printf 'name = "%s"\n' "$PROVIDER"
     printf 'base_url = "%s/v1"\n' "$HOST"
     printf 'wire_api = "responses"\n'
-    printf 'experimental_bearer_token = "%s"\n' "$KEY"
     printf 'model_catalog_url = "%s/codex/models"\n' "$HOST"
+    printf '\n[model_providers.%s.auth]\n' "$PROVIDER"
+    printf 'command = "cat"\n'
+    printf 'args = ["%s"]\n' "$keyfile"
+    printf 'refresh_interval_ms = 0\n'
+    # Explicit cwd: the command otherwise runs in the daemon's working directory, which may be
+    # one this user cannot enter (the command then fails with "Permission denied").
+    printf 'cwd = "%s"\n' "$dir"
     printf '%s\n' "$END_MARK"
   } >"$tmp"
   chmod 600 "$tmp"
   mv "$tmp" "$file"
   info "Codex: wrote $file (provider \"$PROVIDER\", $count models in the gateway catalog)."
+  info "  API key stored in $keyfile (mode 600), read by the provider auth command."
   if [ -n "$model" ]; then
     info "  Default model: $model (switch with /model)."
   else
@@ -254,7 +272,8 @@ refresh_codex_runtime() { # refresh_codex_runtime <codex_home>
     info "  Restart it before using Codex: codex app-server daemon restart (or /daemon in Codex)"
     return 0
   fi
-  if CODEX_HOME="$dir" limited 60 codex app-server daemon restart >/dev/null 2>&1; then
+  # Restart from the Codex home: the new daemon inherits this working directory.
+  if (cd "$dir" && CODEX_HOME="$dir" limited 60 codex app-server daemon restart >/dev/null 2>&1); then
     info "  Restarted the Codex app-server daemon so it loads the new config"
     info "  (Codex sessions that were running in it were interrupted; start them again)."
   else

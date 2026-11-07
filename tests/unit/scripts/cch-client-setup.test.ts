@@ -116,7 +116,14 @@ describe("cch-client-setup.sh", () => {
     expect(config).toContain("[model_providers.cch]");
     expect(config).toContain(`base_url = "${baseUrl}/v1"`);
     expect(config).toContain('wire_api = "responses"');
-    expect(config).toContain(`experimental_bearer_token = "${GOOD_KEY}"`);
+    expect(config).not.toContain("experimental_bearer_token");
+    expect(config).not.toContain(GOOD_KEY);
+    const keyFile = path.join(home, ".codex", "cch.key");
+    expect(config).toContain(
+      `[model_providers.cch.auth]\ncommand = "cat"\nargs = ["${keyFile}"]\nrefresh_interval_ms = 0\ncwd = "${path.join(home, ".codex")}"\n`
+    );
+    expect(fs.readFileSync(keyFile, "utf8")).toBe(`${GOOD_KEY}\n`);
+    expect(mode(".codex", "cch.key")).toBe(0o600);
     expect(config).toContain(`model_catalog_url = "${baseUrl}/codex/models"`);
     expect(config).toContain('model = "gpt-6-sol"');
     expect(mode(".codex", "config.toml")).toBe(0o600);
@@ -144,6 +151,10 @@ describe("cch-client-setup.sh", () => {
         "",
         "[model_providers.cch]",
         'base_url = "https://stale.example.com/v1"',
+        'experimental_bearer_token = "sk-stale"',
+        "",
+        "[model_providers.cch.auth]",
+        'command = "stale-command"',
         "",
         "[tui]",
         "screen_reader_detection_done = true",
@@ -164,6 +175,9 @@ describe("cch-client-setup.sh", () => {
     expect(config).toContain("[tui]");
     expect(config).not.toContain("stale.example.com");
     expect(config.match(/\[model_providers\.cch\]/g)).toHaveLength(1);
+    expect(config.match(/\[model_providers\.cch\.auth\]/g)).toHaveLength(1);
+    expect(config).not.toContain("stale-command");
+    expect(config).not.toContain("sk-stale");
     // top-level keys stay above every table
     expect(config.indexOf('model_provider = "cch"')).toBeLessThan(config.indexOf("["));
     expect(backups(".codex", "config.toml").length).toBeGreaterThanOrEqual(1);
