@@ -64,12 +64,14 @@ beforeEach(() => {
 function run(
   args: string[],
   input: string,
-  env: Record<string, string | undefined> = {}
+  env: Record<string, string | undefined> = {},
+  cwd?: string
 ): Promise<{ code: number | null; stderr: string }> {
   return new Promise((resolve) => {
     // detached: new session without a controlling terminal, so the script reads stdin.
     const child = spawn("bash", [SCRIPT, ...args], {
       detached: true,
+      cwd,
       stdio: ["pipe", "pipe", "pipe"],
       env: {
         PATH: "/usr/bin:/bin",
@@ -283,6 +285,69 @@ describe("cch-client-setup.sh", () => {
       "[model_providers.hub]"
     );
     expect(fs.readFileSync(path.join(ompDir, "models.yml"), "utf8")).toContain("  hub-responses:");
+  });
+
+  describe("custom Codex home and omp dir", () => {
+    it("expands a literal ~ and tells how to point Codex at the home", async () => {
+      const result = await run(["both"], `${GOOD_KEY}\n`, {
+        CODEX_HOME: "~/work/codex-home/",
+        PI_CODING_AGENT_DIR: "~/work/omp",
+      });
+      expect(result.code, result.stderr).toBe(0);
+      const dir = path.join(home, "work", "codex-home");
+      const config = fs.readFileSync(path.join(dir, "config.toml"), "utf8");
+      expect(config).toContain(`args = ["${path.join(dir, "cch.key")}"]`);
+      expect(config).toContain(`cwd = "${dir}"`);
+      expect(fs.readFileSync(path.join(dir, "cch.key"), "utf8").trim()).toBe(GOOD_KEY);
+      expect(fs.existsSync(path.join(home, "~"))).toBe(false);
+      expect(result.stderr).toContain(`export CODEX_HOME="${dir}"`);
+      expect(fs.readFileSync(path.join(home, "work", "omp", "models.yml"), "utf8")).toContain(
+        "  cch-responses:"
+      );
+      expect(result.stderr).toContain(
+        `export PI_CODING_AGENT_DIR="${path.join(home, "work", "omp")}"`
+      );
+    });
+
+    it("resolves a relative CODEX_HOME from the current directory", async () => {
+      fs.mkdirSync(path.join(home, "proj"));
+      const result = await run(
+        ["codex"],
+        `${GOOD_KEY}\n`,
+        { CODEX_HOME: "rel/codex" },
+        path.join(home, "proj")
+      );
+      expect(result.code, result.stderr).toBe(0);
+      const dir = path.join(home, "proj", "rel", "codex");
+      expect(fs.readFileSync(path.join(dir, "config.toml"), "utf8")).toContain(`cwd = "${dir}"`);
+      expect(result.stderr).toContain(`export CODEX_HOME="${dir}"`);
+    });
+
+    it("prints no export hint for the default locations", async () => {
+      const result = await run(["both"], `${GOOD_KEY}\n`, {
+        CODEX_HOME: path.join(home, ".codex"),
+        PI_CODING_AGENT_DIR: "",
+      });
+      expect(result.code, result.stderr).toBe(0);
+      expect(result.stderr).not.toContain("export CODEX_HOME");
+      expect(result.stderr).not.toContain("export PI_CODING_AGENT_DIR");
+      expect(read(".omp", "agent", "models.yml")).toContain("  cch-responses:");
+    });
+
+    it("reuses a key from the config in a ~ Codex home", async () => {
+      const dir = path.join(home, "alt-codex");
+      fs.mkdirSync(dir);
+      fs.writeFileSync(
+        path.join(dir, "config.toml"),
+        `[model_providers.crs]\nbase_url = "https://crs.jackllm4sci.online/v1"\nexperimental_bearer_token = "${GOOD_KEY}"\n`
+      );
+      const result = await run(["codex"], "", { CODEX_HOME: "~/alt-codex" });
+      expect(result.code, result.stderr).toBe(0);
+      expect(result.stderr).toContain(
+        `Found a working key in Codex ${path.join(dir, "config.toml")}`
+      );
+      expect(fs.readFileSync(path.join(dir, "cch.key"), "utf8").trim()).toBe(GOOD_KEY);
+    });
   });
 
   it("discovers as the target client, with versions from installed clients", async () => {

@@ -10,10 +10,12 @@
 #   CCH_CLIENT          optional. codex | omp | both (same as the first argument)
 #   CCH_PROVIDER_NAME   optional. Provider id prefix written to the configs (default: cch)
 #   CCH_MODEL           optional. Codex default model slug (default: gpt-6-sol when the gateway lists it)
-#   CODEX_HOME          optional. Codex config dir (default: ~/.codex)
+#   CODEX_HOME          optional. Codex home: config.toml, auth.json and the key file live there
+#                       (default: ~/.codex; `~` and relative paths are resolved). A non-default
+#                       home is used by Codex only while CODEX_HOME is exported to it
 #   CCH_RESTART_CODEX_DAEMON optional. 0 = do not restart a running Codex app-server daemon
 #                       (default: restart it so it loads the new config)
-#   PI_CODING_AGENT_DIR optional. omp agent dir (default: ~/.omp/agent)
+#   PI_CODING_AGENT_DIR optional. omp agent dir (default: ~/.omp/agent; resolved like CODEX_HOME)
 #   CCH_REUSE_KEY       optional. 1 = reuse a working key found in existing configs without asking,
 #                       0 = never reuse (default: ask, yes by default; reuse without a terminal)
 #   CCH_REUSE_KEY_DOMAIN optional. Domain whose providers' keys may be reused
@@ -34,6 +36,27 @@ END_MARK="# <<< cch-client-setup ${PROVIDER} <<<"
 
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 info() { printf '%s\n' "$*" >&2; }
+
+# Absolute form of a config dir: a leading `~` is expanded (it stays literal when quoted in the
+# environment) and a relative path is taken from the current directory. The dir need not exist.
+abs_dir() { # abs_dir <path>
+  local d="$1"
+  case "$d" in
+    "~") d="$HOME" ;;
+    "~/"*) d="$HOME/${d#\~/}" ;;
+  esac
+  case "$d" in
+    /*) ;;
+    *) d="$PWD/$d" ;;
+  esac
+  while [ "${#d}" -gt 1 ] && [ "${d%/}" != "$d" ]; do d="${d%/}"; done
+  printf '%s' "$d"
+}
+
+DEFAULT_CODEX_HOME="$HOME/.codex"
+DEFAULT_OMP_DIR="$HOME/.omp/agent"
+CODEX_DIR="$(abs_dir "${CODEX_HOME:-$DEFAULT_CODEX_HOME}")"
+OMP_DIR="$(abs_dir "${PI_CODING_AGENT_DIR:-$DEFAULT_OMP_DIR}")"
 
 # ---------------------------------------------------------------- input
 
@@ -219,8 +242,8 @@ auth_json_api_key() { # auth_json_api_key <auth.json>
 # Candidate keys as "source|provider|host|key" (| is \037), existing configs first.
 reuse_candidates() {
   local file name url tok roa cmd arg key host auth_json src
-  file="${CODEX_HOME:-$HOME/.codex}/config.toml"
-  auth_json="${CODEX_HOME:-$HOME/.codex}/auth.json"
+  file="$CODEX_DIR/config.toml"
+  auth_json="$CODEX_DIR/auth.json"
   if [ -f "$file" ]; then
     while IFS=$'\037' read -r name url tok roa cmd arg; do
       host="$(url_host "$url")"
@@ -239,7 +262,7 @@ reuse_candidates() {
       [ -n "$key" ] && printf 'Codex %s\037%s\037%s\037%s\n' "$src" "$name" "$host" "$key"
     done < <(codex_provider_rows "$file")
   fi
-  file="${PI_CODING_AGENT_DIR:-$HOME/.omp/agent}/models.yml"
+  file="$OMP_DIR/models.yml"
   if [ -f "$file" ]; then
     while IFS=$'\037' read -r name url key; do
       host="$(url_host "$url")"
@@ -330,7 +353,7 @@ catalog_has_slug() { # catalog_has_slug <slug>
 }
 
 configure_codex() {
-  local dir="${CODEX_HOME:-$HOME/.codex}" file tmp count model="" keyfile
+  local dir="$CODEX_DIR" file tmp count model="" keyfile
   file="$dir/config.toml"
   count="$(count_fields "$CODEX_CATALOG" slug)"
   [ "$count" -gt 0 ] || info "warning: the gateway lists no Codex (Responses API) models for this key"
@@ -407,6 +430,10 @@ configure_codex() {
     info "  The default model is the first one the gateway lists; switch with /model."
   fi
   refresh_codex_runtime "$dir"
+  if [ "$dir" != "$(abs_dir "$DEFAULT_CODEX_HOME")" ]; then
+    info "  Codex home: $dir (Codex uses it while CODEX_HOME points there; to keep it, add"
+    info "  to your shell profile: export CODEX_HOME=\"$dir\")"
+  fi
 }
 
 # Codex >= 0.167 keeps a background app-server daemon that holds the config it started with.
@@ -451,7 +478,7 @@ refresh_codex_runtime() { # refresh_codex_runtime <codex_home>
 # ---------------------------------------------------------------- omp
 
 configure_omp() {
-  local dir="${PI_CODING_AGENT_DIR:-$HOME/.omp/agent}" file tmp block="" listed=""
+  local dir="$OMP_DIR" file tmp block="" listed=""
   file="$dir/models.yml"
 
   local spec name path api auth n
@@ -514,6 +541,10 @@ configure_omp() {
     else
       info "  could not refresh omp models now; run: omp models refresh"
     fi
+  fi
+  if [ "$dir" != "$(abs_dir "$DEFAULT_OMP_DIR")" ]; then
+    info "  omp agent dir: $dir (omp uses it while PI_CODING_AGENT_DIR points there; to keep it,"
+    info "  add to your shell profile: export PI_CODING_AGENT_DIR=\"$dir\")"
   fi
 }
 
