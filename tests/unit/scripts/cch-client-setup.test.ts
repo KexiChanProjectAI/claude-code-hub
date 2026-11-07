@@ -320,12 +320,9 @@ describe("cch-client-setup.sh", () => {
       };
     }
 
-    it("warms the catalog and restarts a running daemon when told to", async () => {
+    it("warms the catalog and restarts a running daemon by default", async () => {
       const codex = fakeCodex(true);
-      const result = await run(["codex"], `${GOOD_KEY}\n`, {
-        ...codex.env,
-        CCH_RESTART_CODEX_DAEMON: "1",
-      });
+      const result = await run(["codex"], `${GOOD_KEY}\n`, codex.env);
       expect(result.code, result.stderr).toBe(0);
       const calls = codex.calls();
       expect(calls).toContain(`CODEX_HOME=${path.join(home, ".codex")} debug models`);
@@ -334,26 +331,20 @@ describe("cch-client-setup.sh", () => {
       expect(result.stderr).toContain("Restarted the Codex app-server daemon");
     });
 
-    it("only prints the restart command without a terminal or when told not to", async () => {
-      for (const flag of [undefined, "0"]) {
-        const codex = fakeCodex(true);
-        const result = await run(["codex"], `${GOOD_KEY}\n`, {
-          ...codex.env,
-          CCH_RESTART_CODEX_DAEMON: flag,
-        });
-        expect(result.code, result.stderr).toBe(0);
-        expect(codex.calls()).not.toContain("daemon restart");
-        expect(result.stderr).toContain("codex app-server daemon restart");
-        fs.rmSync(path.join(home, "codex-calls.log"), { force: true });
-      }
+    it("only prints the restart command when CCH_RESTART_CODEX_DAEMON=0", async () => {
+      const codex = fakeCodex(true);
+      const result = await run(["codex"], `${GOOD_KEY}\n`, {
+        ...codex.env,
+        CCH_RESTART_CODEX_DAEMON: "0",
+      });
+      expect(result.code, result.stderr).toBe(0);
+      expect(codex.calls()).not.toContain("daemon restart");
+      expect(result.stderr).toContain("codex app-server daemon restart");
     });
 
     it("does not touch a daemon that is not running", async () => {
       const codex = fakeCodex(false);
-      const result = await run(["codex"], `${GOOD_KEY}\n`, {
-        ...codex.env,
-        CCH_RESTART_CODEX_DAEMON: "1",
-      });
+      const result = await run(["codex"], `${GOOD_KEY}\n`, codex.env);
       expect(result.code, result.stderr).toBe(0);
       expect(codex.calls()).toContain("app-server daemon version");
       expect(codex.calls()).not.toContain("daemon restart");
