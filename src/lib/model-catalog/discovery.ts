@@ -6,6 +6,7 @@ import {
   loadBuiltinTemplates,
 } from "@/lib/codex-catalog/templates";
 import { disambiguateDisplayNames } from "@/lib/model-display-names";
+import { filterChatCapableModels } from "@/lib/model-endpoint-capability";
 import { inferVendorFromModelName, UNKNOWN_VENDOR } from "@/lib/model-vendor/vendor-inference";
 import { buildModelCatalog } from "./build";
 import { toCatalogMetadata } from "./metadata";
@@ -188,7 +189,10 @@ export async function buildProtocolModelList(
   const catalog = await buildModelCatalog(auth);
   const templates = loadBuiltinTemplates();
   const created = Math.floor(Date.now() / 1000);
-  const models = catalog.models.filter((model) => model.protocols.includes(protocol));
+  // Chat-protocol discovery: image-generation-only models are not usable on these endpoints.
+  const models = filterChatCapableModels(
+    catalog.models.filter((model) => model.protocols.includes(protocol))
+  );
   const borrowed = await resolveBorrowedLimits(models, templates);
   const data = models.map((model) =>
     toDiscoveryRow(model, templates, created, borrowed.get(model.id))

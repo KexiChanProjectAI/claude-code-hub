@@ -3,6 +3,7 @@ import { request as undiciRequest } from "undici";
 import { normalizeAllowedModelRules } from "@/lib/allowed-model-rules";
 import { applyDisplayNameSuffix, normalizeDisplayNameSuffix } from "@/lib/display-name-suffix";
 import { logger } from "@/lib/logger";
+import { filterChatCapableModels } from "@/lib/model-endpoint-capability";
 import { applyProviderPrefix } from "@/lib/provider-prefix";
 import { createProxyAgentForProvider } from "@/lib/proxy-agent";
 import { resolveRoutingProviderGroup } from "@/lib/utils/provider-group";
@@ -549,7 +550,8 @@ function createFixedProviderTypesModelsHandler(
         modelCount: models.length,
       });
 
-      return c.json(formatOpenAIResponse(models));
+      // Endpoint-scoped lists (/v1/responses/models, /v1/chat/models): chat-capable models only.
+      return c.json(formatOpenAIResponse(filterChatCapableModels(models)));
     } catch (e) {
       if (e instanceof Response) return e;
       throw e;

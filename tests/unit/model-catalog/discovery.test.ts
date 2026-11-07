@@ -185,6 +185,7 @@ describe("buildProtocolModelList", () => {
         model({ id: "claude-x", protocols: ["claude"] }),
         model({ id: "gpt-x", protocols: ["openai", "response"] }),
         model({ id: "codex-only", protocols: ["response"] }),
+        model({ id: "daily/gpt-image-2", protocols: ["openai", "response"] }),
       ],
     });
   });
@@ -193,7 +194,7 @@ describe("buildProtocolModelList", () => {
     ["claude", ["claude-x"]],
     ["openai", ["gpt-x"]],
     ["response", ["gpt-x", "codex-only"]],
-  ] as const)("lists only %s models", async (protocol, ids) => {
+  ] as const)("lists only %s models, without image-only models", async (protocol, ids) => {
     const list = await buildProtocolModelList(
       { user: { id: 1, providerGroup: null }, key: { providerGroup: null } },
       protocol

@@ -1,5 +1,6 @@
 import { getAvailableModelsGroupedByProviderType } from "@/app/v1/_lib/models/available-models";
 import { logger } from "@/lib/logger";
+import { filterChatCapableModels } from "@/lib/model-endpoint-capability";
 import { normalizeProviderPrefix } from "@/lib/provider-prefix";
 import { findAllProviders } from "@/repository/provider";
 import { buildCodexCatalogModels, serializeCodexCatalog } from "./build";
@@ -50,7 +51,10 @@ export async function computeCodexCatalog(
     collectCodexProviderPrefixes(),
   ]);
 
-  const gatewayIds = groups.flatMap((group) => group.models.map((model) => model.id));
+  // Codex only calls /v1/responses: image-generation-only models would fail every turn.
+  const gatewayIds = groups.flatMap((group) =>
+    filterChatCapableModels(group.models).map((model) => model.id)
+  );
   const displayNameOverrides = new Map<string, string>();
   for (const group of groups) {
     for (const model of group.models) {
