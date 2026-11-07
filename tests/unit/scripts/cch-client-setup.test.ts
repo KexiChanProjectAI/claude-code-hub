@@ -293,6 +293,81 @@ describe("cch-client-setup.sh", () => {
     expect(result.stderr).toContain("omp models refreshed");
   });
 
+  describe("Codex daemon refresh", () => {
+    function fakeCodex(running: boolean) {
+      const bin = path.join(home, "fakebin");
+      fs.mkdirSync(bin, { recursive: true });
+      const log = path.join(home, "codex-calls.log");
+      fs.writeFileSync(
+        path.join(bin, "codex"),
+        [
+          "#!/bin/sh",
+          `echo "CODEX_HOME=$CODEX_HOME $*" >> ${log}`,
+          'case "$*" in',
+          "  --version) echo 'codex-cli 0.167.0' ;;",
+          `  "app-server daemon version") ${running ? `echo '{"status":"running","backend":"pid"}'` : "echo 'Error: failed to connect' >&2; exit 1"} ;;`,
+          `  "app-server daemon restart") echo '{"status":"restarted"}' ;;`,
+          '  "debug models") echo \'{"models":[]}\' ;;',
+          "esac",
+          "exit 0",
+          "",
+        ].join("\n"),
+        { mode: 0o755 }
+      );
+      return {
+        env: { PATH: `${bin}:/usr/bin:/bin` },
+        calls: () => (fs.existsSync(log) ? fs.readFileSync(log, "utf8") : ""),
+      };
+    }
+
+    it("warms the catalog and restarts a running daemon when told to", async () => {
+      const codex = fakeCodex(true);
+      const result = await run(["codex"], `${GOOD_KEY}\n`, {
+        ...codex.env,
+        CCH_RESTART_CODEX_DAEMON: "1",
+      });
+      expect(result.code, result.stderr).toBe(0);
+      const calls = codex.calls();
+      expect(calls).toContain(`CODEX_HOME=${path.join(home, ".codex")} debug models`);
+      expect(calls).toContain("app-server daemon restart");
+      expect(calls.indexOf("debug models")).toBeLessThan(calls.indexOf("daemon restart"));
+      expect(result.stderr).toContain("Restarted the Codex app-server daemon");
+    });
+
+    it("only prints the restart command without a terminal or when told not to", async () => {
+      for (const flag of [undefined, "0"]) {
+        const codex = fakeCodex(true);
+        const result = await run(["codex"], `${GOOD_KEY}\n`, {
+          ...codex.env,
+          CCH_RESTART_CODEX_DAEMON: flag,
+        });
+        expect(result.code, result.stderr).toBe(0);
+        expect(codex.calls()).not.toContain("daemon restart");
+        expect(result.stderr).toContain("codex app-server daemon restart");
+        fs.rmSync(path.join(home, "codex-calls.log"), { force: true });
+      }
+    });
+
+    it("does not touch a daemon that is not running", async () => {
+      const codex = fakeCodex(false);
+      const result = await run(["codex"], `${GOOD_KEY}\n`, {
+        ...codex.env,
+        CCH_RESTART_CODEX_DAEMON: "1",
+      });
+      expect(result.code, result.stderr).toBe(0);
+      expect(codex.calls()).toContain("app-server daemon version");
+      expect(codex.calls()).not.toContain("daemon restart");
+      expect(result.stderr).not.toContain("daemon");
+    });
+
+    it("skips everything when codex is not installed", async () => {
+      const result = await run(["codex"], `${GOOD_KEY}\n`);
+      expect(result.code, result.stderr).toBe(0);
+      expect(result.stderr).not.toContain("daemon");
+      expect(result.stderr).not.toContain("catalog fetched");
+    });
+  });
+
   it("reports an unreachable gateway", async () => {
     const result = await run(["codex"], `${GOOD_KEY}\n`, { CCH_HOST: "http://127.0.0.1:1" });
     expect(result.code).not.toBe(0);

@@ -11,6 +11,8 @@
 #   CCH_PROVIDER_NAME   optional. Provider id prefix written to the configs (default: cch)
 #   CCH_MODEL           optional. Codex default model slug (default: gpt-6-sol when the gateway lists it)
 #   CODEX_HOME          optional. Codex config dir (default: ~/.codex)
+#   CCH_RESTART_CODEX_DAEMON optional. 1 = restart a running Codex app-server daemon without asking,
+#                       0 = never restart it (default: ask on a terminal, skip otherwise)
 #   PI_CODING_AGENT_DIR optional. omp agent dir (default: ~/.omp/agent)
 #
 # The API key is always typed in (hidden). It is never read from arguments or the environment,
@@ -219,6 +221,58 @@ configure_codex() {
   else
     info "  The default model is the first one the gateway lists; switch with /model."
   fi
+  refresh_codex_runtime "$dir"
+}
+
+# Codex >= 0.167 keeps a background app-server daemon that holds the config it started with.
+# A daemon started before this script ran ignores the new provider, so /model shows the old
+# catalog or "No additional models are available". Warm the catalog cache first (a cold fetch
+# takes seconds through a proxy), then restart a running daemon so it loads the new config.
+limited() { # limited <seconds> <command...>: `timeout` when available (macOS has none)
+  local seconds="$1"
+  shift
+  if command -v timeout >/dev/null 2>&1; then timeout "$seconds" "$@"; else "$@"; fi
+}
+
+refresh_codex_runtime() { # refresh_codex_runtime <codex_home>
+  local dir="$1" status answer
+  command -v codex >/dev/null 2>&1 || return 0
+
+  if CODEX_HOME="$dir" limited 60 codex debug models >/dev/null 2>&1; then
+    info "  Codex model catalog fetched and cached."
+  fi
+
+  status="$(CODEX_HOME="$dir" limited 20 codex app-server daemon version 2>/dev/null || true)"
+  case "$status" in
+    *'"status":"running"'*) ;;
+    *) return 0 ;;
+  esac
+
+  case "${CCH_RESTART_CODEX_DAEMON:-}" in
+    1) answer=y ;;
+    0) answer=n ;;
+    *)
+      if [ -n "$TTY" ]; then
+        answer="$(ask "  A Codex background daemon is running with the old config. Restart it now? Running Codex sessions will be interrupted. [Y/n] ")"
+        answer="${answer:-y}"
+      else
+        answer=n
+      fi
+      ;;
+  esac
+  case "$answer" in
+    y | Y | yes | YES)
+      if CODEX_HOME="$dir" limited 60 codex app-server daemon restart >/dev/null 2>&1; then
+        info "  Restarted the Codex app-server daemon; new sessions use the new config."
+      else
+        info "  warning: could not restart the Codex daemon; run: codex app-server daemon restart"
+      fi
+      ;;
+    *)
+      info "  A Codex daemon started before this setup is still running with the old config."
+      info "  Restart it before using Codex: codex app-server daemon restart (or /daemon in Codex)"
+      ;;
+  esac
 }
 
 # ---------------------------------------------------------------- omp
