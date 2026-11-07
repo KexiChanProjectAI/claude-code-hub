@@ -201,6 +201,26 @@ describe("DeepSeek models in the catalog", () => {
   });
 });
 
+describe("display name collisions", () => {
+  it("gives two routes to one model distinct picker names", () => {
+    const models = buildCodexCatalogModels(
+      {
+        gatewayIds: ["daily/gpt-6-sol", "gpt-6-sol", "daily/gpt-6.1-sol", "gpt-6-luna"],
+        providerPrefixes: ["daily/"],
+      },
+      loadBuiltinTemplates()
+    );
+    const names = Object.fromEntries(models.map((m) => [m.slug, m.display_name]));
+    expect(names).toEqual({
+      "daily/gpt-6-sol": "GPT-6-Sol (daily)",
+      "gpt-6-sol": "GPT-6-Sol",
+      "daily/gpt-6.1-sol": "GPT-6.1-Sol",
+      "gpt-6-luna": "GPT-6-Luna",
+    });
+    expect(new Set(models.map((m) => m.display_name)).size).toBe(models.length);
+  });
+});
+
 describe("serializeCodexCatalog", () => {
   it("wraps models and derives a deterministic strong ETag", () => {
     const models = buildCodexCatalogModels(

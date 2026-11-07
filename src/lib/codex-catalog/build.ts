@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { logger } from "@/lib/logger";
+import { disambiguateDisplayNames } from "@/lib/model-display-names";
 import {
   type CodexCatalogModel,
   CodexCatalogModelSchema,
@@ -95,6 +96,16 @@ export function buildCodexCatalogModels(
     seen.add(gatewayId);
     models.push(parsed.data);
   }
+
+  // Codex's picker shows only display names: keep them unique so two routes to one model differ.
+  disambiguateDisplayNames(
+    models,
+    (model) => model.slug,
+    (model) => model.display_name,
+    (model, name) => {
+      model.display_name = name;
+    }
+  );
 
   return models.sort((a, b) => {
     if (a.priority !== b.priority) return a.priority - b.priority;

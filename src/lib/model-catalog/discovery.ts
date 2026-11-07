@@ -5,6 +5,7 @@ import {
   findTemplateForSlug,
   loadBuiltinTemplates,
 } from "@/lib/codex-catalog/templates";
+import { disambiguateDisplayNames } from "@/lib/model-display-names";
 import { inferVendorFromModelName, UNKNOWN_VENDOR } from "@/lib/model-vendor/vendor-inference";
 import { buildModelCatalog } from "./build";
 import { toCatalogMetadata } from "./metadata";
@@ -191,6 +192,14 @@ export async function buildProtocolModelList(
   const borrowed = await resolveBorrowedLimits(models, templates);
   const data = models.map((model) =>
     toDiscoveryRow(model, templates, created, borrowed.get(model.id))
+  );
+  disambiguateDisplayNames(
+    data,
+    (row) => row.id,
+    (row) => row.metadata.display_name,
+    (row, name) => {
+      row.metadata.display_name = name;
+    }
   );
   return { object: "list", data };
 }

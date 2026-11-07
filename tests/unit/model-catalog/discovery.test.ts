@@ -203,6 +203,29 @@ describe("buildProtocolModelList", () => {
   });
 });
 
+describe("discovery display name collisions", () => {
+  it("disambiguates rows that share a display name", async () => {
+    mocks.buildModelCatalog.mockResolvedValue({
+      generatedAt: "x",
+      notes: null,
+      protocols: [],
+      models: [
+        model({ id: "daily/gpt-6-sol", displayName: "GPT-6 Sol", protocols: ["response"] }),
+        model({ id: "gpt-6-sol", displayName: "GPT-6 Sol", protocols: ["response"] }),
+      ],
+    });
+    mocks.resolvePrices.mockResolvedValue(new Map());
+    const list = await buildProtocolModelList(
+      { user: { id: 1, providerGroup: null }, key: { providerGroup: null } },
+      "response"
+    );
+    expect(list.data.map((row) => row.metadata.display_name)).toEqual([
+      "GPT-6 Sol (daily)",
+      "GPT-6 Sol",
+    ]);
+  });
+});
+
 describe("/v1/models with a protocol hint", () => {
   beforeEach(() => {
     vi.mocked(resolveApiKeyAuthOutcome).mockResolvedValue({
