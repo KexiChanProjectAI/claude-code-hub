@@ -17,7 +17,7 @@ import {
 const value = (etag: string) => ({ body: "{}", etag, modelCount: 0 });
 
 describe("buildCodexCatalogCacheKey", () => {
-  it("includes provider cache version, effective group and normalized allowedModels", () => {
+  it("includes provider cache version, routing group and normalized allowedModels", () => {
     const key = buildCodexCatalogCacheKey({
       user: { id: 1, providerGroup: "user-group", allowedModels: [" B ", "a", "b"] },
       key: { providerGroup: "key-group" },
@@ -30,7 +30,7 @@ describe("buildCodexCatalogCacheKey", () => {
         user: { id: 2, providerGroup: "user-group" },
         key: { providerGroup: null },
       })
-    ).toBe("8|user-group||");
+    ).toBe("8|default||");
   });
 });
 

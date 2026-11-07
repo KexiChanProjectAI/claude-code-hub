@@ -107,7 +107,7 @@ export async function renderCodexCatalog(
 export async function handleCodexModelCatalog(c: Context): Promise<Response> {
   try {
     const { user, key } = await authenticateApiKeyRequest(c);
-    const clientScope = await clientScopeForRequest(c);
+    const clientScope = await clientScopeForRequest(c, { user, key });
     return await renderCodexCatalog(c, { user, key, clientScope });
   } catch (e) {
     if (e instanceof Response) return e;

@@ -1,4 +1,5 @@
 import { TTLMap } from "@/lib/cache/ttl-map";
+import { resolveRoutingProviderGroup } from "@/lib/utils/provider-group";
 import type { CatalogAuthState, ModelCatalog } from "./types";
 
 export type CachedCatalog = Omit<ModelCatalog, "notes">;
@@ -17,7 +18,7 @@ const cache = new TTLMap<string, CachedCatalog>({
 const inFlight = new Map<string, Promise<CachedCatalog>>();
 
 export function buildCatalogCacheKey(auth: CatalogAuthState): string {
-  const effectiveGroup = auth.key.providerGroup || auth.user.providerGroup || "";
+  const effectiveGroup = resolveRoutingProviderGroup(auth.key.providerGroup);
   const allowed = [
     ...new Set((auth.user.allowedModels ?? []).map((model) => model.trim().toLowerCase())),
   ]

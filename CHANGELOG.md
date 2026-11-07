@@ -40,6 +40,7 @@
 
 ### 修复
 
+- 模型列表接口（`/v1/models`、协议提示路径的 `/models`、`/codex/models`、`/models/catalog` 及 `/v1/responses` 的 `X-Models-Etag`）改为按调度全链路预检后只下发能用的模型：用户级客户端白/黑名单或客户端版本门槛拒绝该客户端时返回空列表；供应商分组与调度一致（只看 Key 分组，未设置为 `default`，此前未设置分组时会列出所有分组的供应商）；除已有的供应商客户端限制外，熔断（含 vendor+type 熔断）、供应商限额超限、上游额度不足的供应商的模型也不再列出（恢复后随目录缓存刷新重新出现）。用户/Key 的消费限额与并发限制属于临时状态，仍由请求时报错提示，不影响列表
 - 模型列表中同名模型的显示名去重：Codex `/model` 选择器只显示 `display_name`，两个供应商以不同命名空间提供同一模型时（如 `daily/gpt-6-sol` 与 `gpt-6-sol`）会出现两条完全相同的 “GPT-6-Sol”。现在 `/codex/models` 与协议提示路径的 `/models` 会为重名组里带命名空间的条目追加命名空间（“GPT-6-Sol (daily)”），无命名空间的条目保持原名，仍重复时改用模型 id；本来不重名的显示名不变
 - 协议提示路径的 `/models` 为没有自身价格行的模型别名补齐输出上限：匹配到 Codex / DeepSeek 模板的别名（如 `deepseek-flash-cyber`、`anthropic/deepseek/deepseek-v4.1-flash-1017[1m]`）依次借用去掉命名空间与 `[1m]` 等后缀后的裸名价格行、再到模板自身型号的价格行（如 `deepseek-flash`）的输出上限，仍不超过上下文长度；带覆盖项的旧代 DeepSeek（`deepseek-chat`、R1、V3.x）不借用。此前 omp 对这些别名回退到 8K / 32K 输出上限
 - 模型列表遵守供应商的客户端限制（`allowedClients` / `blockedClients`）：`/v1/models`、协议提示路径的 `/models`、`/codex/models`、`/v1/responses/models` 与 `/v1/models/catalog` 按请求方的客户端标识（User-Agent 等，与调度时同一判定）排除该客户端无法使用的供应商。此前列表会列出只有 `gemini-cli` 等白名单客户端可用的模型，Codex 选中后请求返回 503 `No available providers`。协议提示路径的 `/models` 另以 `limits.max_output_tokens` 同步下发输出上限，兼容只读取该字段的 omp 18.10 及更早版本。

@@ -1618,7 +1618,7 @@ export class ProxyProviderResolver {
    * 注意：并发 Session 限制检查已移至原子性检查（ensure 方法中），
    * 此处仅检查金额限制和熔断器状态
    */
-  private static async filterByLimits(providers: Provider[]): Promise<Provider[]> {
+  static async filterByLimits(providers: Provider[]): Promise<Provider[]> {
     const results = await Promise.all(
       providers.map(async (p) => {
         // -1. 检查临时熔断（vendor+type）

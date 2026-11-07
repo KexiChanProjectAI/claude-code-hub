@@ -26,6 +26,8 @@ export async function authenticateApiKeyRequest(c: Context): Promise<{
     isEnabled: boolean;
     expiresAt?: Date | null;
     allowedModels?: string[];
+    allowedClients?: string[];
+    blockedClients?: string[];
   };
   key: { providerGroup: string | null; name: string };
 }> {

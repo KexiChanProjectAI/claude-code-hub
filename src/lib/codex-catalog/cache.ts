@@ -1,11 +1,12 @@
 import type { ListingClientScope } from "@/app/v1/_lib/models/client-scope";
 import { getProviderCacheStats } from "@/lib/cache/provider-cache";
 import { TTLMap } from "@/lib/cache/ttl-map";
+import { resolveRoutingProviderGroup } from "@/lib/utils/provider-group";
 
 export interface CodexCatalogAuthState {
   user: { id: number; providerGroup: string | null; allowedModels?: string[] | null };
   key: { providerGroup: string | null };
-  /** Providers the calling client may not use (provider client restrictions). */
+  /** Listing preflight result for the calling client (see client-scope.ts). */
   clientScope?: ListingClientScope;
 }
 
@@ -33,7 +34,7 @@ const inFlight = new Map<string, Promise<CachedCodexCatalog>>();
  * provider cache version, so they invalidate catalog entries immediately.
  */
 export function buildCodexCatalogCacheKey(auth: CodexCatalogAuthState): string {
-  const effectiveGroup = auth.key.providerGroup || auth.user.providerGroup || "";
+  const effectiveGroup = resolveRoutingProviderGroup(auth.key.providerGroup);
   const allowed = [
     ...new Set((auth.user.allowedModels ?? []).map((model) => model.trim().toLowerCase())),
   ]

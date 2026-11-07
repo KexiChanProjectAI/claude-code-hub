@@ -26,8 +26,8 @@ export async function attachModelsEtag(
   let etag: string | undefined;
   if (user && key) {
     try {
-      // Same client scope as the catalog request made by this client (same User-Agent).
-      const clientScope = await clientScopeForSession(session);
+      // Same listing scope as the catalog request made by this client (same User-Agent).
+      const clientScope = await clientScopeForSession(session, { user, key });
       etag = peekCodexCatalog(
         buildCodexCatalogCacheKey({
           user: {

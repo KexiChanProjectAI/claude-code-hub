@@ -13,6 +13,10 @@ const undiciRequestMock = vi.fn(async () => {
   };
 });
 
+vi.mock("@/app/v1/_lib/models/listing-preflight", () => ({
+  isListingClientRejected: async () => false,
+  findUnhealthyProviderIds: async () => new Set<number>(),
+}));
 vi.mock("undici", () => {
   return {
     request: undiciRequestMock,

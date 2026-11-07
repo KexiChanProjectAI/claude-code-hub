@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("@/app/v1/_lib/models/listing-preflight", () => ({
+  isListingClientRejected: async () => false,
+  findUnhealthyProviderIds: async () => new Set<number>(),
+}));
 vi.mock("@/repository/provider", () => ({ findAllProviders: vi.fn(async () => []) }));
 
 vi.mock("@/lib/cache/provider-cache", () => ({

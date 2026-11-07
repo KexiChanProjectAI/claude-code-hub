@@ -5,6 +5,7 @@ import { applyDisplayNameSuffix, normalizeDisplayNameSuffix } from "@/lib/displa
 import { logger } from "@/lib/logger";
 import { applyProviderPrefix } from "@/lib/provider-prefix";
 import { createProxyAgentForProvider } from "@/lib/proxy-agent";
+import { resolveRoutingProviderGroup } from "@/lib/utils/provider-group";
 import { isProviderActiveNow } from "@/lib/utils/provider-schedule";
 import { resolveSystemTimezone } from "@/lib/utils/timezone";
 import { findAllProviders } from "@/repository/provider";
@@ -382,7 +383,7 @@ export function filterModelsByUserAllowedModels(
 interface ModelsAuthState {
   user: { id: number; providerGroup: string | null; allowedModels?: string[] | null };
   key: { providerGroup: string | null };
-  /** Providers the calling client may not use (provider client restrictions). */
+  /** Listing preflight result for the calling client (see client-scope.ts). */
   clientScope?: ListingClientScope;
 }
 
@@ -395,8 +396,8 @@ export interface ModelsByProviderType {
 /**
  * 根据指定的 providerTypes 获取模型列表，并按 providerType 分组返回
  *
- * 与代理请求不同，模型列表需要展示所有已启用 provider 的模型（不做健康检查），
- * 因为模型列表的职责是"告诉用户有哪些模型可用"，实时可用性由代理请求时的守卫链处理。
+ * 与代理请求一致：只展示该调用方实际能路由到的 provider 的模型。分组、启用状态、调度时间窗
+ * 在此处过滤；客户端限制、熔断、限额等由调用方传入的 clientScope（列表预检）给出。
  *
  * 每组内按模型 id 去重并按字典序排序，已应用用户级 allowedModels 过滤。
  * 组的顺序与传入的 providerTypes 顺序一致，没有任何模型的类型不会出现在结果中。
@@ -407,10 +408,18 @@ export async function getAvailableModelsGroupedByProviderType(
   authState: ModelsAuthState,
   providerTypes: Provider["providerType"][]
 ): Promise<{ groups: ModelsByProviderType[]; providerName?: string }> {
+  // 预检判定该客户端的任何请求都会被拒绝（用户级客户端限制 / 版本门槛）：不下发任何模型
+  if (authState.clientScope?.denied) {
+    logger.debug("[AvailableModels] Client rejected by preflight, listing no models", {
+      userId: authState.user.id,
+    });
+    return { groups: [] };
+  }
+
   const allProviders = await findAllProviders();
 
-  // 过滤出所有匹配的供应商
-  const effectiveGroup = authState.key.providerGroup || authState.user.providerGroup || null;
+  // 过滤出所有匹配的供应商（分组与调度一致：key 分组，未设置时为 default）
+  const effectiveGroup = resolveRoutingProviderGroup(authState.key.providerGroup);
   const providerTypeSet = new Set(providerTypes);
   const systemTimezone = await resolveSystemTimezone();
 
@@ -421,7 +430,7 @@ export async function getAvailableModelsGroupedByProviderType(
       !blockedForClient?.has(p.id) &&
       providerTypeSet.has(p.providerType) &&
       isProviderActiveNow(p.activeTimeStart, p.activeTimeEnd, systemTimezone) &&
-      (!effectiveGroup || checkProviderGroupMatch(p.groupTag, effectiveGroup))
+      checkProviderGroupMatch(p.groupTag, effectiveGroup)
   );
 
   if (matchedProviders.length === 0) {
@@ -521,7 +530,7 @@ function createFixedProviderTypesModelsHandler(
   return async (c: Context): Promise<Response> => {
     try {
       const { user, key } = await authenticateRequest(c);
-      const clientScope = await clientScopeForRequest(c);
+      const clientScope = await clientScopeForRequest(c, { user, key });
 
       logger.debug("[AvailableModels] Fixed providerTypes request", {
         userId: user.id,
@@ -570,7 +579,7 @@ export const handleOpenAICompatibleModels = createFixedProviderTypesModelsHandle
 export async function handleAvailableModels(c: Context): Promise<Response> {
   try {
     const { user, key } = await authenticateRequest(c);
-    const clientScope = await clientScopeForRequest(c);
+    const clientScope = await clientScopeForRequest(c, { user, key });
 
     // Protocol-hinted discovery (`/anthropic/v1/models`, `/chat/v1/models`,
     // `/responses/v1/models`): models of that protocol only, with per-model metadata rows.

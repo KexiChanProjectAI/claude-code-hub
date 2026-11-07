@@ -89,3 +89,12 @@ export function resolveBillingProviderGroups(
 
   return [];
 }
+
+/**
+ * Provider group the router schedules a key in: the key's own group, else `default`. The user's
+ * group is not consulted once a key is resolved (ProviderSelector.getEffectiveProviderGroup), so
+ * model listings and their caches must use the same value.
+ */
+export function resolveRoutingProviderGroup(keyProviderGroup: string | null | undefined): string {
+  return keyProviderGroup || PROVIDER_GROUP.DEFAULT;
+}

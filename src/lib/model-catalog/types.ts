@@ -63,6 +63,6 @@ export interface ModelCatalog {
 export interface CatalogAuthState {
   user: { id: number; providerGroup: string | null; allowedModels?: string[] | null };
   key: { providerGroup: string | null };
-  /** Providers the calling client may not use (provider client restrictions). */
+  /** Listing preflight result for the calling client (see client-scope.ts). */
   clientScope?: ListingClientScope;
 }

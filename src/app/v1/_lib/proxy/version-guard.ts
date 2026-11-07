@@ -19,6 +19,27 @@ import type { ProxySession } from "./session";
  * - 默认关闭: 配置关闭时跳过所有检查
  * - 向后兼容: UA 解析失败时放行
  */
+/**
+ * Whether the version gate would reject this User-Agent (fail open, like the guard). Used by
+ * model listings so an outdated client is not offered models it cannot use.
+ */
+export async function isClientVersionRejected(userAgent: string | null): Promise<boolean> {
+  try {
+    const settings = await getCachedSystemSettings();
+    if (!settings.enableClientVersionCheck) return false;
+    const clientInfo = parseUserAgent(userAgent);
+    if (!clientInfo) return false;
+    const { needsUpgrade } = await ClientVersionChecker.shouldUpgrade(
+      clientInfo.clientType,
+      clientInfo.version
+    );
+    return needsUpgrade;
+  } catch (error) {
+    logger.warn({ error }, "[ProxyVersionGuard] Listing version check failed, allowing");
+    return false;
+  }
+}
+
 export class ProxyVersionGuard {
   /**
    * 检查客户端版本，必要时拦截请求

@@ -219,7 +219,7 @@ describe("buildModelCatalog", () => {
 });
 
 describe("buildCatalogCacheKey", () => {
-  it("uses key group over user group and normalizes allowed models", () => {
+  it("uses the routing group (key group, else default) and normalizes allowed models", () => {
     expect(
       buildCatalogCacheKey({
         user: { id: 1, providerGroup: "a", allowedModels: ["GPT-5", " claude ", "gpt-5", ""] },
@@ -228,6 +228,10 @@ describe("buildCatalogCacheKey", () => {
     ).toBe("b|claude,gpt-5|");
     expect(
       buildCatalogCacheKey({ user: { id: 1, providerGroup: null }, key: { providerGroup: null } })
-    ).toBe("||");
+    ).toBe("default||");
+    // The router ignores the user's group once a key is resolved; so does the cache key.
+    expect(
+      buildCatalogCacheKey({ user: { id: 1, providerGroup: "a" }, key: { providerGroup: null } })
+    ).toBe("default||");
   });
 });

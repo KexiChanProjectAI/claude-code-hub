@@ -41,7 +41,7 @@ beforeEach(() => {
   vi.mocked(resolveSystemTimezone).mockResolvedValue("UTC");
   vi.mocked(isProviderActiveNow).mockReturnValue(true);
   vi.mocked(checkProviderGroupMatch).mockImplementation(
-    (groupTag: string | null, group: string) => groupTag === group
+    (groupTag: string | null, group: string) => (groupTag ?? "default") === group
   );
   vi.mocked(findAllProviders).mockResolvedValue([
     provider({ id: 1, providerType: "claude", allowedModels: ["b-model", "a-model"] }),

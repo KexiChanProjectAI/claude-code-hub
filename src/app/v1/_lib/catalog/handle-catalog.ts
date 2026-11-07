@@ -83,7 +83,7 @@ export async function handleModelCatalog(c: Context): Promise<Response> {
 
   try {
     const { user, key } = await authenticateApiKeyRequest(c);
-    const clientScope = await clientScopeForRequest(c);
+    const clientScope = await clientScopeForRequest(c, { user, key });
     const catalog = await buildModelCatalog({ user, key, clientScope });
 
     if (format === "markdown") {
