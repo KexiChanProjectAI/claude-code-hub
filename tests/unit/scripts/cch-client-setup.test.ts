@@ -12,7 +12,8 @@ const GOOD_KEY = "sk-good-0123456789abcdef";
 
 const codexCatalog = {
   models: [
-    { slug: "gpt-6.1-sol", visibility: "list" },
+    { slug: "daily/gpt-6.1-sol", visibility: "list" },
+    { slug: "gpt-6-sol", visibility: "list" },
     { slug: "deepseek-flash", visibility: "list" },
   ],
 };
@@ -117,9 +118,10 @@ describe("cch-client-setup.sh", () => {
     expect(config).toContain('wire_api = "responses"');
     expect(config).toContain(`experimental_bearer_token = "${GOOD_KEY}"`);
     expect(config).toContain(`model_catalog_url = "${baseUrl}/codex/models"`);
-    expect(config).not.toMatch(/^model = /m);
+    expect(config).toContain('model = "gpt-6-sol"');
     expect(mode(".codex", "config.toml")).toBe(0o600);
-    expect(result.stderr).toContain("2 models");
+    expect(result.stderr).toContain("3 models");
+    expect(result.stderr).toContain("Default model: gpt-6-sol");
     expect(result.stderr).not.toContain(GOOD_KEY);
     expect(requests[0]).toMatchObject({
       path: "/codex/models?client_version=0.0.0",
@@ -165,6 +167,25 @@ describe("cch-client-setup.sh", () => {
     // top-level keys stay above every table
     expect(config.indexOf('model_provider = "cch"')).toBeLessThan(config.indexOf("["));
     expect(backups(".codex", "config.toml").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("leaves the model unset when the catalog has no gpt-6-sol", async () => {
+    const saved = codexCatalog.models.splice(1, 1);
+    try {
+      const result = await run(["codex"], `${GOOD_KEY}\n`);
+      expect(result.code, result.stderr).toBe(0);
+      expect(read(".codex", "config.toml")).not.toMatch(/^model = /m);
+      expect(result.stderr).toContain("gpt-6-sol is not in the gateway catalog");
+    } finally {
+      codexCatalog.models.splice(1, 0, ...saved);
+    }
+  });
+
+  it("keeps an explicit CCH_MODEL even when the catalog does not list it", async () => {
+    const result = await run(["codex"], `${GOOD_KEY}\n`, { CCH_MODEL: "my-model" });
+    expect(result.code, result.stderr).toBe(0);
+    expect(read(".codex", "config.toml")).toContain('model = "my-model"');
+    expect(result.stderr).toContain("CCH_MODEL=my-model is not in the gateway catalog");
   });
 
   it("retries a rejected key and then succeeds", async () => {

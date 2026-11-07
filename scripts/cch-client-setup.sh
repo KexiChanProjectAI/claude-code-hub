@@ -9,7 +9,7 @@
 #   CCH_HOST            required. Gateway origin, e.g. https://cch.example.com (a trailing /v1 is ok)
 #   CCH_CLIENT          optional. codex | omp | both (same as the first argument)
 #   CCH_PROVIDER_NAME   optional. Provider id prefix written to the configs (default: cch)
-#   CCH_MODEL           optional. Codex default model slug (default: the gateway's first listed model)
+#   CCH_MODEL           optional. Codex default model slug (default: gpt-6-sol when the gateway lists it)
 #   CODEX_HOME          optional. Codex config dir (default: ~/.codex)
 #   PI_CODING_AGENT_DIR optional. omp agent dir (default: ~/.omp/agent)
 #
@@ -152,11 +152,30 @@ backup() { # backup <file>
 
 # ---------------------------------------------------------------- codex
 
+# Codex default model when CCH_MODEL is not set. Pinning it avoids depending on whichever model
+# the gateway happens to list first (e.g. a provider-prefixed route) for `codex --yolo`.
+CODEX_DEFAULT_MODEL="gpt-6-sol"
+
+catalog_has_slug() { # catalog_has_slug <slug>
+  printf '%s' "$CODEX_CATALOG" | grep -qF "\"slug\":\"$1\""
+}
+
 configure_codex() {
-  local dir="${CODEX_HOME:-$HOME/.codex}" file tmp count
+  local dir="${CODEX_HOME:-$HOME/.codex}" file tmp count model=""
   file="$dir/config.toml"
   count="$(count_fields "$CODEX_CATALOG" slug)"
   [ "$count" -gt 0 ] || info "warning: the gateway lists no Codex (Responses API) models for this key"
+
+  if [ -n "${CCH_MODEL:-}" ]; then
+    model="$CCH_MODEL"
+    catalog_has_slug "$model" ||
+      info "warning: CCH_MODEL=$model is not in the gateway catalog for this key; using it anyway"
+  elif catalog_has_slug "$CODEX_DEFAULT_MODEL"; then
+    model="$CODEX_DEFAULT_MODEL"
+  else
+    info "warning: $CODEX_DEFAULT_MODEL is not in the gateway catalog for this key;" \
+      "Codex will use the first listed model (set CCH_MODEL to choose one)"
+  fi
 
   mkdir -p "$dir"
   backup "$file"
@@ -164,7 +183,7 @@ configure_codex() {
   {
     printf '%s\n' "$BEGIN_MARK"
     printf 'model_provider = "%s"\n' "$PROVIDER"
-    if [ -n "${CCH_MODEL:-}" ]; then printf 'model = "%s"\n' "$CCH_MODEL"; fi
+    if [ -n "$model" ]; then printf 'model = "%s"\n' "$model"; fi
     printf '%s\n' "$END_MARK"
     if [ -f "$file" ]; then
       # Drop our previous blocks, the top-level model/model_provider keys (they belong to the
@@ -195,7 +214,9 @@ configure_codex() {
   chmod 600 "$tmp"
   mv "$tmp" "$file"
   info "Codex: wrote $file (provider \"$PROVIDER\", $count models in the gateway catalog)."
-  if [ -z "${CCH_MODEL:-}" ]; then
+  if [ -n "$model" ]; then
+    info "  Default model: $model (switch with /model)."
+  else
     info "  The default model is the first one the gateway lists; switch with /model."
   fi
 }
