@@ -14,9 +14,17 @@
 #   CCH_RESTART_CODEX_DAEMON optional. 0 = do not restart a running Codex app-server daemon
 #                       (default: restart it so it loads the new config)
 #   PI_CODING_AGENT_DIR optional. omp agent dir (default: ~/.omp/agent)
+#   CCH_REUSE_KEY       optional. 1 = reuse a working key found in existing configs without asking,
+#                       0 = never reuse (default: ask, yes by default; reuse without a terminal)
+#   CCH_REUSE_KEY_DOMAIN optional. Domain whose providers' keys may be reused
+#                       (default: jackllm4sci.online, also matching its subdomains)
 #
-# The API key is always typed in (hidden). It is never read from arguments or the environment,
-# so it does not end up in shell history. Existing configs are backed up before they change.
+# The API key is typed in (hidden), or reused from an existing Codex/omp provider whose endpoint
+# is on CCH_REUSE_KEY_DOMAIN and that still works against CCH_HOST. Reusable keys: a key
+# hard-coded in the config (Codex `experimental_bearer_token`, omp `apiKey`), the key file this
+# script writes, or Codex's auth.json `OPENAI_API_KEY` for a provider with
+# `requires_openai_auth = true` or the built-in provider moved by `openai_base_url`. It is never
+# read from arguments, so it does not end up in shell history. Configs are backed up first.
 
 set -euo pipefail
 
@@ -124,8 +132,167 @@ count_fields() { # count_fields <json> <field>
   { printf '%s' "$1" | grep -o "\"$2\"[[:space:]]*:" || true; } | wc -l | tr -d ' '
 }
 
+# ---------------------------------------------------------------- key reuse
+
+REUSE_DOMAIN="${CCH_REUSE_KEY_DOMAIN:-jackllm4sci.online}"
+
+url_host() { # url_host <url> -> lowercase host
+  local h="${1#*://}"
+  h="${h%%/*}"
+  h="${h%%:*}"
+  printf '%s' "$h" | tr 'A-Z' 'a-z'
+}
+
+host_in_reuse_domain() { # host_in_reuse_domain <host>
+  case "$1" in
+    "$REUSE_DOMAIN" | *."$REUSE_DOMAIN") return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Lines "provider|base_url|bearer_token|requires_openai_auth|auth_command|auth_arg" (| is \037,
+# the ASCII unit separator: `read` collapses runs of whitespace separators, which would shift
+# empty fields). A top-level `openai_base_url` yields the built-in "openai" provider, which uses
+# auth.json credentials.
+# for every [model_providers.<name>] table (plus its .auth subtable) in a Codex config.toml.
+codex_provider_rows() { # codex_provider_rows <config.toml>
+  awk '
+    function val(line) {
+      sub(/^[^=]*=[[:space:]]*/, "", line)
+      sub(/[[:space:]]*(#.*)?$/, "", line)
+      gsub(/^"|"$/, "", line)
+      return line
+    }
+    !intable && /^[[:space:]]*openai_base_url[[:space:]]*=/ {
+      url["openai"] = val($0); roa["openai"] = "true"; seen["openai"] = 1
+    }
+    /^[[:space:]]*\[/ {
+      intable = 1
+      h = $0; gsub(/[[:space:]]/, "", h); cur = ""; kind = ""
+      if (h ~ /^\[model_providers\.[^].]+\]$/) {
+        cur = substr(h, 18, length(h) - 18); kind = "main"; seen[cur] = 1
+      } else if (h ~ /^\[model_providers\.[^].]+\.auth\]$/) {
+        cur = substr(h, 18); sub(/\.auth\]$/, "", cur); kind = "auth"
+      }
+      next
+    }
+    cur == "" { next }
+    kind == "main" && /^[[:space:]]*base_url[[:space:]]*=/ { url[cur] = val($0) }
+    kind == "main" && /^[[:space:]]*experimental_bearer_token[[:space:]]*=/ { tok[cur] = val($0) }
+    kind == "main" && /^[[:space:]]*requires_openai_auth[[:space:]]*=/ { roa[cur] = val($0) }
+    kind == "auth" && /^[[:space:]]*command[[:space:]]*=/ { cmd[cur] = val($0) }
+    kind == "auth" && /^[[:space:]]*args[[:space:]]*=/ {
+      a = $0; sub(/^[^[]*\[[[:space:]]*"/, "", a); sub(/".*$/, "", a); arg[cur] = a
+    }
+    END {
+      for (p in seen) printf "%s\037%s\037%s\037%s\037%s\037%s\n", p, url[p], tok[p], roa[p], cmd[p], arg[p]
+    }
+  ' "$1"
+}
+
+# Lines "provider|baseUrl|apiKey" (| is \037) for the top-level `providers:` map of an omp models.yml.
+omp_provider_rows() { # omp_provider_rows <models.yml>
+  awk '
+    function val(line, key) {
+      sub("^[[:space:]]*" key ":[[:space:]]*", "", line)
+      sub(/[[:space:]]+#.*$/, "", line)
+      sub(/[[:space:]]*$/, "", line)
+      gsub(/^["\047]|["\047]$/, "", line)
+      return line
+    }
+    /^providers:[[:space:]]*$/ { inp = 1; next }
+    /^[^[:space:]#]/ { inp = 0; cur = "" }
+    !inp { next }
+    /^  [^[:space:]#][^:]*:[[:space:]]*$/ { cur = $0; sub(/^  /, "", cur); sub(/:.*$/, "", cur); seen[cur] = 1; next }
+    cur != "" && /^    baseUrl:/ { url[cur] = val($0, "baseUrl") }
+    cur != "" && /^    apiKey:/ { key[cur] = val($0, "apiKey") }
+    END { for (p in seen) printf "%s\037%s\037%s\n", p, url[p], key[p] }
+  ' "$1"
+}
+
+# OPENAI_API_KEY from Codex's auth.json (API-key login), if present.
+auth_json_api_key() { # auth_json_api_key <auth.json>
+  [ -r "$1" ] || return 0
+  sed -n 's/.*"OPENAI_API_KEY"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$1" | head -n 1
+}
+
+# Candidate keys as "source|provider|host|key" (| is \037), existing configs first.
+reuse_candidates() {
+  local file name url tok roa cmd arg key host auth_json src
+  file="${CODEX_HOME:-$HOME/.codex}/config.toml"
+  auth_json="${CODEX_HOME:-$HOME/.codex}/auth.json"
+  if [ -f "$file" ]; then
+    while IFS=$'\037' read -r name url tok roa cmd arg; do
+      host="$(url_host "$url")"
+      host_in_reuse_domain "$host" || continue
+      key=""
+      src="$file"
+      if [ -n "$tok" ]; then
+        key="$tok"
+      elif [ "$cmd" = "cat" ] && [ -n "$arg" ] && [ -r "$arg" ]; then
+        key="$(head -n 1 "$arg" | tr -d '\r')"
+        src="$arg"
+      elif [ "$roa" = "true" ]; then
+        key="$(auth_json_api_key "$auth_json")"
+        src="$auth_json"
+      fi
+      [ -n "$key" ] && printf 'Codex %s\037%s\037%s\037%s\n' "$src" "$name" "$host" "$key"
+    done < <(codex_provider_rows "$file")
+  fi
+  file="${PI_CODING_AGENT_DIR:-$HOME/.omp/agent}/models.yml"
+  if [ -f "$file" ]; then
+    while IFS=$'\037' read -r name url key; do
+      host="$(url_host "$url")"
+      host_in_reuse_domain "$host" || continue
+      [ -n "$key" ] && printf 'omp %s\037%s\037%s\037%s\n' "$file" "$name" "$host" "$key"
+    done < <(omp_provider_rows "$file")
+  fi
+}
+
+valid_key_chars() { # valid_key_chars <key>
+  case "$1" in
+    "" | *[[:space:]]* | *\"* | *\\*) return 1 ;;
+  esac
+}
+
+# Offer the first existing key that still works against $HOST. Sets KEY and CODEX_CATALOG.
+try_reuse_key() {
+  local source name host key tried=" " answer
+  [ "${CCH_REUSE_KEY:-}" = "0" ] && return 0
+  while IFS=$'\037' read -r source name host key; do
+    valid_key_chars "$key" || continue
+    case "$tried" in *" $key "*) continue ;; esac
+    tried="$tried$key "
+    fetch "/codex/models?client_version=$CODEX_VERSION" "$key" "$CODEX_UA"
+    [ "$HTTP_STATUS" = "200" ] || {
+      info "Existing key of $name ($host) in $source does not work for $HOST (HTTP $HTTP_STATUS)."
+      continue
+    }
+    info "Found a working key in $source: provider \"$name\" ($host), ending in ...${key: -4}."
+    if [ "${CCH_REUSE_KEY:-}" = "1" ] || [ -z "$TTY" ]; then
+      answer=y
+    else
+      answer="$(ask "Reuse it? [Y/n] ")"
+      answer="${answer:-y}"
+    fi
+    case "$answer" in
+      y | Y | yes | YES)
+        KEY="$key"
+        CODEX_CATALOG="$HTTP_BODY"
+        info "Reusing the existing key."
+        return 0
+        ;;
+    esac
+    info "Not reusing it."
+    return 0
+  done < <(reuse_candidates)
+}
+
 KEY=""
+CODEX_CATALOG=""
+try_reuse_key
 for attempt in 1 2 3; do
+  [ -z "$KEY" ] || break
   KEY="$(ask_secret "CCH API key for $HOST: ")"
   [ -n "$KEY" ] || { info "The key is empty."; continue; }
   case "$KEY" in
@@ -141,7 +308,7 @@ for attempt in 1 2 3; do
   KEY=""
 done
 [ -n "$KEY" ] || die "no valid API key after 3 attempts"
-CODEX_CATALOG="$HTTP_BODY"
+[ -n "$CODEX_CATALOG" ] || CODEX_CATALOG="$HTTP_BODY"
 
 backup() { # backup <file>
   if [ -f "$1" ]; then

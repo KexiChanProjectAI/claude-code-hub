@@ -373,6 +373,151 @@ describe("cch-client-setup.sh", () => {
     });
   });
 
+  describe("reusing an existing key", () => {
+    function writeCodexConfig(body: string) {
+      fs.mkdirSync(path.join(home, ".codex"), { recursive: true });
+      fs.writeFileSync(path.join(home, ".codex", "config.toml"), body);
+    }
+    const keyFile = () => fs.readFileSync(path.join(home, ".codex", "cch.key"), "utf8").trim();
+
+    it("reuses a working bearer token from a jackllm4sci.online provider", async () => {
+      writeCodexConfig(
+        [
+          'model_provider = "crs"',
+          "[model_providers.crs]",
+          'base_url = "https://crs.jackllm4sci.online/v1"',
+          `#experimental_bearer_token = "sk-commented-out"`,
+          `experimental_bearer_token = "${GOOD_KEY}"`,
+          "",
+        ].join("\n")
+      );
+      const result = await run(["codex"], "");
+      expect(result.code, result.stderr).toBe(0);
+      expect(result.stderr).toContain(
+        `provider "crs" (crs.jackllm4sci.online), ending in ...${GOOD_KEY.slice(-4)}`
+      );
+      expect(result.stderr).toContain("Reusing the existing key.");
+      expect(result.stderr).not.toContain(GOOD_KEY);
+      expect(keyFile()).toBe(GOOD_KEY);
+    });
+
+    it("reuses the key file of an auth-command provider (a previous run)", async () => {
+      fs.mkdirSync(path.join(home, ".codex"), { recursive: true });
+      const old = path.join(home, ".codex", "old.key");
+      fs.writeFileSync(old, `${GOOD_KEY}\n`);
+      writeCodexConfig(
+        [
+          "[model_providers.cch]",
+          'base_url = "https://cch-daily-dev.jackllm4sci.online/v1"',
+          "",
+          "[model_providers.cch.auth]",
+          'command = "cat"',
+          `args = ["${old}"]`,
+          "",
+        ].join("\n")
+      );
+      const result = await run(["codex"], "");
+      expect(result.code, result.stderr).toBe(0);
+      expect(result.stderr).toContain("Reusing the existing key.");
+      expect(keyFile()).toBe(GOOD_KEY);
+    });
+
+    it("reuses a key hard-coded in an omp provider", async () => {
+      fs.mkdirSync(path.join(home, ".omp", "agent"), { recursive: true });
+      fs.writeFileSync(
+        path.join(home, ".omp", "agent", "models.yml"),
+        `providers:\n  jk:\n    baseUrl: https://cch.jackllm4sci.online/responses/v1\n    apiKey: "${GOOD_KEY}"\n`
+      );
+      const result = await run(["codex"], "");
+      expect(result.code, result.stderr).toBe(0);
+      expect(result.stderr).toContain('provider "jk" (cch.jackllm4sci.online)');
+      expect(keyFile()).toBe(GOOD_KEY);
+    });
+
+    it.each([
+      [
+        "a provider with requires_openai_auth",
+        `[model_providers.oa]\nbase_url = "https://oa.jackllm4sci.online/v1"\nrequires_openai_auth = true\n`,
+        'provider "oa" (oa.jackllm4sci.online)',
+      ],
+      [
+        "the built-in provider moved by openai_base_url",
+        `openai_base_url = "https://cpa.jackllm4sci.online/v1"\n[tui]\nx = 1\n`,
+        'provider "openai" (cpa.jackllm4sci.online)',
+      ],
+    ])("reuses OPENAI_API_KEY from auth.json for %s", async (_label, config, expected) => {
+      writeCodexConfig(config);
+      fs.writeFileSync(
+        path.join(home, ".codex", "auth.json"),
+        `{\n  "auth_mode": "apikey",\n  "OPENAI_API_KEY": "${GOOD_KEY}",\n  "tokens": null\n}\n`
+      );
+      const result = await run(["codex"], "");
+      expect(result.code, result.stderr).toBe(0);
+      expect(result.stderr).toContain(expected);
+      expect(result.stderr).toContain("auth.json");
+      expect(keyFile()).toBe(GOOD_KEY);
+    });
+
+    it("ignores an auth.json without an API key", async () => {
+      writeCodexConfig(
+        `[model_providers.oa]\nbase_url = "https://oa.jackllm4sci.online/v1"\nrequires_openai_auth = true\n`
+      );
+      fs.writeFileSync(
+        path.join(home, ".codex", "auth.json"),
+        '{"auth_mode": "chatgpt", "OPENAI_API_KEY": null, "tokens": {}}\n'
+      );
+      const result = await run(["codex"], `${GOOD_KEY}\n`);
+      expect(result.code, result.stderr).toBe(0);
+      expect(result.stderr).not.toContain("Found a working key");
+    });
+
+    it("ignores providers outside the domain and asks for a key", async () => {
+      writeCodexConfig(
+        `[model_providers.other]\nbase_url = "https://cpa1.zenkexi.com/v1"\nexperimental_bearer_token = "${GOOD_KEY}"\n`
+      );
+      const result = await run(["codex"], "");
+      expect(result.code).not.toBe(0);
+      expect(result.stderr).not.toContain("Found a working key");
+      expect(result.stderr).toContain("The key is empty.");
+    });
+
+    it("falls back to a typed key when the existing one is rejected", async () => {
+      writeCodexConfig(
+        `[model_providers.crs]\nbase_url = "https://crs.jackllm4sci.online/v1"\nexperimental_bearer_token = "sk-stale-key"\n`
+      );
+      const result = await run(["codex"], `${GOOD_KEY}\n`);
+      expect(result.code, result.stderr).toBe(0);
+      expect(result.stderr).toContain("does not work for");
+      expect(result.stderr).not.toContain("Reusing the existing key.");
+      expect(keyFile()).toBe(GOOD_KEY);
+    });
+
+    it("never reuses with CCH_REUSE_KEY=0, and reuses without asking with =1", async () => {
+      writeCodexConfig(
+        `[model_providers.crs]\nbase_url = "https://crs.jackllm4sci.online/v1"\nexperimental_bearer_token = "${GOOD_KEY}"\n`
+      );
+      const off = await run(["codex"], `${GOOD_KEY}\n`, { CCH_REUSE_KEY: "0" });
+      expect(off.code, off.stderr).toBe(0);
+      expect(off.stderr).not.toContain("Found a working key");
+
+      writeCodexConfig(
+        `[model_providers.crs]\nbase_url = "https://crs.jackllm4sci.online/v1"\nexperimental_bearer_token = "${GOOD_KEY}"\n`
+      );
+      const on = await run(["codex"], "", { CCH_REUSE_KEY: "1" });
+      expect(on.code, on.stderr).toBe(0);
+      expect(on.stderr).toContain("Reusing the existing key.");
+    });
+
+    it("honors CCH_REUSE_KEY_DOMAIN", async () => {
+      writeCodexConfig(
+        `[model_providers.x]\nbase_url = "https://gw.example.org/v1"\nexperimental_bearer_token = "${GOOD_KEY}"\n`
+      );
+      const result = await run(["codex"], "", { CCH_REUSE_KEY_DOMAIN: "example.org" });
+      expect(result.code, result.stderr).toBe(0);
+      expect(result.stderr).toContain('provider "x" (gw.example.org)');
+    });
+  });
+
   it("reports an unreachable gateway", async () => {
     const result = await run(["codex"], `${GOOD_KEY}\n`, { CCH_HOST: "http://127.0.0.1:1" });
     expect(result.code).not.toBe(0);
