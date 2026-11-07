@@ -12,6 +12,10 @@ import {
 } from "@/lib/constants/provider.constants";
 import { USER_LIMITS } from "@/lib/constants/user.constants";
 import { normalizeCustomHeadersRecord } from "@/lib/custom-headers";
+import {
+  DISPLAY_NAME_SUFFIX_MAX_LENGTH,
+  normalizeDisplayNameSuffix,
+} from "@/lib/display-name-suffix";
 import { OPENROUTER_PROVIDER_ROUTING_SCHEMA } from "@/lib/openrouter/provider-routing";
 import { PROVIDER_ALLOWED_MODEL_RULES_SCHEMA } from "@/lib/provider-allowed-model-schema";
 import { PROVIDER_MODEL_REDIRECT_RULES_SCHEMA } from "@/lib/provider-model-redirect-schema";
@@ -238,6 +242,16 @@ const PROVIDER_PREFIX_SCHEMA = z
   .refine(
     (value) => value === null || value.length <= PROVIDER_PREFIX_MAX_LENGTH,
     `供应商前缀长度不能超过${PROVIDER_PREFIX_MAX_LENGTH}个字符`
+  )
+  .nullable()
+  .optional();
+const DISPLAY_NAME_SUFFIX_SCHEMA = z
+  .string()
+  .max(256, "Display name suffix is too long")
+  .transform((value) => normalizeDisplayNameSuffix(value))
+  .refine(
+    (value) => value === null || value.length <= DISPLAY_NAME_SUFFIX_MAX_LENGTH,
+    `Display name suffix must be at most ${DISPLAY_NAME_SUFFIX_MAX_LENGTH} characters`
   )
   .nullable()
   .optional();
@@ -687,6 +701,7 @@ export const CreateProviderSchema = z
     disable_session_reuse: z.boolean().optional().default(false),
     overwrite_response_model: z.boolean().optional().default(false),
     provider_prefix: PROVIDER_PREFIX_SCHEMA,
+    display_name_suffix: DISPLAY_NAME_SUFFIX_SCHEMA,
     model_redirects: PROVIDER_MODEL_REDIRECT_RULES_SCHEMA,
     cyber_risk_fallback_rules: PROVIDER_MODEL_REDIRECT_RULES_SCHEMA,
     openrouter_provider_routing: OPENROUTER_PROVIDER_ROUTING_SCHEMA,
@@ -947,6 +962,7 @@ export const UpdateProviderSchema = z
     disable_session_reuse: z.boolean().optional(),
     overwrite_response_model: z.boolean().optional(),
     provider_prefix: PROVIDER_PREFIX_SCHEMA,
+    display_name_suffix: DISPLAY_NAME_SUFFIX_SCHEMA,
     model_redirects: PROVIDER_MODEL_REDIRECT_RULES_SCHEMA,
     cyber_risk_fallback_rules: PROVIDER_MODEL_REDIRECT_RULES_SCHEMA,
     openrouter_provider_routing: OPENROUTER_PROVIDER_ROUTING_SCHEMA,

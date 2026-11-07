@@ -140,6 +140,26 @@ describe("buildModelCatalog", () => {
     expect(mocks.cached).toHaveBeenCalledWith("gemini-2.5-pro");
   });
 
+  it("prefers a provider display-name suffix override over the price-table name", async () => {
+    mocks.grouped.mockResolvedValue({
+      groups: [
+        {
+          providerType: "claude",
+          models: [
+            { id: "cyber/claude-sonnet-4-5", displayNameOverride: "claude-sonnet-4-5 (cyber)" },
+          ],
+        },
+        { providerType: "claude", models: [{ id: "claude-sonnet-4-5" }] },
+      ],
+    });
+    const catalog = await buildModelCatalog(auth);
+    const names = Object.fromEntries(catalog.models.map((model) => [model.id, model.displayName]));
+    expect(names).toEqual({
+      "claude-sonnet-4-5": "Claude Sonnet 4.5",
+      "cyber/claude-sonnet-4-5": "claude-sonnet-4-5 (cyber)",
+    });
+  });
+
   it("returns nulls for models without any price row", async () => {
     mocks.grouped.mockResolvedValue({
       groups: [{ providerType: "claude", models: [{ id: "claude-unknown-9" }] }],

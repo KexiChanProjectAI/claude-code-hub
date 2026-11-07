@@ -241,6 +241,9 @@ export const ProviderSummarySchema = z
     providerPrefix: NullableStringSchema.describe(
       "Provider prefix (normalized to end with a single '/'). When set, only model IDs starting with this prefix are routed to the provider, and the prefix is stripped before forwarding upstream."
     ),
+    displayNameSuffix: NullableStringSchema.describe(
+      "Label appended in parentheses to the display names of this provider's models in model pickers (Codex /codex/models, protocol-hint /models), e.g. 'cyber' shows 'GPT-6-Sol (cyber)'. Presentation only; model ids are unchanged."
+    ),
     modelRedirects: z.array(z.unknown()).nullable().describe("Model redirect rules."),
     cyberRiskFallbackRules: z
       .array(z.unknown())
@@ -699,6 +702,14 @@ const ProviderCreateObjectSchema = z
       .optional()
       .describe(
         "Provider prefix. Trailing '/' characters are trimmed and a single '/' is appended; empty clears it. When set, only model IDs starting with this prefix (case-insensitive) are routed to the provider, and the prefix is stripped before forwarding upstream."
+      ),
+    display_name_suffix: z
+      .string()
+      .max(256)
+      .nullable()
+      .optional()
+      .describe(
+        "Display-name suffix shown in parentheses after this provider's model names in model pickers, e.g. 'cyber' -> 'GPT-6-Sol (cyber)'. Trimmed, wrapping parentheses removed, at most 64 characters; empty clears it."
       ),
     model_redirects: z.array(z.unknown()).nullable().optional().describe("Model redirect rules."),
     cyber_risk_fallback_rules: z

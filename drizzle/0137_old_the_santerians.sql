@@ -1,0 +1,1 @@
+ALTER TABLE "providers" ADD COLUMN IF NOT EXISTS "display_name_suffix" varchar(64);

@@ -29,6 +29,7 @@ import {
   type CustomHeadersValidationErrorCode,
   parseCustomHeadersJsonText,
 } from "@/lib/custom-headers";
+import { normalizeDisplayNameSuffix } from "@/lib/display-name-suffix";
 import { normalizeOpenRouterProviderRouting } from "@/lib/openrouter/provider-routing";
 import { PROVIDER_BATCH_PATCH_ERROR_CODES } from "@/lib/provider-batch-patch-error-codes";
 import { normalizeProviderPrefix } from "@/lib/provider-prefix";
@@ -370,6 +371,7 @@ function ProviderFormContent({
           disable_session_reuse: state.routing.disableSessionReuse,
           overwrite_response_model: state.routing.overwriteResponseModel,
           provider_prefix: normalizeProviderPrefix(state.routing.providerPrefix),
+          display_name_suffix: normalizeDisplayNameSuffix(state.routing.displayNameSuffix),
           model_redirects:
             state.routing.modelRedirects.length > 0 ? state.routing.modelRedirects : null,
           cyber_risk_fallback_rules: (() => {

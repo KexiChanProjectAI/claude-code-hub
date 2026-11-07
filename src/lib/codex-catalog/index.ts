@@ -51,7 +51,18 @@ export async function computeCodexCatalog(
   ]);
 
   const gatewayIds = groups.flatMap((group) => group.models.map((model) => model.id));
-  const models = buildCodexCatalogModels({ gatewayIds, providerPrefixes }, loadBuiltinTemplates());
+  const displayNameOverrides = new Map<string, string>();
+  for (const group of groups) {
+    for (const model of group.models) {
+      if (model.displayNameOverride && !displayNameOverrides.has(model.id)) {
+        displayNameOverrides.set(model.id, model.displayNameOverride);
+      }
+    }
+  }
+  const models = buildCodexCatalogModels(
+    { gatewayIds, providerPrefixes, displayNameOverrides },
+    loadBuiltinTemplates()
+  );
   const { body, etag } = serializeCodexCatalog(models);
 
   const elapsedMs = Date.now() - startedAt;

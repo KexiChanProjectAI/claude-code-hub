@@ -55,6 +55,8 @@ async function computeCatalog(auth: CatalogAuthState): Promise<CachedCatalog> {
 
   const protocolsByModel = new Map<string, Set<CatalogProtocolId>>();
   const displayNameByModel = new Map<string, string | undefined>();
+  // Provider display-name suffix wins over every other name source (see FetchedModel).
+  const displayNameOverrideByModel = new Map<string, string>();
   for (const group of groups) {
     const protocol = protocolForProviderType(group.providerType);
     if (!protocol) continue;
@@ -67,6 +69,9 @@ async function computeCatalog(auth: CatalogAuthState): Promise<CachedCatalog> {
       set.add(protocol);
       if (!displayNameByModel.get(model.id) && model.displayName) {
         displayNameByModel.set(model.id, model.displayName);
+      }
+      if (!displayNameOverrideByModel.has(model.id) && model.displayNameOverride) {
+        displayNameOverrideByModel.set(model.id, model.displayNameOverride);
       }
     }
   }
@@ -83,6 +88,7 @@ async function computeCatalog(auth: CatalogAuthState): Promise<CachedCatalog> {
     return {
       id,
       ...metadata,
+      displayName: displayNameOverrideByModel.get(id) ?? metadata.displayName,
       vendorName: metadata.vendor
         ? (vendorEntry?.name ?? vendorDisplayName(metadata.vendor))
         : null,

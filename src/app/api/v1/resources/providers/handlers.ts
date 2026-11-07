@@ -937,6 +937,7 @@ function sanitizeProvider(
     disableSessionReuse: provider.disableSessionReuse,
     overwriteResponseModel: provider.overwriteResponseModel,
     providerPrefix: provider.providerPrefix ?? null,
+    displayNameSuffix: provider.displayNameSuffix ?? null,
     modelRedirects: provider.modelRedirects,
     cyberRiskFallbackRules: provider.cyberRiskFallbackRules ?? null,
     openrouterProviderRouting:

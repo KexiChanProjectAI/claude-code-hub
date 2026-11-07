@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import { request as undiciRequest } from "undici";
 import { normalizeAllowedModelRules } from "@/lib/allowed-model-rules";
+import { applyDisplayNameSuffix, normalizeDisplayNameSuffix } from "@/lib/display-name-suffix";
 import { logger } from "@/lib/logger";
 import { applyProviderPrefix } from "@/lib/provider-prefix";
 import { createProxyAgentForProvider } from "@/lib/proxy-agent";
@@ -24,6 +25,12 @@ type ResponseFormat = "openai" | "anthropic" | "gemini" | "codex";
 export interface FetchedModel {
   id: string;
   displayName?: string;
+  /**
+   * Display name forced by the provider's display-name suffix: `{model id} ({suffix})`, where the
+   * model id is the provider's own model name (without its provider prefix). Wins over every
+   * other display-name source.
+   */
+  displayNameOverride?: string;
   createdAt?: string;
   /** 模型所有者（带供应商前缀的模型按裸模型名推断） */
   ownedBy?: ModelOwner;
@@ -201,7 +208,14 @@ async function fetchModelsWithConfig(
  * 2. 否则根据 providerType 查询上游
  */
 async function fetchModelsFromProvider(provider: Provider): Promise<FetchedModel[]> {
-  const models = await fetchBareModelsFromProvider(provider);
+  const bareModels = await fetchBareModelsFromProvider(provider);
+  const suffix = normalizeDisplayNameSuffix(provider.displayNameSuffix);
+  const models = suffix
+    ? bareModels.map((model) => ({
+        ...model,
+        displayNameOverride: applyDisplayNameSuffix(model.id, suffix),
+      }))
+    : bareModels;
   const prefix = provider.providerPrefix;
   if (!prefix) {
     return models;
@@ -325,7 +339,7 @@ export function formatAnthropicResponse(models: FetchedModel[]): AnthropicModels
   const data = models.map((m) => ({
     id: m.id,
     type: "model" as const,
-    display_name: m.displayName || m.id,
+    display_name: m.displayNameOverride || m.displayName || m.id,
     created_at: m.createdAt ? normalizeAnthropicTimestamp(m.createdAt) : now,
   }));
 
@@ -338,7 +352,7 @@ export function formatAnthropicResponse(models: FetchedModel[]): AnthropicModels
 export function formatGeminiResponse(models: FetchedModel[]): GeminiModelsResponse {
   const geminiModels = models.map((m) => ({
     name: `models/${m.id}`,
-    displayName: m.displayName || m.id,
+    displayName: m.displayNameOverride || m.displayName || m.id,
     supportedGenerationMethods: ["generateContent"],
   }));
 

@@ -83,6 +83,7 @@ const ACTION_TO_FIELD_PATH: Partial<Record<ProviderFormActionWith5hResetMode["ty
   SET_DISABLE_SESSION_REUSE: "routing.disableSessionReuse",
   SET_OVERWRITE_RESPONSE_MODEL: "routing.overwriteResponseModel",
   SET_PROVIDER_PREFIX: "routing.providerPrefix",
+  SET_DISPLAY_NAME_SUFFIX: "routing.displayNameSuffix",
   SET_MODEL_REDIRECTS: "routing.modelRedirects",
   SET_CYBER_RISK_FALLBACK_RULES: "routing.cyberRiskFallbackRules",
   SET_OPENROUTER_PROVIDER_ROUTING: "routing.openrouterProviderRouting",
@@ -187,6 +188,7 @@ export function createInitialState(
             : false,
         // 供应商前缀不支持批量编辑
         providerPrefix: "",
+        displayNameSuffix: "",
         modelRedirects:
           analysis.routing.modelRedirects.status === "uniform"
             ? analysis.routing.modelRedirects.value
@@ -414,6 +416,7 @@ export function createInitialState(
         disableSessionReuse: false,
         overwriteResponseModel: false,
         providerPrefix: "",
+        displayNameSuffix: "",
         modelRedirects: [],
         cyberRiskFallbackRules: [],
         openrouterProviderRouting: null,
@@ -509,6 +512,7 @@ export function createInitialState(
       disableSessionReuse: sourceProvider?.disableSessionReuse ?? false,
       overwriteResponseModel: sourceProvider?.overwriteResponseModel ?? false,
       providerPrefix: sourceProvider?.providerPrefix ?? "",
+      displayNameSuffix: sourceProvider?.displayNameSuffix ?? "",
       modelRedirects: normalizeProviderModelRedirectRules(sourceProvider?.modelRedirects) ?? [],
       cyberRiskFallbackRules:
         normalizeProviderModelRedirectRules(sourceProvider?.cyberRiskFallbackRules) ?? [],
@@ -658,6 +662,8 @@ export function providerFormReducer(
       return { ...state, routing: { ...state.routing, overwriteResponseModel: action.payload } };
     case "SET_PROVIDER_PREFIX":
       return { ...state, routing: { ...state.routing, providerPrefix: action.payload } };
+    case "SET_DISPLAY_NAME_SUFFIX":
+      return { ...state, routing: { ...state.routing, displayNameSuffix: action.payload } };
     case "SET_MODEL_REDIRECTS":
       return { ...state, routing: { ...state.routing, modelRedirects: action.payload } };
     case "SET_CYBER_RISK_FALLBACK_RULES":

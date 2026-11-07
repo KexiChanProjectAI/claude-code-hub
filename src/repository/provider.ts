@@ -12,6 +12,7 @@ import {
 import { normalizeAllowedModelRules } from "@/lib/allowed-model-rules";
 import { getCachedProviders } from "@/lib/cache/provider-cache";
 import { PROVIDER_TIMEOUT_DEFAULTS } from "@/lib/constants/provider.constants";
+import { normalizeDisplayNameSuffix } from "@/lib/display-name-suffix";
 import { resetEndpointCircuit } from "@/lib/endpoint-circuit-breaker";
 import { logger } from "@/lib/logger";
 import { normalizeOpenRouterProviderRouting } from "@/lib/openrouter/provider-routing";
@@ -282,6 +283,7 @@ export async function createProvider(
       PROVIDER_TIMEOUT_DEFAULTS.REQUEST_TIMEOUT_NON_STREAMING_MS,
     websiteUrl: providerData.website_url ?? null,
     providerPrefix: normalizeProviderPrefix(providerData.provider_prefix),
+    displayNameSuffix: normalizeDisplayNameSuffix(providerData.display_name_suffix),
     faviconUrl: providerData.favicon_url ?? null,
     cacheTtlPreference: providerData.cache_ttl_preference ?? null,
     swapCacheTtlBilling: providerData.swap_cache_ttl_billing ?? false,
@@ -373,6 +375,7 @@ export async function createProvider(
         requestTimeoutNonStreamingMs: providers.requestTimeoutNonStreamingMs,
         websiteUrl: providers.websiteUrl,
         providerPrefix: providers.providerPrefix,
+        displayNameSuffix: providers.displayNameSuffix,
         faviconUrl: providers.faviconUrl,
         cacheTtlPreference: providers.cacheTtlPreference,
         swapCacheTtlBilling: providers.swapCacheTtlBilling,
@@ -473,6 +476,7 @@ export async function findProviderList(
       requestTimeoutNonStreamingMs: providers.requestTimeoutNonStreamingMs,
       websiteUrl: providers.websiteUrl,
       providerPrefix: providers.providerPrefix,
+      displayNameSuffix: providers.displayNameSuffix,
       faviconUrl: providers.faviconUrl,
       cacheTtlPreference: providers.cacheTtlPreference,
       swapCacheTtlBilling: providers.swapCacheTtlBilling,
@@ -573,6 +577,7 @@ export async function findAllProvidersFresh(): Promise<ProviderWithReasoningEffo
       requestTimeoutNonStreamingMs: providers.requestTimeoutNonStreamingMs,
       websiteUrl: providers.websiteUrl,
       providerPrefix: providers.providerPrefix,
+      displayNameSuffix: providers.displayNameSuffix,
       faviconUrl: providers.faviconUrl,
       cacheTtlPreference: providers.cacheTtlPreference,
       swapCacheTtlBilling: providers.swapCacheTtlBilling,
@@ -679,6 +684,7 @@ export async function findProviderById(
       requestTimeoutNonStreamingMs: providers.requestTimeoutNonStreamingMs,
       websiteUrl: providers.websiteUrl,
       providerPrefix: providers.providerPrefix,
+      displayNameSuffix: providers.displayNameSuffix,
       faviconUrl: providers.faviconUrl,
       cacheTtlPreference: providers.cacheTtlPreference,
       swapCacheTtlBilling: providers.swapCacheTtlBilling,
@@ -821,6 +827,9 @@ export async function updateProvider(
   if (providerData.website_url !== undefined) dbData.websiteUrl = providerData.website_url;
   if (providerData.provider_prefix !== undefined) {
     dbData.providerPrefix = normalizeProviderPrefix(providerData.provider_prefix);
+  }
+  if (providerData.display_name_suffix !== undefined) {
+    dbData.displayNameSuffix = normalizeDisplayNameSuffix(providerData.display_name_suffix);
   }
   if (providerData.favicon_url !== undefined) dbData.faviconUrl = providerData.favicon_url;
   if (providerData.cache_ttl_preference !== undefined)
@@ -968,6 +977,7 @@ export async function updateProvider(
         requestTimeoutNonStreamingMs: providers.requestTimeoutNonStreamingMs,
         websiteUrl: providers.websiteUrl,
         providerPrefix: providers.providerPrefix,
+        displayNameSuffix: providers.displayNameSuffix,
         faviconUrl: providers.faviconUrl,
         cacheTtlPreference: providers.cacheTtlPreference,
         swapCacheTtlBilling: providers.swapCacheTtlBilling,

@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { TagInput } from "@/components/ui/tag-input";
+import { applyDisplayNameSuffix, normalizeDisplayNameSuffix } from "@/lib/display-name-suffix";
 import { normalizeProviderPrefix } from "@/lib/provider-prefix";
 import { getProviderTypeConfig } from "@/lib/provider-type-utils";
 import type { ProviderType } from "@/types/provider";
@@ -53,6 +54,7 @@ export function RoutingSection({ subSectionRefs }: RoutingSectionProps) {
   const isEdit = mode === "edit";
   const isBatch = mode === "batch";
   const normalizedProviderPrefix = normalizeProviderPrefix(state.routing.providerPrefix);
+  const normalizedDisplayNameSuffix = normalizeDisplayNameSuffix(state.routing.displayNameSuffix);
 
   const renderProviderTypeLabel = (type: ProviderType) => {
     switch (type) {
@@ -212,6 +214,30 @@ export function RoutingSection({ subSectionRefs }: RoutingSectionProps) {
                     dispatch({ type: "SET_PROVIDER_PREFIX", payload: e.target.value })
                   }
                   placeholder={t("sections.routing.providerPrefix.placeholder")}
+                  disabled={state.ui.isPending}
+                  autoComplete="off"
+                  maxLength={64}
+                />
+              </SmartInputWrapper>
+
+              <SmartInputWrapper
+                label={t("sections.routing.displayNameSuffix.label")}
+                description={
+                  normalizedDisplayNameSuffix
+                    ? t("sections.routing.displayNameSuffix.preview", {
+                        example: applyDisplayNameSuffix("gpt-6-sol", normalizedDisplayNameSuffix),
+                      })
+                    : t("sections.routing.displayNameSuffix.desc")
+                }
+                tooltip={t("sections.routing.displayNameSuffix.help")}
+              >
+                <Input
+                  id={isEdit ? "edit-provider-display-name-suffix" : "provider-display-name-suffix"}
+                  value={state.routing.displayNameSuffix}
+                  onChange={(e) =>
+                    dispatch({ type: "SET_DISPLAY_NAME_SUFFIX", payload: e.target.value })
+                  }
+                  placeholder={t("sections.routing.displayNameSuffix.placeholder")}
                   disabled={state.ui.isPending}
                   autoComplete="off"
                   maxLength={64}

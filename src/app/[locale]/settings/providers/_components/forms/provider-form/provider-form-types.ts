@@ -72,6 +72,7 @@ export interface RoutingState {
   disableSessionReuse: boolean;
   overwriteResponseModel: boolean;
   providerPrefix: string;
+  displayNameSuffix: string;
   modelRedirects: ProviderModelRedirectRule[];
   cyberRiskFallbackRules: ProviderModelRedirectRule[];
   openrouterProviderRouting: OpenRouterProviderRouting | null;
@@ -184,6 +185,7 @@ export type ProviderFormAction =
   | { type: "SET_DISABLE_SESSION_REUSE"; payload: boolean }
   | { type: "SET_OVERWRITE_RESPONSE_MODEL"; payload: boolean }
   | { type: "SET_PROVIDER_PREFIX"; payload: string }
+  | { type: "SET_DISPLAY_NAME_SUFFIX"; payload: string }
   | { type: "SET_MODEL_REDIRECTS"; payload: ProviderModelRedirectRule[] }
   | { type: "SET_CYBER_RISK_FALLBACK_RULES"; payload: ProviderModelRedirectRule[] }
   | { type: "SET_OPENROUTER_PROVIDER_ROUTING"; payload: OpenRouterProviderRouting | null }

@@ -490,6 +490,8 @@ export interface Provider {
   openrouterProviderRouting: OpenRouterProviderRouting | null;
   // 供应商前缀：配置后仅带此前缀的模型 ID 才能命中，转发上游前剥离
   providerPrefix: string | null;
+  // Label appended to this provider's model display names in pickers ("GPT-6-Sol (cyber)")
+  displayNameSuffix: string | null;
 
   // Scheduled active time window (HH:mm format, null = always active)
   activeTimeStart: string | null;
@@ -634,6 +636,7 @@ export interface ProviderDisplay {
   // OpenRouter provider routing preferences (null = do not inject `provider`)
   openrouterProviderRouting: OpenRouterProviderRouting | null;
   providerPrefix: string | null;
+  displayNameSuffix: string | null;
   // Scheduled active time window
   activeTimeStart: string | null;
   activeTimeEnd: string | null;
@@ -768,6 +771,8 @@ export interface CreateProviderData {
   openrouter_provider_routing?: OpenRouterProviderRouting | null;
   // 供应商前缀（规范化为以 "/" 结尾；null 表示未配置）
   provider_prefix?: string | null;
+  // Model display-name suffix shown in pickers (null = none)
+  display_name_suffix?: string | null;
   active_time_start?: string | null;
   active_time_end?: string | null;
   allowed_models?: AllowedModelRuleInput[] | null;
@@ -865,6 +870,8 @@ export interface UpdateProviderData {
   openrouter_provider_routing?: OpenRouterProviderRouting | null;
   // 供应商前缀（规范化为以 "/" 结尾；null 表示未配置）
   provider_prefix?: string | null;
+  // Model display-name suffix shown in pickers (null = none)
+  display_name_suffix?: string | null;
   active_time_start?: string | null;
   active_time_end?: string | null;
   allowed_models?: AllowedModelRuleInput[] | null;

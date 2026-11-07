@@ -414,6 +414,7 @@ export async function getProviders(): Promise<ProviderDisplay[]> {
         websiteUrl: provider.websiteUrl,
         faviconUrl: provider.faviconUrl,
         providerPrefix: provider.providerPrefix ?? null,
+        displayNameSuffix: provider.displayNameSuffix ?? null,
         cacheTtlPreference: provider.cacheTtlPreference,
         swapCacheTtlBilling: provider.swapCacheTtlBilling,
         context1mPreference: provider.context1mPreference,
@@ -631,6 +632,7 @@ export async function addProvider(data: {
   request_timeout_non_streaming_ms?: number;
   website_url?: string | null;
   provider_prefix?: string | null;
+  display_name_suffix?: string | null;
   mcp_passthrough_type?: "none" | "minimax" | "glm" | "custom";
   mcp_passthrough_url?: string | null;
   upstream_quota_probe_type?: UpstreamQuotaProbeType;
@@ -740,6 +742,7 @@ export async function addProvider(data: {
       codex_service_tier_preference: validated.codex_service_tier_preference ?? "inherit",
       website_url: validated.website_url ?? null,
       provider_prefix: validated.provider_prefix ?? null,
+      display_name_suffix: validated.display_name_suffix ?? null,
       favicon_url: faviconUrl,
       tpm: validated.tpm ?? null,
       rpm: validated.rpm ?? null,
@@ -879,6 +882,7 @@ export async function editProvider(
     request_timeout_non_streaming_ms?: number;
     website_url?: string | null;
     provider_prefix?: string | null;
+    display_name_suffix?: string | null;
     mcp_passthrough_type?: "none" | "minimax" | "glm" | "custom";
     mcp_passthrough_url?: string | null;
     upstream_quota_probe_type?: UpstreamQuotaProbeType;
@@ -1680,6 +1684,7 @@ const SINGLE_EDIT_PREIMAGE_FIELD_TO_PROVIDER_KEY: Record<
   disable_session_reuse: "disableSessionReuse",
   overwrite_response_model: "overwriteResponseModel",
   provider_prefix: "providerPrefix",
+  display_name_suffix: "displayNameSuffix",
   active_time_start: "activeTimeStart",
   active_time_end: "activeTimeEnd",
   model_redirects: "modelRedirects",

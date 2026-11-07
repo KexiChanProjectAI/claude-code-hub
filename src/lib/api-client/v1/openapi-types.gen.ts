@@ -4520,6 +4520,8 @@ export interface operations {
                             overwriteResponseModel: boolean;
                             /** @description Provider prefix (normalized to end with a single '/'). When set, only model IDs starting with this prefix are routed to the provider, and the prefix is stripped before forwarding upstream. */
                             providerPrefix: string | null;
+                            /** @description Label appended in parentheses to the display names of this provider's models in model pickers (Codex /codex/models, protocol-hint /models), e.g. 'cyber' shows 'GPT-6-Sol (cyber)'. Presentation only; model ids are unchanged. */
+                            displayNameSuffix: string | null;
                             /** @description Model redirect rules. */
                             modelRedirects: unknown[] | null;
                             /** @description Cyber risk fallback rules. When the upstream rejects a request for possible cybersecurity risk, the first rule whose source matches the execution model switches to the target model and retries the same provider once. */
@@ -4897,6 +4899,8 @@ export interface operations {
                     overwrite_response_model?: boolean;
                     /** @description Provider prefix. Trailing '/' characters are trimmed and a single '/' is appended; empty clears it. When set, only model IDs starting with this prefix (case-insensitive) are routed to the provider, and the prefix is stripped before forwarding upstream. */
                     provider_prefix?: string | null;
+                    /** @description Display-name suffix shown in parentheses after this provider's model names in model pickers, e.g. 'cyber' -> 'GPT-6-Sol (cyber)'. Trimmed, wrapping parentheses removed, at most 64 characters; empty clears it. */
+                    display_name_suffix?: string | null;
                     /** @description Model redirect rules. */
                     model_redirects?: unknown[] | null;
                     /** @description Cyber risk fallback rules (source = execution model, target = fallback model). */
@@ -5111,6 +5115,8 @@ export interface operations {
                         overwriteResponseModel: boolean;
                         /** @description Provider prefix (normalized to end with a single '/'). When set, only model IDs starting with this prefix are routed to the provider, and the prefix is stripped before forwarding upstream. */
                         providerPrefix: string | null;
+                        /** @description Label appended in parentheses to the display names of this provider's models in model pickers (Codex /codex/models, protocol-hint /models), e.g. 'cyber' shows 'GPT-6-Sol (cyber)'. Presentation only; model ids are unchanged. */
+                        displayNameSuffix: string | null;
                         /** @description Model redirect rules. */
                         modelRedirects: unknown[] | null;
                         /** @description Cyber risk fallback rules. When the upstream rejects a request for possible cybersecurity risk, the first rule whose source matches the execution model switches to the target model and retries the same provider once. */
@@ -5496,6 +5502,8 @@ export interface operations {
                         overwriteResponseModel: boolean;
                         /** @description Provider prefix (normalized to end with a single '/'). When set, only model IDs starting with this prefix are routed to the provider, and the prefix is stripped before forwarding upstream. */
                         providerPrefix: string | null;
+                        /** @description Label appended in parentheses to the display names of this provider's models in model pickers (Codex /codex/models, protocol-hint /models), e.g. 'cyber' shows 'GPT-6-Sol (cyber)'. Presentation only; model ids are unchanged. */
+                        displayNameSuffix: string | null;
                         /** @description Model redirect rules. */
                         modelRedirects: unknown[] | null;
                         /** @description Cyber risk fallback rules. When the upstream rejects a request for possible cybersecurity risk, the first rule whose source matches the execution model switches to the target model and retries the same provider once. */
@@ -6048,6 +6056,8 @@ export interface operations {
                     overwrite_response_model?: boolean;
                     /** @description Provider prefix. Trailing '/' characters are trimmed and a single '/' is appended; empty clears it. When set, only model IDs starting with this prefix (case-insensitive) are routed to the provider, and the prefix is stripped before forwarding upstream. */
                     provider_prefix?: string | null;
+                    /** @description Display-name suffix shown in parentheses after this provider's model names in model pickers, e.g. 'cyber' -> 'GPT-6-Sol (cyber)'. Trimmed, wrapping parentheses removed, at most 64 characters; empty clears it. */
+                    display_name_suffix?: string | null;
                     /** @description Model redirect rules. */
                     model_redirects?: unknown[] | null;
                     /** @description Cyber risk fallback rules (source = execution model, target = fallback model). */
@@ -6268,6 +6278,8 @@ export interface operations {
                         overwriteResponseModel: boolean;
                         /** @description Provider prefix (normalized to end with a single '/'). When set, only model IDs starting with this prefix are routed to the provider, and the prefix is stripped before forwarding upstream. */
                         providerPrefix: string | null;
+                        /** @description Label appended in parentheses to the display names of this provider's models in model pickers (Codex /codex/models, protocol-hint /models), e.g. 'cyber' shows 'GPT-6-Sol (cyber)'. Presentation only; model ids are unchanged. */
+                        displayNameSuffix: string | null;
                         /** @description Model redirect rules. */
                         modelRedirects: unknown[] | null;
                         /** @description Cyber risk fallback rules. When the upstream rejects a request for possible cybersecurity risk, the first rule whose source matches the execution model switches to the target model and retries the same provider once. */

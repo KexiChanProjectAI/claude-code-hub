@@ -240,6 +240,8 @@ export const providers = pgTable('providers', {
 
   // 供应商前缀：配置后仅带该前缀的模型 ID 才能命中此供应商，转发上游前剥离（规范化为以 "/" 结尾）
   providerPrefix: varchar('provider_prefix', { length: 64 }),
+  // Label appended to this provider's model display names in model pickers: "GPT-6-Sol (cyber)"
+  displayNameSuffix: varchar('display_name_suffix', { length: 64 }),
 
   // 模型重定向：将请求的模型名称重定向到另一个模型
   modelRedirects: jsonb('model_redirects').$type<

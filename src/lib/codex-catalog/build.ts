@@ -25,6 +25,11 @@ export interface CodexCatalogInput {
   gatewayIds: readonly string[];
   /** Normalized provider prefixes of codex providers (e.g. `openai/`). */
   providerPrefixes: readonly string[];
+  /**
+   * Display names forced by a provider display-name suffix (`gpt-6-sol (cyber)`), keyed by
+   * gateway id. They replace the template's display name.
+   */
+  displayNameOverrides?: ReadonlyMap<string, string>;
 }
 
 function entryPriority(match: TemplateMatch, templatePriority: number): number {
@@ -78,7 +83,9 @@ export function buildCodexCatalogModels(
     const gatewayId = typeof rawId === "string" ? rawId : "";
     if (!gatewayId || seen.has(gatewayId)) continue;
 
-    const entry = buildCodexCatalogEntry(gatewayId, templates, input.providerPrefixes);
+    const built = buildCodexCatalogEntry(gatewayId, templates, input.providerPrefixes);
+    const override = input.displayNameOverrides?.get(gatewayId);
+    const entry = built && override ? { ...built, display_name: override } : built;
     if (!entry) {
       logger.warn("[CodexCatalog] No template available for model", { slug: gatewayId });
       continue;

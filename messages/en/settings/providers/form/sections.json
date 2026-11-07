@@ -523,6 +523,13 @@
       "help": "Trailing slashes are normalized to a single /. Prefix matching is case-insensitive. Model redirect and allowlist rules are written against the model name without the prefix. Model list endpoints show this provider's models with the prefix.",
       "preview": "Only models starting with {prefix} match, e.g. {example}. {prefix} is removed before forwarding upstream."
     },
+    "displayNameSuffix": {
+      "label": "Display name suffix",
+      "desc": "Optional. When set, this provider's models are shown in model pickers (Codex, omp) as the model id followed by this label, e.g. gpt-6-sol (cyber).",
+      "placeholder": "e.g. cyber",
+      "help": "Presentation only: model ids and routing do not change. The model id is the provider's own model name, without the provider prefix. Surrounding parentheses are removed; leave empty to use the default names.",
+      "preview": "Models are shown as {example}"
+    },
     "options": {
       "title": "Options",
       "desc": "Additional provider options and overrides"
