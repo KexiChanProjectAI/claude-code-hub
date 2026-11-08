@@ -451,14 +451,16 @@ refresh_codex_runtime() { # refresh_codex_runtime <codex_home>
   local dir="$1" status
   command -v codex >/dev/null 2>&1 || return 0
 
-  if CODEX_HOME="$dir" limited 60 codex debug models >/dev/null 2>&1; then
+  if CODEX_HOME="$dir" limited 60 codex debug models </dev/null >/dev/null 2>&1; then
     info "  Codex model catalog fetched and cached."
   fi
 
-  status="$(CODEX_HOME="$dir" limited 20 codex app-server daemon version 2>/dev/null || true)"
+  # A daemon counts as running when Codex says so or when its process is alive (a stuck daemon
+  # may not answer `daemon version` at all).
+  status="$(CODEX_HOME="$dir" limited 20 codex app-server daemon version </dev/null 2>/dev/null || true)"
   case "$status" in
     *'"status":"running"'*) ;;
-    *) return 0 ;;
+    *) [ -n "$(codex_daemon_pids "$dir")" ] || return 0 ;;
   esac
 
   if [ "${CCH_RESTART_CODEX_DAEMON:-1}" = "0" ]; then
@@ -466,13 +468,57 @@ refresh_codex_runtime() { # refresh_codex_runtime <codex_home>
     info "  Restart it before using Codex: codex app-server daemon restart (or /daemon in Codex)"
     return 0
   fi
-  # Restart from the Codex home: the new daemon inherits this working directory.
-  if (cd "$dir" && CODEX_HOME="$dir" limited 60 codex app-server daemon restart >/dev/null 2>&1); then
+  # `daemon restart` alone can leave the old process running (it fails or times out, e.g. on a
+  # stale lock or a daemon from another Codex version), and that daemon keeps the old config.
+  # Stop it, make sure it is gone, then start a new one.
+  if ! stop_codex_daemon "$dir"; then
+    info "  warning: could not stop the Codex daemon; stop it and start Codex again:"
+    info "    pkill -u \"\$(id -u)\" -f '$dir/packages/app-server-daemon/.*app-server'"
+    return 0
+  fi
+  # Start from the Codex home: the new daemon inherits this working directory.
+  if (cd "$dir" && CODEX_HOME="$dir" limited 60 codex app-server daemon start </dev/null >/dev/null 2>&1); then
     info "  Restarted the Codex app-server daemon so it loads the new config"
     info "  (Codex sessions that were running in it were interrupted; start them again)."
   else
-    info "  warning: could not restart the Codex daemon; run: codex app-server daemon restart"
+    info "  Stopped the old Codex daemon; Codex starts a new one when needed"
+    info "  (or run: codex app-server daemon start)."
   fi
+}
+
+# ERE-escape a literal for pgrep/pkill -f.
+ere_escape() { printf '%s' "$1" | sed 's/[][\\.*^$+?(){}|]/\\&/g'; }
+
+# Pids of this Codex home's managed app-server daemon: the pid file, plus any process running the
+# daemon binary that Codex installs under <CODEX_HOME>/packages/app-server-daemon. App-servers
+# that an IDE or Codex Desktop starts on their own are not matched.
+codex_daemon_pids() { # codex_daemon_pids <codex_home>
+  local dir="$1" pid
+  pid="$(sed -n 's/.*"pid"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' \
+    "$dir/app-server-daemon/daemon.pid" 2>/dev/null | head -n 1)"
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null &&
+    ps -o args= -p "$pid" 2>/dev/null | grep -q 'app-server'; then
+    printf '%s\n' "$pid"
+  fi
+  command -v pgrep >/dev/null 2>&1 &&
+    pgrep -u "$(id -u)" -f "$(ere_escape "$dir/packages/app-server-daemon/").*app-server" 2>/dev/null
+  return 0
+}
+
+stop_codex_daemon() { # stop_codex_daemon <codex_home>: 0 when no daemon process is left
+  local dir="$1" pids i
+  CODEX_HOME="$dir" limited 30 codex app-server daemon stop </dev/null >/dev/null 2>&1 || true
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    pids="$(codex_daemon_pids "$dir" | sort -u)"
+    [ -n "$pids" ] || return 0
+    case "$i" in
+      1) kill $pids 2>/dev/null || true ;;
+      6) kill -9 $pids 2>/dev/null || true ;;
+    esac
+    sleep 1
+  done
+  pids="$(codex_daemon_pids "$dir" | sort -u)"
+  [ -z "$pids" ]
 }
 
 # ---------------------------------------------------------------- omp

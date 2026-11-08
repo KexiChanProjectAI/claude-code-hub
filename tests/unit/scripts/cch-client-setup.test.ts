@@ -5,7 +5,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 const SCRIPT = path.resolve(__dirname, "../../../scripts/cch-client-setup.sh");
 const GOOD_KEY = "sk-good-0123456789abcdef";
@@ -373,19 +373,93 @@ describe("cch-client-setup.sh", () => {
   });
 
   describe("Codex daemon refresh", () => {
-    function fakeCodex(running: boolean) {
+    const spawned: number[] = [];
+    afterEach(() => {
+      for (const pid of spawned.splice(0)) {
+        try {
+          process.kill(pid, "SIGKILL");
+        } catch {
+          // already gone
+        }
+      }
+    });
+
+    const alive = (pid: number) => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    async function waitGone(pid: number) {
+      for (let i = 0; i < 50 && alive(pid); i++) await new Promise((r) => setTimeout(r, 100));
+      return !alive(pid);
+    }
+
+    /** A process that looks like Codex's managed daemon: `<bin> app-server ... --managed-daemon`. */
+    function startFakeDaemon(binDir: string, pidFile?: string) {
+      fs.mkdirSync(binDir, { recursive: true });
+      const bin = path.join(binDir, "codex");
+      fs.writeFileSync(bin, "trap 'exit 0' TERM\nwhile :; do sleep 1; done\n", { mode: 0o755 });
+      const child = spawn(
+        "sh",
+        [
+          bin,
+          "app-server",
+          "--listen",
+          "unix://",
+          "--analytics-default-enabled",
+          "--managed-daemon",
+        ],
+        { detached: true, stdio: "ignore" }
+      );
+      child.unref();
+      const pid = child.pid as number;
+      spawned.push(pid);
+      if (pidFile) {
+        fs.mkdirSync(path.dirname(pidFile), { recursive: true });
+        fs.writeFileSync(pidFile, JSON.stringify({ pid, processStartTime: "x" }));
+      }
+      return pid;
+    }
+
+    const codexHome = () => path.join(home, ".codex");
+    const daemonBin = () =>
+      path.join(codexHome(), "packages", "app-server-daemon", "releases", "0.167.0-x", "bin");
+    const pidFile = () => path.join(codexHome(), "app-server-daemon", "daemon.pid");
+
+    /**
+     * Fake `codex` CLI. version: running | stopped | hang; stop: works (kills the pid-file
+     * process) | broken (fails and leaves the daemon running).
+     */
+    function fakeCodex(opts: {
+      version: "running" | "stopped" | "hang";
+      stop?: "works" | "broken";
+    }) {
       const bin = path.join(home, "fakebin");
       fs.mkdirSync(bin, { recursive: true });
       const log = path.join(home, "codex-calls.log");
+      const version = {
+        running: `echo '{"status":"running","backend":"pid"}'`,
+        stopped: "echo 'Error: failed to connect' >&2; exit 1",
+        hang: "exit 1",
+      }[opts.version];
+      const stop =
+        opts.stop === "works"
+          ? `p=$(sed -n 's/.*"pid":\\([0-9]*\\).*/\\1/p' "$CODEX_HOME/app-server-daemon/daemon.pid"); kill $p; rm -f "$CODEX_HOME/app-server-daemon/daemon.pid"; echo '{"status":"stopped"}'`
+          : "echo 'Error: timed out waiting for the daemon' >&2; exit 1";
       fs.writeFileSync(
         path.join(bin, "codex"),
         [
           "#!/bin/sh",
-          `echo "CODEX_HOME=$CODEX_HOME $*" >> ${log}`,
+          `echo "CODEX_HOME=$CODEX_HOME cwd=$PWD $*" >> ${log}`,
           'case "$*" in',
           "  --version) echo 'codex-cli 0.167.0' ;;",
-          `  "app-server daemon version") ${running ? `echo '{"status":"running","backend":"pid"}'` : "echo 'Error: failed to connect' >&2; exit 1"} ;;`,
-          `  "app-server daemon restart") echo '{"status":"restarted"}' ;;`,
+          `  "app-server daemon version") ${version} ;;`,
+          `  "app-server daemon stop") ${stop} ;;`,
+          `  "app-server daemon start") echo '{"status":"started"}' ;;`,
           '  "debug models") echo \'{"models":[]}\' ;;',
           "esac",
           "exit 0",
@@ -399,35 +473,64 @@ describe("cch-client-setup.sh", () => {
       };
     }
 
-    it("warms the catalog and restarts a running daemon by default", async () => {
-      const codex = fakeCodex(true);
+    it("warms the catalog, stops the daemon and starts a new one from the Codex home", async () => {
+      const daemon = startFakeDaemon(daemonBin(), pidFile());
+      const codex = fakeCodex({ version: "running", stop: "works" });
       const result = await run(["codex"], `${GOOD_KEY}\n`, codex.env);
       expect(result.code, result.stderr).toBe(0);
       const calls = codex.calls();
-      expect(calls).toContain(`CODEX_HOME=${path.join(home, ".codex")} debug models`);
-      expect(calls).toContain("app-server daemon restart");
-      expect(calls.indexOf("debug models")).toBeLessThan(calls.indexOf("daemon restart"));
+      expect(calls).toContain(`CODEX_HOME=${codexHome()} cwd=`);
+      expect(calls.indexOf("debug models")).toBeLessThan(calls.indexOf("daemon stop"));
+      expect(calls.indexOf("daemon stop")).toBeLessThan(calls.indexOf("daemon start"));
+      expect(calls).toContain(`cwd=${codexHome()} app-server daemon start`);
+      expect(await waitGone(daemon)).toBe(true);
       expect(result.stderr).toContain("Restarted the Codex app-server daemon");
     });
 
+    it("kills the daemon itself when `daemon stop` fails", async () => {
+      const daemon = startFakeDaemon(daemonBin(), pidFile());
+      const codex = fakeCodex({ version: "running", stop: "broken" });
+      const result = await run(["codex"], `${GOOD_KEY}\n`, codex.env);
+      expect(result.code, result.stderr).toBe(0);
+      expect(await waitGone(daemon)).toBe(true);
+      expect(codex.calls()).toContain("app-server daemon start");
+      expect(result.stderr).toContain("Restarted the Codex app-server daemon");
+    });
+
+    it("finds a stuck daemon without a pid file by its binary under the Codex home", async () => {
+      const daemon = startFakeDaemon(daemonBin());
+      const codex = fakeCodex({ version: "hang", stop: "broken" });
+      const result = await run(["codex"], `${GOOD_KEY}\n`, codex.env);
+      expect(result.code, result.stderr).toBe(0);
+      expect(await waitGone(daemon)).toBe(true);
+      expect(codex.calls()).toContain("app-server daemon start");
+    });
+
+    it("leaves app-servers that do not belong to this Codex home alone", async () => {
+      const other = startFakeDaemon(path.join(home, "ide", "bin"));
+      const otherHome = startFakeDaemon(
+        path.join(home, "other-codex", "packages", "app-server-daemon", "bin")
+      );
+      const codex = fakeCodex({ version: "stopped" });
+      const result = await run(["codex"], `${GOOD_KEY}\n`, codex.env);
+      expect(result.code, result.stderr).toBe(0);
+      expect(codex.calls()).not.toContain("daemon stop");
+      expect(alive(other)).toBe(true);
+      expect(alive(otherHome)).toBe(true);
+      expect(result.stderr).not.toContain("daemon");
+    });
+
     it("only prints the restart command when CCH_RESTART_CODEX_DAEMON=0", async () => {
-      const codex = fakeCodex(true);
+      const daemon = startFakeDaemon(daemonBin(), pidFile());
+      const codex = fakeCodex({ version: "running", stop: "works" });
       const result = await run(["codex"], `${GOOD_KEY}\n`, {
         ...codex.env,
         CCH_RESTART_CODEX_DAEMON: "0",
       });
       expect(result.code, result.stderr).toBe(0);
-      expect(codex.calls()).not.toContain("daemon restart");
+      expect(codex.calls()).not.toContain("daemon stop");
+      expect(alive(daemon)).toBe(true);
       expect(result.stderr).toContain("codex app-server daemon restart");
-    });
-
-    it("does not touch a daemon that is not running", async () => {
-      const codex = fakeCodex(false);
-      const result = await run(["codex"], `${GOOD_KEY}\n`, codex.env);
-      expect(result.code, result.stderr).toBe(0);
-      expect(codex.calls()).toContain("app-server daemon version");
-      expect(codex.calls()).not.toContain("daemon restart");
-      expect(result.stderr).not.toContain("daemon");
     });
 
     it("skips everything when codex is not installed", async () => {
