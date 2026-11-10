@@ -438,6 +438,105 @@ describe("ProxyForwarder raw passthrough regression", () => {
     expect(capturedHeaders?.get("x-codex-beta-features")).toBe("remote_compaction_v2");
   });
 
+  async function forwardAndCapture(session: ProxySession, provider: Provider) {
+    const captured: { url: string | null; body: string | null } = { url: null, body: null };
+    const fetchWithoutAutoDecode = vi.spyOn(ProxyForwarder as any, "fetchWithoutAutoDecode");
+    fetchWithoutAutoDecode.mockImplementationOnce(async (url: string, init: RequestInit) => {
+      captured.url = url;
+      captured.body = readBodyText(init.body ?? undefined);
+      return new Response("{}", {
+        status: 200,
+        headers: { "content-type": "application/json", "content-length": "2" },
+      });
+    });
+    const { doForward } = ProxyForwarder as unknown as {
+      doForward: (session: ProxySession, provider: Provider, baseUrl: string) => Promise<Response>;
+    };
+    await doForward(session, provider, provider.url);
+    return captured;
+  }
+
+  function withPrefixedModel(session: ProxySession, model: string): ProxySession {
+    session.request.model = model;
+    Object.assign(session, { getCurrentModel: vi.fn(() => session.request.model) });
+    return session;
+  }
+
+  it("/v1/responses/compact 发往上游前剥离供应商前缀", async () => {
+    const originalBody = '{"model":"openai/gpt-5.5","input":[{"type":"message"}]}';
+    const session = withPrefixedModel(createRawPassthroughSession(originalBody), "openai/gpt-5.5");
+    const provider = { ...createProvider(), providerPrefix: "openai/" } as Provider;
+
+    const captured = await forwardAndCapture(session, provider);
+
+    expect(JSON.parse(captured.body ?? "{}")).toEqual({
+      model: "gpt-5.5",
+      input: [{ type: "message" }],
+    });
+    expect(session.getOriginalModel()).toBe("openai/gpt-5.5");
+    expect(session.request.log).toContain('"model": "gpt-5.5"');
+  });
+
+  it("remote compaction v2 发往上游前剥离前缀并应用重定向规则（HTTP 与 WebSocket）", async () => {
+    const originalBody =
+      '{"model":"OpenAI/gpt-5.5","stream":true,"input":[{"type":"compaction_trigger"}]}';
+    const provider = {
+      ...createProvider(),
+      providerPrefix: "openai/",
+      modelRedirects: [{ matchType: "exact", source: "gpt-5.5", target: "gpt-5.5-codex" }],
+    } as Provider;
+    const makeSession = () => {
+      const session = withPrefixedModel(
+        createRawPassthroughSession(originalBody, {
+          "x-codex-beta-features": "remote_compaction_v2",
+        }),
+        "OpenAI/gpt-5.5"
+      );
+      session.requestUrl = new URL("https://proxy.example.com/v1/responses");
+      return session;
+    };
+
+    const captured = await forwardAndCapture(makeSession(), provider);
+    expect(new URL(captured.url as string).pathname).toBe("/v1/responses");
+    expect(JSON.parse(captured.body ?? "{}")).toEqual({
+      model: "gpt-5.5-codex",
+      stream: true,
+      input: [{ type: "compaction_trigger" }],
+    });
+
+    mocks.evaluateResponsesWsEligibility.mockResolvedValue({
+      isWebsocketClient: true,
+      eligible: true,
+      endpointId: null,
+    });
+    mocks.tryResponsesWebsocketUpstream.mockResolvedValue({
+      response: new Response("{}", { headers: { "content-type": "application/json" } }),
+      connected: true,
+    });
+    const { doForward } = ProxyForwarder as unknown as {
+      doForward: (session: ProxySession, provider: Provider, baseUrl: string) => Promise<Response>;
+    };
+    await doForward(makeSession(), provider, provider.url);
+    expect(mocks.tryResponsesWebsocketUpstream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({ model: "gpt-5.5-codex" }),
+      })
+    );
+  });
+
+  it("raw passthrough 在供应商无需改写模型时仍保留原始请求体字节", async () => {
+    const originalBody = '{\n  "model": "gpt-5.5",\n  "input": []\n}\n';
+    const session = createRawPassthroughSession(originalBody);
+    const provider = {
+      ...createProvider(),
+      modelRedirects: [{ matchType: "exact", source: "gpt-4o", target: "gpt-4.1" }],
+    } as Provider;
+
+    const captured = await forwardAndCapture(session, provider);
+
+    expect(captured.body).toBe(originalBody);
+  });
+
   it("raw passthrough 出站请求不得继续携带 transfer-encoding 这类 hop-by-hop 头", async () => {
     const body = '{"model":"gpt-5.5","input":[]}';
     const session = createRawPassthroughSession(body, {

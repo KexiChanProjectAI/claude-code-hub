@@ -4124,14 +4124,18 @@ export class ProxyForwarder {
       session.setContext1mApplied(true);
     }
 
-    // Apply model redirect (if configured) - skip for raw passthrough endpoints
-    if (!ProxyForwarder.getEndpointPolicy(session).bypassForwarderPreprocessing) {
-      const wasRedirected = ModelRedirector.apply(session, provider);
-      if (wasRedirected) {
-        logger.debug("ProxyForwarder: Model redirected", {
-          providerId: provider.id,
-        });
+    // 供应商前缀剥离 + 模型重定向。raw passthrough（/v1/responses/compact、Remote Compaction v2、
+    // count_tokens）同样需要：前缀只用于路由，上游不认识带前缀的模型名；压缩请求的模型也必须与
+    // 同会话普通 /v1/responses 请求实际发往上游的模型一致。未改写时 raw 请求体字节保持不变。
+    const wasRedirected = ModelRedirector.apply(session, provider);
+    if (wasRedirected) {
+      if (ProxyForwarder.getEndpointPolicy(session).bypassForwarderPreprocessing) {
+        // raw 分支直接发送 request.buffer 并以 request.log 记录转发体，两者需与改写后的 message 同步
+        await session.syncRequestBodyFromMessage();
       }
+      logger.debug("ProxyForwarder: Model redirected", {
+        providerId: provider.id,
+      });
     }
 
     let processedHeaders: Headers;
