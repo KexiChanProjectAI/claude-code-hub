@@ -14,10 +14,15 @@ import { normalizeAllowedModelRules } from "@/lib/allowed-model-rules";
 import { stringifyCustomHeadersForTextarea } from "@/lib/custom-headers";
 import { normalizeOpenRouterProviderRouting } from "@/lib/openrouter/provider-routing";
 import { normalizeProviderModelRedirectRules } from "@/lib/provider-model-redirects";
+import {
+  getProviderProtocols,
+  normalizeProviderProtocols,
+  normalizeProviderProtocolUrls,
+} from "@/lib/provider-protocols/expand";
 import { convertLegacyCodexReasoningEffortToRules } from "@/lib/reasoning-effort-override";
 import { convertLegacyCodexServiceTierToRules } from "@/lib/service-tier-override";
 import { parseProviderGroups } from "@/lib/utils/provider-group";
-import type { ProviderDisplay, ProviderType } from "@/types/provider";
+import type { ProviderDisplay, ProviderProtocol, ProviderType } from "@/types/provider";
 import { analyzeBatchProviderSettings } from "../../batch-edit/analyze-batch-settings";
 import type {
   FormMode,
@@ -72,9 +77,18 @@ function withLimit5hResetMode(state: ProviderFormState): ProviderFormStateWith5h
   return state as ProviderFormStateWith5hResetMode;
 }
 
+/** Form-state protocol URL overrides from a normalized map (null -> empty object). */
+function toProtocolUrlsDraft(
+  protocolUrls: Partial<Record<ProviderProtocol, string>> | null
+): Partial<Record<ProviderProtocol, string>> {
+  return protocolUrls ?? {};
+}
+
 // Maps action types to dirty field paths for batch mode tracking
 const ACTION_TO_FIELD_PATH: Partial<Record<ProviderFormActionWith5hResetMode["type"], string>> = {
   SET_BATCH_IS_ENABLED: "batch.isEnabled",
+  SET_PROTOCOLS: "routing.protocols",
+  SET_PROTOCOL_URL: "routing.protocolUrls",
   SET_PRIORITY: "routing.priority",
   SET_WEIGHT: "routing.weight",
   SET_COST_MULTIPLIER: "routing.costMultiplier",
@@ -172,6 +186,9 @@ export function createInitialState(
       },
       routing: {
         providerType: "claude", // 批量编辑不支持修改 providerType
+        // 批量编辑不支持修改协议
+        protocols: ["claude"],
+        protocolUrls: {},
         groupTag:
           analysis.routing.groupTag.status === "uniform" ? analysis.routing.groupTag.value : [],
         preserveClientIp:
@@ -411,6 +428,8 @@ export function createInitialState(
       },
       routing: {
         providerType: "claude",
+        protocols: ["claude"],
+        protocolUrls: {},
         groupTag: [],
         preserveClientIp: false,
         disableSessionReuse: false,
@@ -487,6 +506,20 @@ export function createInitialState(
     };
   }
 
+  const initialProviderType = sourceProvider?.providerType ?? preset?.providerType ?? "claude";
+  // Clones start from the source provider's own protocols/overrides; a fresh create without a
+  // source only ever serves the primary type's protocol until the user opts in to more.
+  const initialProtocols = sourceProvider
+    ? getProviderProtocols(sourceProvider)
+    : normalizeProviderProtocols(initialProviderType, undefined);
+  const initialProtocolUrls = toProtocolUrlsDraft(
+    normalizeProviderProtocolUrls(
+      initialProviderType,
+      initialProtocols,
+      sourceProvider?.protocolUrls
+    )
+  );
+
   return {
     basic: {
       name: isEdit
@@ -506,7 +539,9 @@ export function createInitialState(
           : String(sourceProvider.newApiUserId),
     },
     routing: {
-      providerType: sourceProvider?.providerType ?? preset?.providerType ?? "claude",
+      providerType: initialProviderType,
+      protocols: initialProtocols,
+      protocolUrls: initialProtocolUrls,
       groupTag: parseProviderGroups(sourceProvider?.groupTag),
       preserveClientIp: sourceProvider?.preserveClientIp ?? false,
       disableSessionReuse: sourceProvider?.disableSessionReuse ?? false,
@@ -650,8 +685,37 @@ export function providerFormReducer(
       return { ...state, basic: { ...state.basic, newApiUserId: action.payload } };
 
     // Routing
-    case "SET_PROVIDER_TYPE":
-      return { ...state, routing: { ...state.routing, providerType: action.payload } };
+    case "SET_PROVIDER_TYPE": {
+      const nextType = action.payload;
+      // Re-normalize: gemini types collapse to their own protocol; switching between
+      // multi-protocol-capable primaries keeps the other previously selected protocols.
+      const nextProtocols = normalizeProviderProtocols(nextType, state.routing.protocols);
+      const nextProtocolUrls = toProtocolUrlsDraft(
+        normalizeProviderProtocolUrls(nextType, nextProtocols, state.routing.protocolUrls)
+      );
+      return {
+        ...state,
+        routing: {
+          ...state.routing,
+          providerType: nextType,
+          protocols: nextProtocols,
+          protocolUrls: nextProtocolUrls,
+        },
+      };
+    }
+    case "SET_PROTOCOLS":
+      return { ...state, routing: { ...state.routing, protocols: action.payload } };
+    case "SET_PROTOCOL_URL":
+      return {
+        ...state,
+        routing: {
+          ...state.routing,
+          protocolUrls: {
+            ...state.routing.protocolUrls,
+            [action.payload.protocol]: action.payload.url,
+          },
+        },
+      };
     case "SET_GROUP_TAG":
       return { ...state, routing: { ...state.routing, groupTag: action.payload } };
     case "SET_PRESERVE_CLIENT_IP":

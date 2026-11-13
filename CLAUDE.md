@@ -117,6 +117,7 @@ Key components:
 - **ProxyForwarder** (`forwarder.ts`): Handles upstream API calls
 - **ProviderResolver** (`provider-selector.ts`): Load balancing with weight/priority
 - **Format Converters** (`converters/`): Bidirectional format translation
+- **Multi-protocol providers** (`src/lib/provider-protocols/expand.ts`): a `providers` row may serve several of claude / openai / response (`protocols`, optional per-protocol `protocol_urls`). `providerType` stays the primary type. The session snapshot expands each row into one instance per protocol (same `id`, effective `providerType`), so selector/forwarder code stays single-type; endpoint-pool SQL uses `src/repository/_shared/provider-protocol-sql.ts`
 
 ### API Layer
 - **Proxy endpoints**: `/v1/messages`, `/v1/chat/completions`, `/v1/responses`, `/v1/models` (also accepted without the `/v1` prefix)

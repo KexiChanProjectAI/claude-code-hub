@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { ExternalLink, Eye, EyeOff, Globe, Key, Link2, User, Wallet } from "lucide-react";
+import { ExternalLink, Eye, EyeOff, Globe, Key, Link2, Share2, User, Wallet } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ProviderEndpointsSection } from "@/app/[locale]/settings/providers/_components/provider-endpoints-table";
@@ -16,6 +16,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  effectiveProviderTypeForProtocol,
+  isMultiProtocolCapableType,
+  MULTI_PROTOCOL_IDS,
+  protocolOfProviderType,
+} from "@/lib/provider-protocols/expand";
 import { detectApiKeyWarnings } from "@/lib/utils/validation/api-key-warnings";
 import type { ProviderType } from "@/types/provider";
 import { UrlPreview } from "../../url-preview";
@@ -266,6 +272,85 @@ export function BasicInfoSection({ autoUrlPending, endpointPool }: BasicInfoSect
           )}
         </>
       ) : null}
+
+      {/* Protocols: only multi-protocol-capable primary types (claude / openai-compatible / codex) */}
+      {isMultiProtocolCapableType(state.routing.providerType) && (
+        <SectionCard
+          title={t("protocols.title")}
+          description={t("protocols.description")}
+          icon={Share2}
+        >
+          <div className="space-y-3">
+            {MULTI_PROTOCOL_IDS.map((protocol) => {
+              // Defensive: protocols/protocolUrls are always set by createInitialState, but guard
+              // against unexpected undefined values from older cached/mocked state shapes.
+              const selectedProtocols = state.routing.protocols ?? [];
+              const primaryProtocol = protocolOfProviderType(state.routing.providerType);
+              const isPrimary = protocol === primaryProtocol;
+              const checked = isPrimary || selectedProtocols.includes(protocol);
+              const overrideUrl = state.routing.protocolUrls?.[protocol] ?? "";
+              const effectiveType = effectiveProviderTypeForProtocol(
+                state.routing.providerType,
+                protocol
+              );
+              const checkboxId = `${isEdit ? "edit-" : ""}protocol-${protocol}`;
+
+              return (
+                <div key={protocol} className="rounded-md border p-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id={checkboxId}
+                      checked={checked}
+                      disabled={isPrimary || state.ui.isPending}
+                      onCheckedChange={(next) => {
+                        const nextChecked = next === true;
+                        const nextProtocols = nextChecked
+                          ? [...selectedProtocols, protocol]
+                          : selectedProtocols.filter((p) => p !== protocol);
+                        dispatch({ type: "SET_PROTOCOLS", payload: nextProtocols });
+                      }}
+                    />
+                    <Label htmlFor={checkboxId} className="text-sm font-medium">
+                      {t(`protocols.labels.${protocol}`)}
+                    </Label>
+                    {isPrimary && (
+                      <span className="text-xs text-muted-foreground">
+                        {t("protocols.primaryLockedHint")}
+                      </span>
+                    )}
+                  </div>
+
+                  {!isPrimary && checked && (
+                    <div className="space-y-2 pl-6">
+                      <Input
+                        id={`${checkboxId}-url`}
+                        value={overrideUrl}
+                        onChange={(e) =>
+                          dispatch({
+                            type: "SET_PROTOCOL_URL",
+                            payload: { protocol, url: e.target.value },
+                          })
+                        }
+                        placeholder={state.basic.url || t("protocols.urlOverride.placeholder")}
+                        disabled={state.ui.isPending}
+                        className="font-mono text-sm"
+                        autoComplete="off"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        {t("protocols.urlOverride.hint")}
+                      </p>
+                      <UrlPreview
+                        baseUrl={overrideUrl.trim() || state.basic.url}
+                        providerType={effectiveType}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </SectionCard>
+      )}
 
       {/* Authentication */}
       <SectionCard

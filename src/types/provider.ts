@@ -11,6 +11,13 @@ export type ProviderType =
   | "gemini-cli"
   | "openai-compatible";
 
+// Inbound protocol a provider row can serve (same values as the proxy's client formats).
+// Multi-protocol rows may combine "claude", "openai" and "response"; gemini rows serve only their own.
+export type ProviderProtocol = "claude" | "openai" | "response" | "gemini" | "gemini-cli";
+
+// Per-protocol upstream base URL overrides (missing key = use the row's `url`)
+export type ProviderProtocolUrls = Partial<Record<ProviderProtocol, string>>;
+
 // Codex（Responses API）请求参数覆写偏好
 // - "inherit": 遵循客户端请求（默认）
 // - 其他值: 强制覆写 reasoning.effort；具体模型可能只支持其中一部分档位
@@ -476,7 +483,16 @@ export interface Provider {
   groupTag: string | null;
 
   // 供应商类型：扩展支持 4 种类型
+  // 多协议行展开后的运行时实例里，这里是该协议的有效类型；主类型见 primaryProviderType
   providerType: ProviderType;
+  // 该行服务的入站协议（缺省 = 仅主类型对应的协议）
+  protocols?: ProviderProtocol[];
+  // 按协议覆盖上游 base URL（null = 全部使用 url）
+  protocolUrls?: ProviderProtocolUrls | null;
+  // 仅运行时展开实例：本实例服务的协议
+  protocol?: ProviderProtocol;
+  // 仅运行时展开实例：该行在数据库中的主类型
+  primaryProviderType?: ProviderType;
   // 是否透传客户端 IP
   preserveClientIp: boolean;
   // 是否跳过当前供应商的 sticky session 复用
@@ -622,6 +638,10 @@ export interface ProviderDisplay {
   groupTag: string | null;
   // 供应商类型
   providerType: ProviderType;
+  // 该行服务的入站协议
+  protocols?: ProviderProtocol[];
+  // 按协议覆盖上游 base URL
+  protocolUrls?: ProviderProtocolUrls | null;
   // 供应商聚合实体（按官网域名归一）
   providerVendorId: number | null;
   // 是否透传客户端 IP
@@ -761,6 +781,10 @@ export interface CreateProviderData {
 
   // 供应商类型和模型配置
   provider_type?: ProviderType;
+  // 服务的入站协议（缺省 = 仅主类型对应的协议）
+  protocols?: ProviderProtocol[];
+  // 按协议覆盖上游 base URL
+  protocol_urls?: ProviderProtocolUrls | null;
   preserve_client_ip?: boolean;
   disable_session_reuse?: boolean;
   overwrite_response_model?: boolean;
@@ -860,6 +884,10 @@ export interface UpdateProviderData {
 
   // 供应商类型和模型配置
   provider_type?: ProviderType;
+  // 服务的入站协议（缺省 = 仅主类型对应的协议）
+  protocols?: ProviderProtocol[];
+  // 按协议覆盖上游 base URL
+  protocol_urls?: ProviderProtocolUrls | null;
   preserve_client_ip?: boolean;
   disable_session_reuse?: boolean;
   overwrite_response_model?: boolean;

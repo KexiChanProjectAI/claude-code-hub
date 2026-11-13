@@ -11,6 +11,7 @@ import {
 import { logger } from "@/lib/logger";
 import { onRequestMemoryForcedEnd, retainRequestMemoryUntil } from "@/lib/memory/request-lifetime";
 import { matchesProviderPrefix } from "@/lib/provider-prefix";
+import { expandProvidersCached } from "@/lib/provider-protocols/expand";
 import {
   deleteLiveChain,
   type LiveProviderSnapshot,
@@ -1118,7 +1119,8 @@ export class ProxySession {
       return this.providersSnapshot;
     }
 
-    this.providersSnapshot = await findAllProviders();
+    // 多协议供应商在此展开为每协议一个实例（同 id，不同有效 providerType / url）
+    this.providersSnapshot = expandProvidersCached(await findAllProviders());
     return this.providersSnapshot;
   }
 

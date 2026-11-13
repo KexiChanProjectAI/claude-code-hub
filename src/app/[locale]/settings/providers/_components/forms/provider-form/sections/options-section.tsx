@@ -17,6 +17,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { CUSTOM_HEADERS_PLACEHOLDER } from "@/lib/custom-headers";
+import { providerServesProtocol } from "@/lib/provider-protocols/expand";
 import type {
   CodexImageGenerationPreference,
   CodexParallelToolCallsPreference,
@@ -45,6 +46,15 @@ export function OptionsSection({ subSectionRefs }: OptionsSectionProps) {
   const isEdit = mode === "edit";
   const isBatch = mode === "batch";
   const providerType = state.routing.providerType;
+  // The row's served protocols (not just the primary type) gate the per-protocol option cards below.
+  const protocolRow = {
+    providerType,
+    url: state.basic.url,
+    protocols: state.routing.protocols,
+  };
+  const servesResponseProtocol = providerServesProtocol(protocolRow, "response");
+  const servesOpenaiProtocol = providerServesProtocol(protocolRow, "openai");
+  const servesClaudeProtocol = providerServesProtocol(protocolRow, "claude");
   const cyberRiskFallbackRules = state.routing.cyberRiskFallbackRules;
   const [cyberRiskFallbackEnabled, setCyberRiskFallbackEnabled] = useState(
     cyberRiskFallbackRules.length > 0
@@ -183,8 +193,8 @@ export function OptionsSection({ subSectionRefs }: OptionsSectionProps) {
             </div>
           </SectionCard>
 
-          {/* Codex Overrides - Codex type only (or batch mode) */}
-          {(providerType === "codex" || isBatch) && (
+          {/* Codex Overrides - providers serving the "response" protocol (or batch mode) */}
+          {(servesResponseProtocol || isBatch) && (
             <SectionCard
               title={t("sections.routing.codexOverrides.title")}
               description={t("sections.routing.codexOverrides.desc")}
@@ -387,8 +397,8 @@ export function OptionsSection({ subSectionRefs }: OptionsSectionProps) {
             </SectionCard>
           )}
 
-          {/* OpenAI Chat Completions Overrides - openai-compatible type only */}
-          {providerType === "openai-compatible" && !isBatch && (
+          {/* OpenAI Chat Completions Overrides - providers serving the "openai" protocol */}
+          {servesOpenaiProtocol && !isBatch && (
             <SectionCard
               title={t("sections.routing.openaiChatOverrides.title")}
               description={t("sections.routing.openaiChatOverrides.desc")}
@@ -425,8 +435,8 @@ export function OptionsSection({ subSectionRefs }: OptionsSectionProps) {
             </SectionCard>
           )}
 
-          {/* Anthropic Overrides - Claude type only (or batch mode) */}
-          {(providerType === "claude" || providerType === "claude-auth" || isBatch) && (
+          {/* Anthropic Overrides - providers serving the "claude" protocol (or batch mode) */}
+          {(servesClaudeProtocol || isBatch) && (
             <SectionCard
               title={t("sections.routing.anthropicOverrides.maxTokens.label")}
               description={t("sections.routing.anthropicOverrides.maxTokens.help")}

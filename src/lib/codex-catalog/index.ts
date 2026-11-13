@@ -2,6 +2,7 @@ import { getAvailableModelsGroupedByProviderType } from "@/app/v1/_lib/models/av
 import { logger } from "@/lib/logger";
 import { filterChatCapableModels } from "@/lib/model-endpoint-capability";
 import { normalizeProviderPrefix } from "@/lib/provider-prefix";
+import { expandProvidersCached } from "@/lib/provider-protocols/expand";
 import { findAllProviders } from "@/repository/provider";
 import { buildCodexCatalogModels, serializeCodexCatalog } from "./build";
 import {
@@ -24,7 +25,8 @@ const CODEX_PROVIDER_TYPE = "codex" as const;
 const SLOW_BUILD_WARN_MS = 2_000;
 
 async function collectCodexProviderPrefixes(): Promise<string[]> {
-  const providers = await findAllProviders();
+  // 展开多协议供应商：服务 /v1/responses 的实例有效类型为 codex
+  const providers = expandProvidersCached(await findAllProviders());
   const prefixes = new Set<string>();
   for (const provider of providers) {
     if (provider.providerType !== CODEX_PROVIDER_TYPE) continue;

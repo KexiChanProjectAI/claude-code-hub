@@ -21,6 +21,7 @@ import { PROVIDER_ALLOWED_MODEL_RULES_SCHEMA } from "@/lib/provider-allowed-mode
 import { PROVIDER_MODEL_REDIRECT_RULES_SCHEMA } from "@/lib/provider-model-redirect-schema";
 import { resolveProviderPatternRegex } from "@/lib/provider-pattern-regex";
 import { normalizeProviderPrefix, PROVIDER_PREFIX_MAX_LENGTH } from "@/lib/provider-prefix";
+import { validateProviderProtocolsInput } from "@/lib/provider-protocols/validate";
 import {
   UPSTREAM_QUOTA_PROBE_INTERVAL_MINUTES_RANGE,
   UPSTREAM_QUOTA_THRESHOLD_PERCENT_RANGE,
@@ -662,6 +663,15 @@ const UPSTREAM_QUOTA_PROBE_OPTIONS_SCHEMA = z
   .nullable()
   .optional();
 
+const PROVIDER_PROTOCOL_ENUM = z.enum(["claude", "openai", "response", "gemini", "gemini-cli"]);
+// 多协议：供应商服务的入站协议（缺省 = 仅主类型对应的协议）
+const PROVIDER_PROTOCOLS_SCHEMA = z.array(PROVIDER_PROTOCOL_ENUM).min(1).max(5).optional();
+// 多协议：按协议覆盖上游 base URL
+const PROVIDER_PROTOCOL_URLS_SCHEMA = z
+  .record(z.string(), z.string().trim().max(2048))
+  .nullable()
+  .optional();
+
 export const CreateProviderSchema = z
   .object({
     name: z.string().min(1, "服务商名称不能为空").max(64, "服务商名称不能超过64个字符"),
@@ -697,6 +707,8 @@ export const CreateProviderSchema = z
       .enum(["claude", "claude-auth", "codex", "gemini", "gemini-cli", "openai-compatible"])
       .optional()
       .default("claude"),
+    protocols: PROVIDER_PROTOCOLS_SCHEMA,
+    protocol_urls: PROVIDER_PROTOCOL_URLS_SCHEMA,
     preserve_client_ip: z.boolean().optional().default(false),
     disable_session_reuse: z.boolean().optional().default(false),
     overwrite_response_model: z.boolean().optional().default(false),
@@ -889,6 +901,13 @@ export const CreateProviderSchema = z
     cc: z.number().int().nullable().optional(),
   })
   .superRefine((data, ctx) => {
+    for (const issue of validateProviderProtocolsInput({
+      providerType: data.provider_type,
+      protocols: data.protocols,
+      protocolUrls: data.protocol_urls,
+    })) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: issue.message, path: [issue.path] });
+    }
     const maxTokens = data.anthropic_max_tokens_preference;
     const budget = data.anthropic_thinking_budget_preference;
     if (maxTokens && maxTokens !== "inherit" && budget && budget !== "inherit") {
@@ -958,6 +977,8 @@ export const UpdateProviderSchema = z
     provider_type: z
       .enum(["claude", "claude-auth", "codex", "gemini", "gemini-cli", "openai-compatible"])
       .optional(),
+    protocols: PROVIDER_PROTOCOLS_SCHEMA,
+    protocol_urls: PROVIDER_PROTOCOL_URLS_SCHEMA,
     preserve_client_ip: z.boolean().optional(),
     disable_session_reuse: z.boolean().optional(),
     overwrite_response_model: z.boolean().optional(),
@@ -1142,6 +1163,13 @@ export const UpdateProviderSchema = z
   })
   .refine((obj) => Object.keys(obj).length > 0, { message: "更新内容为空" })
   .superRefine((data, ctx) => {
+    for (const issue of validateProviderProtocolsInput({
+      providerType: data.provider_type,
+      protocols: data.protocols,
+      protocolUrls: data.protocol_urls,
+    })) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: issue.message, path: [issue.path] });
+    }
     const maxTokens = data.anthropic_max_tokens_preference;
     const budget = data.anthropic_thinking_budget_preference;
     if (maxTokens && maxTokens !== "inherit" && budget && budget !== "inherit") {

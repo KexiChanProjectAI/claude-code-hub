@@ -26,6 +26,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { useDebounce } from "@/lib/hooks/use-debounce";
+import { getEffectiveProviderTypes } from "@/lib/provider-protocols/expand";
 import type { CurrencyCode } from "@/lib/utils/currency";
 import { parseProviderGroups, resolveProviderGroupsWithDefault } from "@/lib/utils/provider-group";
 import type {
@@ -201,9 +202,9 @@ export function ProviderManager({
       );
     }
 
-    // 类型筛选
+    // 类型筛选：匹配该行服务的任一有效类型（含通过多协议附加服务的类型），而不仅是主类型
     if (typeFilter !== "all") {
-      result = result.filter((p) => p.providerType === typeFilter);
+      result = result.filter((p) => getEffectiveProviderTypes(p).includes(typeFilter));
     }
 
     // Filter by status
@@ -333,7 +334,7 @@ export function ProviderManager({
       setSelectedProviderIds((prev) => {
         const next = new Set(prev);
         for (const p of filteredProviders) {
-          if (p.providerType === type) {
+          if (getEffectiveProviderTypes(p).includes(type)) {
             next.add(p.id);
           }
         }

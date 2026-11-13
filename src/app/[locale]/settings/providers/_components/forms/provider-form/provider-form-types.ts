@@ -17,6 +17,7 @@ import type {
   OpenRouterProviderRouting,
   ProviderDisplay,
   ProviderModelRedirectRule,
+  ProviderProtocol,
   ProviderType,
   ReasoningEffortOverrideRule,
   ServiceTierOverrideRule,
@@ -67,6 +68,11 @@ export interface BasicInfoState {
 
 export interface RoutingState {
   providerType: ProviderType;
+  // Inbound protocols this row serves (primary type's protocol always included).
+  // Only meaningful when the primary type is multi-protocol capable (claude / openai-compatible / codex).
+  protocols: ProviderProtocol[];
+  // Per-protocol upstream base URL overrides, keyed by non-primary protocol (empty = use the main url).
+  protocolUrls: Partial<Record<ProviderProtocol, string>>;
   groupTag: string[];
   preserveClientIp: boolean;
   disableSessionReuse: boolean;
@@ -180,6 +186,8 @@ export type ProviderFormAction =
   | { type: "SET_NEW_API_USER_ID"; payload: string }
   // Routing actions
   | { type: "SET_PROVIDER_TYPE"; payload: ProviderType }
+  | { type: "SET_PROTOCOLS"; payload: ProviderProtocol[] }
+  | { type: "SET_PROTOCOL_URL"; payload: { protocol: ProviderProtocol; url: string } }
   | { type: "SET_GROUP_TAG"; payload: string[] }
   | { type: "SET_PRESERVE_CLIENT_IP"; payload: boolean }
   | { type: "SET_DISABLE_SESSION_REUSE"; payload: boolean }

@@ -3,6 +3,7 @@
   "circuitBroken": "Circuit Broken",
   "keyCircuitBroken": "Key Circuit",
   "providerPrefixBadge": "Provider prefix: {prefix}",
+  "protocolChipTooltip": "Also serves {protocol}",
   "endpointCircuitBroken": "Endpoint Circuit",
   "upstreamQuota": {
     "title": "Upstream quota",

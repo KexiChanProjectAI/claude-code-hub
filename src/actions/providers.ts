@@ -51,6 +51,10 @@ import {
 } from "@/lib/provider-patch-contract";
 import { applyProviderPrefix } from "@/lib/provider-prefix";
 import {
+  normalizeProviderProtocols,
+  providerServesProtocol,
+} from "@/lib/provider-protocols/expand";
+import {
   executeProviderTest,
   type ProviderTestConfig,
   type ProviderTestResult,
@@ -133,6 +137,8 @@ import type {
   ProviderDisplay,
   ProviderModelRedirectRule,
   ProviderPatchOperation,
+  ProviderProtocol,
+  ProviderProtocolUrls,
   ProviderStatisticsMap,
   ProviderType,
   ReasoningEffortOverrideRule,
@@ -374,6 +380,8 @@ export async function getProviders(): Promise<ProviderDisplay[]> {
         costMultiplier: provider.costMultiplier,
         groupTag: provider.groupTag,
         providerType: provider.providerType,
+        protocols: provider.protocols,
+        protocolUrls: provider.protocolUrls ?? null,
         providerVendorId: provider.providerVendorId,
         preserveClientIp: provider.preserveClientIp,
         disableSessionReuse: provider.disableSessionReuse,
@@ -588,6 +596,8 @@ export async function addProvider(data: {
   cost_multiplier?: number;
   group_tag?: string | null;
   provider_type?: ProviderType;
+  protocols?: ProviderProtocol[];
+  protocol_urls?: ProviderProtocolUrls | null;
   preserve_client_ip?: boolean;
   disable_session_reuse?: boolean;
   model_redirects?: ProviderModelRedirectRule[] | null;
@@ -667,6 +677,7 @@ export async function addProvider(data: {
     const validated = CreateProviderSchema.parse(data);
     const reasoningValidation = validateProviderReasoningEffortOverrideMutation({
       providerType: validated.provider_type,
+      protocols: validated.protocols,
       hasRulesField: hasProviderReasoningEffortOverrideRulesField(data),
       rules: validated.reasoning_effort_override_rules,
       hasLegacyFields: hasLegacyReasoningEffortOverrideFields(data),
@@ -677,6 +688,7 @@ export async function addProvider(data: {
     }
     const serviceTierValidation = validateProviderServiceTierOverrideMutation({
       providerType: validated.provider_type,
+      protocols: validated.protocols,
       hasRulesField: hasProviderServiceTierOverrideRulesField(data),
       rules: validated.service_tier_override_rules,
       hasLegacyFields: hasLegacyServiceTierOverrideFields(data),
@@ -837,6 +849,8 @@ export async function editProvider(
     group_tag?: string | null;
     group_priorities?: Record<string, number> | null;
     provider_type?: ProviderType;
+    protocols?: ProviderProtocol[];
+    protocol_urls?: ProviderProtocolUrls | null;
     preserve_client_ip?: boolean;
     disable_session_reuse?: boolean;
     model_redirects?: ProviderModelRedirectRule[] | null;
@@ -949,6 +963,7 @@ export async function editProvider(
 
     const reasoningValidation = validateProviderReasoningEffortOverrideMutation({
       providerType: validated.provider_type ?? currentProvider.providerType,
+      protocols: validated.protocols ?? currentProvider.protocols,
       hasRulesField: hasProviderReasoningEffortOverrideRulesField(data),
       rules: validated.reasoning_effort_override_rules,
       hasLegacyFields: hasLegacyReasoningEffortOverrideFields(data),
@@ -959,6 +974,7 @@ export async function editProvider(
     }
     const serviceTierValidation = validateProviderServiceTierOverrideMutation({
       providerType: validated.provider_type ?? currentProvider.providerType,
+      protocols: validated.protocols ?? currentProvider.protocols,
       hasRulesField: hasProviderServiceTierOverrideRulesField(data),
       rules: validated.service_tier_override_rules,
       hasLegacyFields: hasLegacyServiceTierOverrideFields(data),
@@ -1680,6 +1696,8 @@ const SINGLE_EDIT_PREIMAGE_FIELD_TO_PROVIDER_KEY: Record<
   group_tag: "groupTag",
   group_priorities: "groupPriorities",
   provider_type: "providerType",
+  protocols: "protocols",
+  protocol_urls: "protocolUrls",
   preserve_client_ip: "preserveClientIp",
   disable_session_reuse: "disableSessionReuse",
   overwrite_response_model: "overwriteResponseModel",
@@ -2155,16 +2173,19 @@ const CB_PROVIDER_KEYS: ReadonlySet<string> = new Set([
   "circuitBreakerHalfOpenSuccessThreshold",
 ]);
 
-function isClaudeProviderType(providerType: ProviderType): boolean {
-  return providerType === "claude" || providerType === "claude-auth";
+// 多协议：按该行服务的协议判断字段是否适用（protocols 缺省 = 仅主类型对应协议）
+type ProviderProtocolTarget = { providerType: ProviderType; protocols?: ProviderProtocol[] };
+
+function isClaudeProviderType(target: ProviderProtocolTarget): boolean {
+  return providerServesProtocol({ ...target, url: "" }, "claude");
 }
 
-function isCodexProviderType(providerType: ProviderType): boolean {
-  return providerType === "codex";
+function isCodexProviderType(target: ProviderProtocolTarget): boolean {
+  return providerServesProtocol({ ...target, url: "" }, "response");
 }
 
-function isGeminiProviderType(providerType: ProviderType): boolean {
-  return providerType === "gemini" || providerType === "gemini-cli";
+function isGeminiProviderType(target: ProviderProtocolTarget): boolean {
+  return target.providerType === "gemini" || target.providerType === "gemini-cli";
 }
 
 const CLAUDE_ONLY_REPO_KEYS: ReadonlySet<keyof BatchProviderUpdates> = new Set([
@@ -2190,16 +2211,16 @@ const GEMINI_ONLY_REPO_KEYS: ReadonlySet<keyof BatchProviderUpdates> = new Set([
 
 function filterRepositoryUpdatesByProviderType(
   updates: BatchProviderUpdates,
-  providerType: string
+  target: ProviderProtocolTarget
 ): BatchProviderUpdates {
   const filtered = { ...updates };
-  if (!isClaudeProviderType(providerType as ProviderType)) {
+  if (!isClaudeProviderType(target)) {
     for (const key of CLAUDE_ONLY_REPO_KEYS) delete filtered[key];
   }
-  if (!isCodexProviderType(providerType as ProviderType)) {
+  if (!isCodexProviderType(target)) {
     for (const key of CODEX_ONLY_REPO_KEYS) delete filtered[key];
   }
-  if (!isGeminiProviderType(providerType as ProviderType)) {
+  if (!isGeminiProviderType(target)) {
     for (const key of GEMINI_ONLY_REPO_KEYS) delete filtered[key];
   }
   return filtered;
@@ -2245,13 +2266,13 @@ function generatePreviewRows(
 
       let isCompatible = true;
       let skipReason = "";
-      if (isClaudeOnly && !isClaudeProviderType(provider.providerType)) {
+      if (isClaudeOnly && !isClaudeProviderType(provider)) {
         isCompatible = false;
         skipReason = `Field "${field}" is only applicable to claude/claude-auth providers`;
-      } else if (isCodexOnly && !isCodexProviderType(provider.providerType)) {
+      } else if (isCodexOnly && !isCodexProviderType(provider)) {
         isCompatible = false;
         skipReason = `Field "${field}" is only applicable to codex providers`;
-      } else if (isGeminiOnly && !isGeminiProviderType(provider.providerType)) {
+      } else if (isGeminiOnly && !isGeminiProviderType(provider)) {
         isCompatible = false;
         skipReason = `Field "${field}" is only applicable to gemini/gemini-cli providers`;
       }
@@ -2659,18 +2680,26 @@ export async function applyProviderBatchPatch(
     if (!hasTypeSpecificFields) {
       updateGroups.push({ ids: effectiveProviderIds, updates: repositoryUpdates });
     } else {
-      const providersByType = new Map<string, number[]>();
+      // 多协议：按 (主类型, 服务协议) 分组，类型专属字段只写入服务对应协议的行
+      const protocolsById = new Map(
+        matchedProviders.map((provider) => [provider.id, provider.protocols] as const)
+      );
+      const providersByType = new Map<string, { target: ProviderProtocolTarget; ids: number[] }>();
       for (const expected of preimages.expected) {
         if (excludeSet.has(expected.providerId)) {
           continue;
         }
-        const type = expected.providerType;
-        if (!providersByType.has(type)) providersByType.set(type, []);
-        providersByType.get(type)!.push(expected.providerId);
+        const target: ProviderProtocolTarget = {
+          providerType: expected.providerType,
+          protocols: protocolsById.get(expected.providerId),
+        };
+        const groupKey = `${target.providerType}|${normalizeProviderProtocols(target.providerType, target.protocols).join(",")}`;
+        if (!providersByType.has(groupKey)) providersByType.set(groupKey, { target, ids: [] });
+        providersByType.get(groupKey)!.ids.push(expected.providerId);
       }
 
-      for (const [type, ids] of providersByType) {
-        const filtered = filterRepositoryUpdatesByProviderType(repositoryUpdates, type);
+      for (const { target, ids } of providersByType.values()) {
+        const filtered = filterRepositoryUpdatesByProviderType(repositoryUpdates, target);
         if (Object.keys(filtered).length > 0) {
           updateGroups.push({ ids, updates: filtered });
         }
@@ -3041,6 +3070,7 @@ export async function batchUpdateProviders(
       for (const provider of selectedProviders) {
         const reasoningValidation = validateProviderReasoningEffortOverrideMutation({
           providerType: provider.providerType,
+          protocols: provider.protocols,
           hasRulesField,
           rules: updates.reasoning_effort_override_rules,
           hasLegacyFields,
@@ -3061,6 +3091,7 @@ export async function batchUpdateProviders(
         if (!providerIdSet.has(provider.id)) continue;
         const serviceTierValidation = validateProviderServiceTierOverrideMutation({
           providerType: provider.providerType,
+          protocols: provider.protocols,
           hasRulesField: hasServiceTierRulesField,
           rules: updates.service_tier_override_rules,
           hasLegacyFields: hasLegacyServiceTierFields,

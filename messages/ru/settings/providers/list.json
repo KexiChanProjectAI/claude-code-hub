@@ -3,6 +3,7 @@
   "circuitBroken": "Разорвано",
   "keyCircuitBroken": "Разрыв ключа",
   "providerPrefixBadge": "Префикс провайдера: {prefix}",
+  "protocolChipTooltip": "Также обслуживает {protocol}",
   "endpointCircuitBroken": "Разрыв endpoint",
   "upstreamQuota": {
     "title": "Квота провайдера",

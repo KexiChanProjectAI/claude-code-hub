@@ -14,6 +14,7 @@ import {
   validateProviderReasoningEffortOverrideMutation,
   validateProviderServiceTierOverrideMutation,
 } from "@/lib/provider-patch-contract";
+import { validateProviderProtocolsInput } from "@/lib/provider-protocols/validate";
 import { UPSTREAM_QUOTA_THRESHOLD_PERCENT_RANGE } from "@/lib/provider-upstream-quota/constants";
 import {
   REASONING_EFFORT_OVERRIDE_RULE_LIST_SCHEMA,
@@ -21,6 +22,7 @@ import {
   SERVICE_TIER_OVERRIDE_RULE_LIST_SCHEMA,
   SERVICE_TIER_OVERRIDE_RULES_SCHEMA,
 } from "@/lib/validation/schemas";
+import type { ProviderProtocol, ProviderType } from "@/types/provider";
 import {
   PROVIDER_BALANCE_BATCH_LIMIT,
   PROVIDER_BALANCE_SOURCES,
@@ -66,6 +68,7 @@ const ProviderBatchPatchDraftSchema = z
 function validateReasoningEffortOverrideSchemaMutation(
   data: {
     provider_type?: unknown;
+    protocols?: unknown;
     reasoning_effort_override_rules?: unknown;
     codex_reasoning_effort_preference?: unknown;
     anthropic_adaptive_thinking?: unknown;
@@ -102,6 +105,7 @@ function validateReasoningEffortOverrideSchemaMutation(
 
   const result = validateProviderReasoningEffortOverrideMutation({
     providerType,
+    protocols: Array.isArray(data.protocols) ? (data.protocols as ProviderProtocol[]) : null,
     hasRulesField,
     rules: parsedRules.success
       ? parsedRules.data
@@ -123,6 +127,7 @@ function validateReasoningEffortOverrideSchemaMutation(
 function validateServiceTierOverrideSchemaMutation(
   data: {
     provider_type?: unknown;
+    protocols?: unknown;
     service_tier_override_rules?: unknown;
     codex_service_tier_preference?: unknown;
   },
@@ -153,6 +158,7 @@ function validateServiceTierOverrideSchemaMutation(
     providerType: providerType as Parameters<
       typeof validateProviderServiceTierOverrideMutation
     >[0]["providerType"],
+    protocols: Array.isArray(data.protocols) ? (data.protocols as ProviderProtocol[]) : null,
     hasRulesField,
     rules: parsedRules.success ? parsedRules.data : null,
     hasLegacyFields,
@@ -174,7 +180,38 @@ function validateProviderOverrideRulesSchemaMutation(
 ): void {
   validateReasoningEffortOverrideSchemaMutation(data, ctx);
   validateServiceTierOverrideSchemaMutation(data, ctx);
+  validateProtocolsSchemaMutation(data, ctx);
 }
+
+function validateProtocolsSchemaMutation(
+  data: { provider_type?: unknown; protocols?: unknown; protocol_urls?: unknown },
+  ctx: z.RefinementCtx
+): void {
+  const issues = validateProviderProtocolsInput({
+    providerType:
+      typeof data.provider_type === "string" ? (data.provider_type as ProviderType) : null,
+    protocols: Array.isArray(data.protocols) ? (data.protocols as string[]) : null,
+    protocolUrls:
+      data.protocol_urls && typeof data.protocol_urls === "object"
+        ? (data.protocol_urls as Record<string, unknown>)
+        : null,
+  });
+  for (const issue of issues) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: issue.message, path: [issue.path] });
+  }
+}
+
+// Hidden provider types (gemini-cli) stay out of the public contract; their rows serve only their
+// own protocol, which the server derives from provider_type.
+const ProviderProtocolSchema = z
+  .enum(["claude", "openai", "response", "gemini"])
+  .describe(
+    "Inbound protocol: claude (Messages), openai (Chat Completions), response (Responses) or gemini."
+  );
+
+const ProviderProtocolUrlsSchema = z
+  .record(z.string(), z.string())
+  .describe("Per-protocol upstream base URL overrides keyed by protocol. Missing keys use url.");
 
 export const ProviderListQuerySchema = z.object({
   q: z.string().trim().optional().describe("Case-insensitive provider search text."),
@@ -230,6 +267,11 @@ export const ProviderSummarySchema = z
     costMultiplier: z.number().describe("Provider cost multiplier."),
     groupTag: NullableStringSchema.describe("Provider group tag."),
     providerType: ProviderTypeSchema,
+    protocols: z
+      .array(ProviderProtocolSchema)
+      .optional()
+      .describe("Inbound protocols this provider serves. The primary type's protocol comes first."),
+    protocolUrls: ProviderProtocolUrlsSchema.nullable().optional(),
     providerVendorId: z.number().int().nullable().describe("Provider vendor id."),
     preserveClientIp: z.boolean().describe("Whether client IP is preserved upstream."),
     disableSessionReuse: z.boolean().describe("Whether sticky session reuse is disabled."),
@@ -684,6 +726,15 @@ const ProviderCreateObjectSchema = z
       .optional()
       .describe("Per-group priority overrides."),
     provider_type: ProviderTypeSchema.optional(),
+    protocols: z
+      .array(ProviderProtocolSchema)
+      .min(1)
+      .max(4)
+      .optional()
+      .describe(
+        "Inbound protocols to serve. claude, openai and response can be combined; gemini serves only its own. Defaults to the primary type's protocol."
+      ),
+    protocol_urls: ProviderProtocolUrlsSchema.nullable().optional(),
     preserve_client_ip: z.boolean().optional().describe("Whether client IP is preserved upstream."),
     disable_session_reuse: z
       .boolean()

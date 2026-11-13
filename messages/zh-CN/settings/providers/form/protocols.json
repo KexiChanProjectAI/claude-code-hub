@@ -1,0 +1,15 @@
+{
+  "title": "协议",
+  "description": "该供应商可以同时服务多种入站 API 协议。主类型对应的协议始终提供服务；添加其他协议后，同一供应商也会接受对应协议的请求。",
+  "primaryLockedHint": "主类型，始终提供服务",
+  "labels": {
+    "claude": "Anthropic Messages",
+    "openai": "OpenAI Chat Completions",
+    "response": "OpenAI Responses"
+  },
+  "urlOverride": {
+    "label": "覆盖该协议的 URL",
+    "placeholder": "默认使用上方的主 API 地址",
+    "hint": "留空表示该协议使用主 API 地址"
+  }
+}

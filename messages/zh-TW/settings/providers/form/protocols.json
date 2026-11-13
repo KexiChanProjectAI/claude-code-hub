@@ -1,0 +1,15 @@
+{
+  "title": "協定",
+  "description": "此供應商可以同時服務多種入站 API 協定。主類型對應的協定會始終提供服務；加入其他協定後，同一供應商也會接受該協定的請求。",
+  "primaryLockedHint": "主類型，始終提供服務",
+  "labels": {
+    "claude": "Anthropic Messages",
+    "openai": "OpenAI Chat Completions",
+    "response": "OpenAI Responses"
+  },
+  "urlOverride": {
+    "label": "覆寫此協定的 URL",
+    "placeholder": "預設使用上方的主要 API 位址",
+    "hint": "留空表示此協定使用主要 API 位址"
+  }
+}

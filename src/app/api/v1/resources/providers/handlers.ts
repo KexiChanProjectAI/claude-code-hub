@@ -57,6 +57,7 @@ import {
   validateProviderServiceTierOverrideBatch,
   validateProviderServiceTierOverrideMutation,
 } from "@/lib/provider-patch-contract";
+import { getEffectiveProviderTypes, getProviderProtocols } from "@/lib/provider-protocols/expand";
 import {
   REASONING_EFFORT_OVERRIDE_RULE_LIST_SCHEMA,
   SERVICE_TIER_OVERRIDE_RULE_LIST_SCHEMA,
@@ -65,6 +66,7 @@ import type {
   ProviderDisplay,
   ProviderStatistics,
   ProviderStatisticsMap,
+  ProviderType,
   ReasoningEffortOverrideRule,
   ServiceTierOverrideRule,
 } from "@/types/provider";
@@ -172,6 +174,7 @@ export async function createProvider(c: Context): Promise<Response> {
   }
   const reasoningValidation = validateProviderReasoningEffortOverrideMutation({
     providerType: body.data.provider_type ?? "claude",
+    protocols: body.data.protocols,
     hasRulesField: hasProviderReasoningEffortOverrideRulesField(body.data),
     rules: body.data.reasoning_effort_override_rules,
     hasLegacyFields: hasLegacyReasoningEffortOverrideFields(body.data),
@@ -180,6 +183,7 @@ export async function createProvider(c: Context): Promise<Response> {
   if (!reasoningValidation.ok) return reasoningEffortValidationError(c, reasoningValidation.error);
   const serviceTierValidation = validateProviderServiceTierOverrideMutation({
     providerType: body.data.provider_type ?? "claude",
+    protocols: body.data.protocols,
     hasRulesField: hasProviderServiceTierOverrideRulesField(body.data),
     rules: body.data.service_tier_override_rules,
     hasLegacyFields: hasLegacyServiceTierOverrideFields(body.data),
@@ -225,6 +229,7 @@ export async function updateProvider(c: Context): Promise<Response> {
   if (!existing) return providerNotFound(c);
   const reasoningValidation = validateProviderReasoningEffortOverrideMutation({
     providerType: body.data.provider_type ?? existing.providerType,
+    protocols: body.data.protocols ?? existing.protocols,
     hasRulesField: hasProviderReasoningEffortOverrideRulesField(body.data),
     rules: body.data.reasoning_effort_override_rules,
     hasLegacyFields: hasLegacyReasoningEffortOverrideFields(body.data),
@@ -233,6 +238,7 @@ export async function updateProvider(c: Context): Promise<Response> {
   if (!reasoningValidation.ok) return reasoningEffortValidationError(c, reasoningValidation.error);
   const serviceTierValidation = validateProviderServiceTierOverrideMutation({
     providerType: body.data.provider_type ?? existing.providerType,
+    protocols: body.data.protocols ?? existing.protocols,
     hasRulesField: hasProviderServiceTierOverrideRulesField(body.data),
     rules: body.data.service_tier_override_rules,
     hasLegacyFields: hasLegacyServiceTierOverrideFields(body.data),
@@ -906,7 +912,13 @@ function filterProviders(
 ): ProviderDisplay[] {
   const normalizedQuery = query.q?.toLowerCase();
   return providers.filter((provider) => {
-    if (query.providerType && provider.providerType !== query.providerType) return false;
+    // 多协议：按该行服务的任一有效类型匹配
+    if (
+      query.providerType &&
+      !getEffectiveProviderTypes(provider).includes(query.providerType as ProviderType)
+    ) {
+      return false;
+    }
     if (!normalizedQuery) return true;
     return [provider.name, provider.url, provider.groupTag, provider.providerType]
       .filter(Boolean)
@@ -932,6 +944,15 @@ function sanitizeProvider(
     costMultiplier: provider.costMultiplier,
     groupTag: provider.groupTag,
     providerType: provider.providerType as ProviderSummaryResponse["providerType"],
+    protocols: getProviderProtocols(provider) as ProviderSummaryResponse["protocols"],
+    protocolUrls: provider.protocolUrls
+      ? Object.fromEntries(
+          Object.entries(provider.protocolUrls).map(([protocol, url]) => [
+            protocol,
+            redactUrlCredentials(url) ?? url,
+          ])
+        )
+      : null,
     providerVendorId: provider.providerVendorId,
     preserveClientIp: provider.preserveClientIp,
     disableSessionReuse: provider.disableSessionReuse,

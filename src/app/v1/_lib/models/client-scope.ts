@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import { isClientAllowed } from "@/app/v1/_lib/proxy/client-detector";
 import { checkProviderGroupMatch } from "@/app/v1/_lib/proxy/provider-selector";
 import type { ProxySession } from "@/app/v1/_lib/proxy/session";
+import { expandProvidersCached } from "@/lib/provider-protocols/expand";
 import { resolveRoutingProviderGroup } from "@/lib/utils/provider-group";
 import { findAllProviders } from "@/repository/provider";
 import type { Provider } from "@/types/provider";
@@ -100,7 +101,8 @@ export async function clientScopeForSession(
 ): Promise<ListingClientScope> {
   let providers: readonly Provider[];
   try {
-    providers = await findAllProviders();
+    // 展开多协议供应商，使健康检查按有效类型（vendor-type 熔断）判断
+    providers = expandProvidersCached(await findAllProviders());
     lastProviders = providers;
   } catch (error) {
     if (!lastProviders) throw error;

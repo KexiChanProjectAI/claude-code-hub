@@ -3,6 +3,7 @@
   "circuitBroken": "遮断中",
   "keyCircuitBroken": "キー遮断",
   "providerPrefixBadge": "プロバイダープレフィックス：{prefix}",
+  "protocolChipTooltip": "{protocol} にも対応",
   "endpointCircuitBroken": "エンドポイント遮断",
   "upstreamQuota": {
     "title": "上流クォータ",

@@ -6,10 +6,12 @@
  * EdgeHedgeState 在调用之间持久化。单个 attempt 的失败归类与记账复用
  * ProxyForwarder.handleHedgeAttemptFailure，与本地共享同一决策表。
  */
+
 import { getCircuitState, recordFailure } from "@/lib/circuit-breaker";
 import { getEnvConfig } from "@/lib/config/env.schema";
 import { logger } from "@/lib/logger";
 import { isLocalCapacityError } from "@/lib/memory/governor";
+import { findInstanceForFormat } from "@/lib/provider-protocols/expand";
 import { RateLimitService } from "@/lib/rate-limit";
 import { SessionManager } from "@/lib/session-manager";
 import type { Provider } from "@/types/provider";
@@ -171,8 +173,10 @@ function findProviderById(rt: EdgeRuntime, providerId: number): Provider | null 
     if (participant.providerId === providerId) return participantProvider(rt, participant);
   }
   if (rt.session.provider?.id === providerId) return rt.session.provider;
-  return (
-    rt.state.session.providersSnapshot?.find((candidate) => candidate.id === providerId) ?? null
+  return findInstanceForFormat(
+    rt.state.session.providersSnapshot ?? [],
+    providerId,
+    rt.session.originalFormat
   );
 }
 

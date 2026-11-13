@@ -5,6 +5,7 @@ import { applyDisplayNameSuffix, normalizeDisplayNameSuffix } from "@/lib/displa
 import { logger } from "@/lib/logger";
 import { filterChatCapableModels } from "@/lib/model-endpoint-capability";
 import { applyProviderPrefix } from "@/lib/provider-prefix";
+import { expandProvidersCached } from "@/lib/provider-protocols/expand";
 import { createProxyAgentForProvider } from "@/lib/proxy-agent";
 import { resolveRoutingProviderGroup } from "@/lib/utils/provider-group";
 import { isProviderActiveNow } from "@/lib/utils/provider-schedule";
@@ -417,7 +418,8 @@ export async function getAvailableModelsGroupedByProviderType(
     return { groups: [] };
   }
 
-  const allProviders = await findAllProviders();
+  // 多协议供应商展开为每协议一个实例，按有效 providerType 分组
+  const allProviders = expandProvidersCached(await findAllProviders());
 
   // 过滤出所有匹配的供应商（分组与调度一致：key 分组，未设置时为 default）
   const effectiveGroup = resolveRoutingProviderGroup(authState.key.providerGroup);
@@ -448,8 +450,20 @@ export async function getAvailableModelsGroupedByProviderType(
     providers: matchedProviders.map((p) => ({ id: p.id, name: p.name, type: p.providerType })),
   });
 
+  // 同一行的 codex / openai-compatible 实例使用同一上游配置与 URL 时只拉取一次
+  const fetchByKey = new Map<string, Promise<FetchedModel[]>>();
   const fetchResults = await Promise.all(
-    matchedProviders.map((provider) => fetchModelsFromProvider(provider))
+    matchedProviders.map((provider) => {
+      const fetchFamily =
+        provider.providerType === "codex" ? "openai-compatible" : provider.providerType;
+      const key = `${provider.id}|${fetchFamily}|${provider.url}`;
+      let pending = fetchByKey.get(key);
+      if (!pending) {
+        pending = fetchModelsFromProvider(provider);
+        fetchByKey.set(key, pending);
+      }
+      return pending;
+    })
   );
 
   const byType = new Map<Provider["providerType"], Map<string, FetchedModel>>();

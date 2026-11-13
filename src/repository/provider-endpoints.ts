@@ -14,6 +14,17 @@ import {
   PROVIDER_ENDPOINT_CONFLICT_CODE,
   PROVIDER_ENDPOINT_WRITE_READ_INCONSISTENCY_CODE,
 } from "@/lib/provider-endpoint-error-codes";
+import {
+  effectiveProviderTypeForProtocol,
+  expandProviderBindingsForRow,
+  normalizeProviderProtocols,
+} from "@/lib/provider-protocols/expand";
+import {
+  aliasedProviderColumns,
+  effectiveProviderTypeSql,
+  providerBindsTypeUrlSql,
+  providerServesTypeSql,
+} from "@/repository/_shared/provider-protocol-sql";
 import type {
   ProviderEndpoint,
   ProviderEndpointProbeLog,
@@ -337,6 +348,16 @@ export async function findEnabledProviderEndpointsForProbing(): Promise<
         AND p.deleted_at IS NULL
         AND p.provider_vendor_id IS NOT NULL
         AND p.provider_vendor_id > 0
+      UNION
+      SELECT DISTINCT p.provider_vendor_id AS vendor_id,
+        ${effectiveProviderTypeSql(aliasedProviderColumns("p"), sql.raw("proto.value"))} AS provider_type
+      FROM ${providers} p
+      CROSS JOIN LATERAL jsonb_array_elements_text(p.protocols) AS proto(value)
+      WHERE p.is_enabled = true
+        AND p.deleted_at IS NULL
+        AND p.provider_vendor_id IS NOT NULL
+        AND p.provider_vendor_id > 0
+        AND p.provider_type NOT IN ('gemini', 'gemini-cli')
     )
     SELECT
       e.id,
@@ -689,6 +710,7 @@ export async function findEnabledProviderVendorTypePairs(): Promise<
     .selectDistinct({
       vendorId: providers.providerVendorId,
       providerType: providers.providerType,
+      protocols: providers.protocols,
     })
     .from(providers)
     .where(
@@ -701,14 +723,28 @@ export async function findEnabledProviderVendorTypePairs(): Promise<
     )
     .orderBy(asc(providers.providerVendorId), asc(providers.providerType));
 
-  return rows
-    .map((row) => ({
-      vendorId: row.vendorId as number,
-      providerType: row.providerType as ProviderType,
-    }))
-    .filter(
-      (row) => Number.isFinite(row.vendorId) && row.vendorId > 0 && Boolean(row.providerType)
-    );
+  // 多协议供应商：每个服务协议对应一个 (vendor, 有效类型) 对
+  const seen = new Set<string>();
+  const pairs: Array<{ vendorId: number; providerType: ProviderType }> = [];
+  for (const row of rows) {
+    const primary = row.providerType as ProviderType;
+    for (const protocol of normalizeProviderProtocols(primary, row.protocols)) {
+      const providerType = effectiveProviderTypeForProtocol(primary, protocol);
+      const key = `${row.vendorId}:${providerType}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      pairs.push({ vendorId: row.vendorId as number, providerType });
+    }
+  }
+  pairs.sort((a, b) =>
+    a.vendorId !== b.vendorId
+      ? a.vendorId - b.vendorId
+      : a.providerType.localeCompare(b.providerType)
+  );
+
+  return pairs.filter(
+    (row) => Number.isFinite(row.vendorId) && row.vendorId > 0 && Boolean(row.providerType)
+  );
 }
 
 /**
@@ -729,8 +765,7 @@ export async function hasEnabledProviderReferenceForVendorTypeUrl(input: {
 
   const whereClauses = [
     eq(providers.providerVendorId, input.vendorId),
-    eq(providers.providerType, input.providerType),
-    eq(providers.url, trimmedUrl),
+    providerBindsTypeUrlSql(input.providerType, trimmedUrl),
     eq(providers.isEnabled, true),
     isNull(providers.deletedAt),
   ];
@@ -761,8 +796,7 @@ export async function findEnabledProviderReferencesForVendorTypeUrl(input: {
 
   const whereClauses = [
     eq(providers.providerVendorId, input.vendorId),
-    eq(providers.providerType, input.providerType),
-    eq(providers.url, trimmedUrl),
+    providerBindsTypeUrlSql(input.providerType, trimmedUrl),
     eq(providers.isEnabled, true),
     isNull(providers.deletedAt),
   ];
@@ -796,7 +830,7 @@ export async function findEnabledProviderIdsByVendorAndType(
     .where(
       and(
         eq(providers.providerVendorId, vendorId),
-        eq(providers.providerType, providerType),
+        providerServesTypeSql(providerType),
         eq(providers.isEnabled, true),
         isNull(providers.deletedAt)
       )
@@ -830,7 +864,7 @@ export async function findDashboardProviderEndpointsByVendorAndType(
           SELECT 1
           FROM ${providers} p
           WHERE p.provider_vendor_id = ${vendorId}
-            AND p.provider_type = ${providerType}
+            AND ${providerServesTypeSql(providerType, aliasedProviderColumns("p"))}
             AND p.is_enabled = true
             AND p.deleted_at IS NULL
         )`
@@ -1266,8 +1300,7 @@ export async function syncProviderEndpointOnProviderEdit(
         .where(
           and(
             eq(providers.providerVendorId, previousVendorId),
-            eq(providers.providerType, previousProviderType),
-            eq(providers.url, previousUrl),
+            providerBindsTypeUrlSql(previousProviderType, previousUrl),
             eq(providers.isEnabled, true),
             isNull(providers.deletedAt),
             ne(providers.id, input.providerId)
@@ -1766,6 +1799,8 @@ export async function backfillProviderEndpointsFromProviders(
         vendorId: providers.providerVendorId,
         providerType: providers.providerType,
         url: providers.url,
+        protocols: providers.protocols,
+        protocolUrls: providers.protocolUrls,
       })
       .from(providers)
       .where(and(...whereClauses))
@@ -1838,23 +1873,45 @@ export async function backfillProviderEndpointsFromProviders(
         continue;
       }
 
-      const key = toProviderEndpointCandidateKey({
-        vendorId: row.vendorId,
+      // 多协议供应商：每个服务协议一个 (vendor, 有效类型, url) 候选
+      const bindings = expandProviderBindingsForRow({
+        id: row.id,
+        providerVendorId: row.vendorId,
         providerType: row.providerType,
         url: trimmedUrl,
+        isEnabled: true,
+        protocols: row.protocols,
+        protocolUrls: row.protocolUrls,
       });
+      for (const binding of bindings) {
+        const bindingUrl = binding.url.trim();
+        if (bindingUrl !== trimmedUrl) {
+          try {
+            // eslint-disable-next-line no-new
+            new URL(bindingUrl);
+          } catch {
+            continue;
+          }
+        }
 
-      if (candidatesByKey.has(key)) {
-        continue;
+        const key = toProviderEndpointCandidateKey({
+          vendorId: row.vendorId,
+          providerType: binding.providerType,
+          url: bindingUrl,
+        });
+
+        if (candidatesByKey.has(key)) {
+          continue;
+        }
+
+        candidatesByKey.set(key, {
+          key,
+          providerId: row.id,
+          vendorId: row.vendorId,
+          providerType: binding.providerType,
+          url: bindingUrl,
+        });
       }
-
-      candidatesByKey.set(key, {
-        key,
-        providerId: row.id,
-        vendorId: row.vendorId,
-        providerType: row.providerType,
-        url: trimmedUrl,
-      });
     }
   }
 

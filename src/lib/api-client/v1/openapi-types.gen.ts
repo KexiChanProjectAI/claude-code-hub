@@ -4510,6 +4510,12 @@ export interface operations {
                              * @enum {string}
                              */
                             providerType: "claude" | "codex" | "gemini" | "openai-compatible";
+                            /** @description Inbound protocols this provider serves. The primary type's protocol comes first. */
+                            protocols?: ("claude" | "openai" | "response" | "gemini")[];
+                            /** @description Per-protocol upstream base URL overrides keyed by protocol. Missing keys use url. */
+                            protocolUrls?: {
+                                [key: string]: string;
+                            } | null;
                             /** @description Provider vendor id. */
                             providerVendorId: number | null;
                             /** @description Whether client IP is preserved upstream. */
@@ -4891,6 +4897,12 @@ export interface operations {
                      * @enum {string}
                      */
                     provider_type?: "claude" | "codex" | "gemini" | "openai-compatible";
+                    /** @description Inbound protocols to serve. claude, openai and response can be combined; gemini serves only its own. Defaults to the primary type's protocol. */
+                    protocols?: ("claude" | "openai" | "response" | "gemini")[];
+                    /** @description Per-protocol upstream base URL overrides keyed by protocol. Missing keys use url. */
+                    protocol_urls?: {
+                        [key: string]: string;
+                    } | null;
                     /** @description Whether client IP is preserved upstream. */
                     preserve_client_ip?: boolean;
                     /** @description Whether sticky session reuse is disabled. */
@@ -5105,6 +5117,12 @@ export interface operations {
                          * @enum {string}
                          */
                         providerType: "claude" | "codex" | "gemini" | "openai-compatible";
+                        /** @description Inbound protocols this provider serves. The primary type's protocol comes first. */
+                        protocols?: ("claude" | "openai" | "response" | "gemini")[];
+                        /** @description Per-protocol upstream base URL overrides keyed by protocol. Missing keys use url. */
+                        protocolUrls?: {
+                            [key: string]: string;
+                        } | null;
                         /** @description Provider vendor id. */
                         providerVendorId: number | null;
                         /** @description Whether client IP is preserved upstream. */
@@ -5492,6 +5510,12 @@ export interface operations {
                          * @enum {string}
                          */
                         providerType: "claude" | "codex" | "gemini" | "openai-compatible";
+                        /** @description Inbound protocols this provider serves. The primary type's protocol comes first. */
+                        protocols?: ("claude" | "openai" | "response" | "gemini")[];
+                        /** @description Per-protocol upstream base URL overrides keyed by protocol. Missing keys use url. */
+                        protocolUrls?: {
+                            [key: string]: string;
+                        } | null;
                         /** @description Provider vendor id. */
                         providerVendorId: number | null;
                         /** @description Whether client IP is preserved upstream. */
@@ -6048,6 +6072,12 @@ export interface operations {
                      * @enum {string}
                      */
                     provider_type?: "claude" | "codex" | "gemini" | "openai-compatible";
+                    /** @description Inbound protocols to serve. claude, openai and response can be combined; gemini serves only its own. Defaults to the primary type's protocol. */
+                    protocols?: ("claude" | "openai" | "response" | "gemini")[];
+                    /** @description Per-protocol upstream base URL overrides keyed by protocol. Missing keys use url. */
+                    protocol_urls?: {
+                        [key: string]: string;
+                    } | null;
                     /** @description Whether client IP is preserved upstream. */
                     preserve_client_ip?: boolean;
                     /** @description Whether sticky session reuse is disabled. */
@@ -6268,6 +6298,12 @@ export interface operations {
                          * @enum {string}
                          */
                         providerType: "claude" | "codex" | "gemini" | "openai-compatible";
+                        /** @description Inbound protocols this provider serves. The primary type's protocol comes first. */
+                        protocols?: ("claude" | "openai" | "response" | "gemini")[];
+                        /** @description Per-protocol upstream base URL overrides keyed by protocol. Missing keys use url. */
+                        protocolUrls?: {
+                            [key: string]: string;
+                        } | null;
                         /** @description Provider vendor id. */
                         providerVendorId: number | null;
                         /** @description Whether client IP is preserved upstream. */

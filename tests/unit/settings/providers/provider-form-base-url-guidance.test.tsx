@@ -21,6 +21,8 @@ const providerFormContextMock = vi.hoisted(() => ({
     },
     routing: {
       providerType: "openai-compatible",
+      protocols: ["openai"],
+      protocolUrls: {},
     },
     ui: {
       isPending: false,

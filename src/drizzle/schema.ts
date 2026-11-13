@@ -22,6 +22,8 @@ import type {
   AllowedModelRuleInput,
   OpenRouterProviderRouting,
   ProviderModelRedirectRule,
+  ProviderProtocol,
+  ProviderProtocolUrls,
   ProviderType,
   ReasoningEffortOverrideRule,
   ServiceTierOverrideRule,
@@ -230,6 +232,11 @@ export const providers = pgTable('providers', {
     .notNull()
     .default('claude')
     .$type<ProviderType>(),
+  // 多协议：该行服务的入站协议（claude/openai/response 可组合；gemini 行仅自身）
+  // 空数组 = 仅主类型对应的协议（兼容旧数据）
+  protocols: jsonb('protocols').$type<ProviderProtocol[]>().notNull().default(sql`'[]'::jsonb`),
+  // 多协议：按协议覆盖上游 base URL（null = 全部使用 url）
+  protocolUrls: jsonb('protocol_urls').$type<ProviderProtocolUrls | null>().default(null),
   // 是否透传客户端 IP（默认关闭，避免暴露真实来源）
   preserveClientIp: boolean('preserve_client_ip').notNull().default(false),
   // 是否跳过当前供应商的 sticky session 复用

@@ -1,0 +1,15 @@
+{
+  "title": "Protocols",
+  "description": "This provider row can serve more than one inbound API protocol. The primary type's protocol is always served; add others to accept their requests on the same provider.",
+  "primaryLockedHint": "Primary type, always served",
+  "labels": {
+    "claude": "Anthropic Messages",
+    "openai": "OpenAI Chat Completions",
+    "response": "OpenAI Responses"
+  },
+  "urlOverride": {
+    "label": "Override URL for this protocol",
+    "placeholder": "Defaults to the main API endpoint above",
+    "hint": "Leave empty to use the main API endpoint for this protocol"
+  }
+}

@@ -1,6 +1,10 @@
 import { PROVIDER_TIMEOUT_DEFAULTS } from "@/lib/constants/provider.constants";
 import { normalizeOpenRouterProviderRouting } from "@/lib/openrouter/provider-routing";
 import { normalizeProviderModelRedirectRules } from "@/lib/provider-model-redirects";
+import {
+  normalizeProviderProtocols,
+  normalizeProviderProtocolUrls,
+} from "@/lib/provider-protocols/expand";
 import { DEFAULT_SITE_TITLE } from "@/lib/site-title";
 import { formatCostForStorage } from "@/lib/utils/currency";
 import {
@@ -105,6 +109,8 @@ export type ProviderWithReasoningEffortOverrideRules = Provider & {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function toProvider(dbProvider: any): ProviderWithReasoningEffortOverrideRules {
+  const providerType = dbProvider?.providerType ?? "claude";
+  const protocols = normalizeProviderProtocols(providerType, dbProvider?.protocols);
   return {
     ...dbProvider,
     newApiAccessToken: dbProvider?.newApiAccessToken ?? null,
@@ -116,7 +122,9 @@ export function toProvider(dbProvider: any): ProviderWithReasoningEffortOverride
     groupPriorities: dbProvider?.groupPriorities ?? null,
     costMultiplier: dbProvider?.costMultiplier ? parseFloat(dbProvider.costMultiplier) : 1.0,
     groupTag: dbProvider?.groupTag ?? null,
-    providerType: dbProvider?.providerType ?? "claude",
+    providerType,
+    protocols,
+    protocolUrls: normalizeProviderProtocolUrls(providerType, protocols, dbProvider?.protocolUrls),
     preserveClientIp: dbProvider?.preserveClientIp ?? false,
     disableSessionReuse: dbProvider?.disableSessionReuse ?? false,
     overwriteResponseModel: dbProvider?.overwriteResponseModel ?? false,

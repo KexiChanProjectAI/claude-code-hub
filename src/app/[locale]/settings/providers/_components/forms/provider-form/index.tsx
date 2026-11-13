@@ -33,6 +33,11 @@ import { normalizeDisplayNameSuffix } from "@/lib/display-name-suffix";
 import { normalizeOpenRouterProviderRouting } from "@/lib/openrouter/provider-routing";
 import { PROVIDER_BATCH_PATCH_ERROR_CODES } from "@/lib/provider-batch-patch-error-codes";
 import { normalizeProviderPrefix } from "@/lib/provider-prefix";
+import {
+  normalizeProviderProtocols,
+  normalizeProviderProtocolUrls,
+  providerServesProtocol,
+} from "@/lib/provider-protocols/expand";
 import { buildUpstreamQuotaProbeOptions } from "@/lib/provider-upstream-quota/options";
 import { isValidUrl } from "@/lib/utils/validation";
 import type { ProviderDisplay, ProviderEndpoint, ProviderType } from "@/types/provider";
@@ -345,16 +350,32 @@ function ProviderFormContent({
         // Rules left over from a previously selected provider type must not be submitted:
         // the server only accepts non-empty rules for the types that support them.
         const providerType = state.routing.providerType;
+        // Normalize once: the row's served protocols (not just the primary type) decide which
+        // option payloads apply, and this is also what gets submitted as protocols/protocol_urls.
+        const normalizedProtocols = normalizeProviderProtocols(
+          providerType,
+          state.routing.protocols
+        );
+        const normalizedProtocolUrls = normalizeProviderProtocolUrls(
+          providerType,
+          normalizedProtocols,
+          state.routing.protocolUrls
+        );
+        const servedProtocolsRow = {
+          providerType,
+          url: effectiveProviderUrl,
+          protocols: normalizedProtocols,
+        };
         const supportsEffortRules =
-          providerType === "codex" ||
-          providerType === "openai-compatible" ||
-          providerType === "claude" ||
-          providerType === "claude-auth";
+          providerServesProtocol(servedProtocolsRow, "response") ||
+          providerServesProtocol(servedProtocolsRow, "openai") ||
+          providerServesProtocol(servedProtocolsRow, "claude");
         const hasRules = supportsEffortRules && state.routing.reasoningEffortOverrideRules !== null;
         // Detect whether the provider originally had rules (loaded from DB)
         const hadRulesInitially = !!provider?.reasoningEffortOverrideRules;
         const hasServiceTierRules =
-          providerType === "codex" && state.routing.serviceTierOverrideRules !== null;
+          providerServesProtocol(servedProtocolsRow, "response") &&
+          state.routing.serviceTierOverrideRules !== null;
         const hadServiceTierRulesInitially = !!provider?.serviceTierOverrideRules;
 
         // validateForm 已拒绝非法的用户 ID，这里只会得到数字或 null
@@ -367,6 +388,8 @@ function ProviderFormContent({
           website_url: state.basic.websiteUrl?.trim() || null,
           new_api_user_id: newApiUserId,
           provider_type: state.routing.providerType,
+          protocols: normalizedProtocols,
+          protocol_urls: normalizedProtocolUrls,
           preserve_client_ip: state.routing.preserveClientIp,
           disable_session_reuse: state.routing.disableSessionReuse,
           overwrite_response_model: state.routing.overwriteResponseModel,

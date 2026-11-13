@@ -3,6 +3,7 @@
   "circuitBroken": "熔斷中",
   "keyCircuitBroken": "Key 熔斷",
   "providerPrefixBadge": "供應商前綴：{prefix}",
+  "protocolChipTooltip": "同時服務 {protocol}",
   "endpointCircuitBroken": "端點熔斷",
   "upstreamQuota": {
     "title": "上游額度",

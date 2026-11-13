@@ -11,6 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { getEffectiveProviderTypes } from "@/lib/provider-protocols/expand";
 import { cn } from "@/lib/utils";
 import { parseProviderGroups } from "@/lib/utils/provider-group";
 import type { ProviderDisplay, ProviderType } from "@/types/provider";
@@ -49,9 +50,13 @@ export function ProviderBatchToolbar({
   const t = useTranslations("settings.providers.batchEdit");
 
   const uniqueTypes = useMemo(() => {
+    // Count by every effective type a row serves (primary plus any multi-protocol additions),
+    // so "select by type" also picks up rows serving that type through a protocol override.
     const typeMap = new Map<ProviderType, number>();
     for (const p of providers) {
-      typeMap.set(p.providerType, (typeMap.get(p.providerType) ?? 0) + 1);
+      for (const type of getEffectiveProviderTypes(p)) {
+        typeMap.set(type, (typeMap.get(type) ?? 0) + 1);
+      }
     }
     return Array.from(typeMap.entries())
       .map(([type, count]) => ({ type, count }))

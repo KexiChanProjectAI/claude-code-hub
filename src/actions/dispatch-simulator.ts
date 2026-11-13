@@ -14,6 +14,7 @@ import { PROVIDER_GROUP } from "@/lib/constants/provider.constants";
 import { logger } from "@/lib/logger";
 import { getEndpointFilterStats } from "@/lib/provider-endpoints/endpoint-selector";
 import { matchesProviderPrefix } from "@/lib/provider-prefix";
+import { expandProviders, narrowInstancesForFormat } from "@/lib/provider-protocols/expand";
 import { resolveUpstreamModel } from "@/lib/provider-upstream-model";
 import { RateLimitService } from "@/lib/rate-limit";
 import { resolveSystemTimezone } from "@/lib/utils/timezone";
@@ -472,7 +473,11 @@ export async function simulateDispatchAction(
   }
 
   try {
-    const providers = await findAllProvidersFresh();
+    // 与运行时一致：展开多协议供应商，并按模拟的客户端协议每个 id 保留一个实例
+    const providers = narrowInstancesForFormat(
+      expandProviders(await findAllProvidersFresh()),
+      parsedInput.data.clientFormat
+    );
     const result = await simulateDispatchDecisionTree(providers, parsedInput.data);
     return { ok: true, data: result };
   } catch (error) {

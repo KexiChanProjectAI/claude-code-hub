@@ -16,7 +16,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { memo, useCallback, useEffect, useState, useTransition } from "react";
+import { memo, useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { FormErrorBoundary } from "@/components/form-error-boundary";
 import {
@@ -63,6 +63,7 @@ import {
   PROVIDER_TIMEOUT_DEFAULTS,
 } from "@/lib/constants/provider.constants";
 import { PROVIDER_BATCH_PATCH_ERROR_CODES } from "@/lib/provider-batch-patch-error-codes";
+import { getProviderProtocols } from "@/lib/provider-protocols/expand";
 import { getProviderTypeConfig, getProviderTypeTranslationKey } from "@/lib/provider-type-utils";
 import { cn } from "@/lib/utils";
 import { copyToClipboard, isClipboardSupported } from "@/lib/utils/clipboard";
@@ -193,6 +194,7 @@ function ProviderRichListItemInner({
   const t = useTranslations("settings.providers");
   const tTypes = useTranslations("settings.providers.types");
   const tList = useTranslations("settings.providers.list");
+  const tForm = useTranslations("settings.providers.form");
   const tBatchEdit = useTranslations("settings.providers.batchEdit");
   const tTimeout = useTranslations("settings.providers.form.sections.timeout");
   const tInline = useTranslations("settings.providers.inlineEdit");
@@ -231,6 +233,10 @@ function ProviderRichListItemInner({
   const typeKey = getProviderTypeTranslationKey(provider.providerType);
   const typeLabel = tTypes(`${typeKey}.label`);
   const typeDescription = tTypes(`${typeKey}.description`);
+
+  // 该行服务的协议：主类型始终在列表首位；超过一种时展示小角标
+  const providerProtocols = useMemo(() => getProviderProtocols(provider), [provider]);
+  const servesMultipleProtocols = providerProtocols.length > 1;
 
   useEffect(() => {
     setClipboardAvailable(isClipboardSupported());
@@ -610,6 +616,20 @@ function ProviderRichListItemInner({
               {provider.providerPrefix}
             </Badge>
           )}
+          {/* Protocol chips: shown when this row serves more than one inbound protocol */}
+          {servesMultipleProtocols &&
+            providerProtocols.map((protocol) => (
+              <Badge
+                key={protocol}
+                variant="outline"
+                className="text-[10px] px-1.5 py-0"
+                title={tList("protocolChipTooltip", {
+                  protocol: tForm(`protocols.labels.${protocol}`),
+                })}
+              >
+                {tForm(`protocols.labels.${protocol}`)}
+              </Badge>
+            ))}
           {/* Schedule badge */}
           {provider.activeTimeStart && provider.activeTimeEnd && (
             <Badge variant="outline" className="flex items-center gap-1">
@@ -828,6 +848,22 @@ function ProviderRichListItemInner({
               enabled={canEdit}
               className="flex-shrink-0"
             />
+            {/* Protocol chips: shown when this row serves more than one inbound protocol */}
+            {servesMultipleProtocols &&
+              providerProtocols.map((protocol) => (
+                <Tooltip key={protocol} delayDuration={200}>
+                  <TooltipTrigger asChild>
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 flex-shrink-0">
+                      {tForm(`protocols.labels.${protocol}`)}
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="text-xs">
+                    {tList("protocolChipTooltip", {
+                      protocol: tForm(`protocols.labels.${protocol}`),
+                    })}
+                  </TooltipContent>
+                </Tooltip>
+              ))}
             {/* Schedule badge */}
             {provider.activeTimeStart && provider.activeTimeEnd && (
               <Badge variant="outline" className="flex items-center gap-1 flex-shrink-0">

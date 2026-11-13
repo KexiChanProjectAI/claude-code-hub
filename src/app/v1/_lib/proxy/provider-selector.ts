@@ -5,6 +5,11 @@ import { getEnvConfig } from "@/lib/config/env.schema";
 import { PROVIDER_GROUP } from "@/lib/constants/provider.constants";
 import { logger } from "@/lib/logger";
 import { matchesProviderPrefix, stripProviderPrefix } from "@/lib/provider-prefix";
+import {
+  expandProvidersCached,
+  findInstanceForFormat,
+  narrowInstancesForFormat,
+} from "@/lib/provider-protocols/expand";
 import { describeUpstreamQuotaVerdict } from "@/lib/provider-upstream-quota/evaluate";
 import { checkProviderUpstreamQuota } from "@/lib/provider-upstream-quota/verdict";
 import { RateLimitService } from "@/lib/rate-limit";
@@ -993,7 +998,8 @@ export class ProxyProviderResolver {
     providerId: number
   ): Promise<Provider | null> {
     const providers = await session.getProvidersSnapshot();
-    const provider = providers.find((candidate) => candidate.id === providerId);
+    // 多协议供应商：同一 id 有多个实例，取与本次请求协议对应的那个
+    const provider = findInstanceForFormat(providers, providerId, session.originalFormat);
     if (!provider) return null;
     return {
       ...provider,
@@ -1274,7 +1280,13 @@ export class ProxyProviderResolver {
   }> {
     // 使用 Session 快照保证故障迁移期间数据一致性
     // 如果没有 session，回退到 findAllProviders（内部已使用缓存）
-    const allProviders = session ? await session.getProvidersSnapshot() : await findAllProviders();
+    // 多协议供应商：每个 id 只保留与请求协议匹配的实例（不服务该协议的行保留主实例，按格式不兼容过滤）
+    const allProviders = narrowInstancesForFormat(
+      session
+        ? await session.getProvidersSnapshot()
+        : expandProvidersCached(await findAllProviders()),
+      session?.originalFormat ?? null
+    );
     const requestedModel = session?.getOriginalModel() || "";
 
     // === Step 1: 分组预过滤（静默，用户只能看到自己分组内的供应商）===
@@ -1784,7 +1796,8 @@ export class ProxyProviderResolver {
     provider: Provider | null;
     context: NonNullable<ProviderChainItem["decisionContext"]>;
   }> {
-    const allProviders = await findAllProviders();
+    // 展开多协议供应商：按有效 providerType 过滤时每个 id 至多命中一个实例
+    const allProviders = expandProvidersCached(await findAllProviders());
 
     // 分组预过滤
     const effectiveGroupPick =

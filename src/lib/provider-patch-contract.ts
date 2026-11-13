@@ -2,6 +2,7 @@ import {
   normalizeOpenRouterProviderRouting,
   OPENROUTER_PROVIDER_ROUTING_SCHEMA,
 } from "@/lib/openrouter/provider-routing";
+import { getEffectiveProviderTypes, providerServesProtocol } from "@/lib/provider-protocols/expand";
 import { isServiceTierOverrideRuleTarget } from "@/lib/service-tier-override";
 import { normalizeProviderGroupTag } from "@/lib/utils/provider-group";
 import {
@@ -15,6 +16,7 @@ import type {
   ProviderBatchPatchField,
   ProviderPatchDraftInput,
   ProviderPatchOperation,
+  ProviderProtocol,
   ProviderType,
   ReasoningEffortOverrideRule,
   ServiceTierOverrideRule,
@@ -60,6 +62,8 @@ export type ProviderBatchApplyUpdatesWithReasoningEffortRules = ProviderBatchApp
 
 export type ProviderReasoningEffortOverrideMutationInput = {
   providerType: ProviderType;
+  // 多协议：该行服务的协议（缺省 = 仅主类型对应的协议）
+  protocols?: readonly ProviderProtocol[] | null;
   hasRulesField: boolean;
   rules: ReasoningEffortOverrideRule[] | null | undefined;
   hasLegacyFields: boolean;
@@ -72,6 +76,7 @@ export type ProviderReasoningEffortOverrideValidationResult =
 
 export type ProviderReasoningEffortOverrideBatchProvider = {
   providerType: ProviderType;
+  protocols?: readonly ProviderProtocol[] | null;
   reasoningEffortOverrideRules: ReasoningEffortOverrideRule[] | null;
 };
 
@@ -133,12 +138,24 @@ export function validateProviderReasoningEffortOverrideMutation(
     return { ok: true };
   }
 
-  const allowedTargets =
-    input.providerType === "codex" || input.providerType === "openai-compatible"
-      ? CODEX_REASONING_EFFORT_OVERRIDE_TARGETS
-      : input.providerType === "claude" || input.providerType === "claude-auth"
-        ? ANTHROPIC_REASONING_EFFORT_OVERRIDE_TARGETS
-        : null;
+  // 多协议：规则目标只需对该行服务的某一协议族有效（各协议运行时各自应用）
+  const servedTypes = getEffectiveProviderTypes({
+    providerType: input.providerType,
+    url: "",
+    protocols: input.protocols ?? undefined,
+  });
+  let allowedTargets: Set<string> | null = null;
+  for (const servedType of servedTypes) {
+    const familyTargets: ReadonlySet<string> | null =
+      servedType === "codex" || servedType === "openai-compatible"
+        ? CODEX_REASONING_EFFORT_OVERRIDE_TARGETS
+        : servedType === "claude" || servedType === "claude-auth"
+          ? ANTHROPIC_REASONING_EFFORT_OVERRIDE_TARGETS
+          : null;
+    if (!familyTargets) continue;
+    allowedTargets ??= new Set<string>();
+    for (const target of familyTargets) allowedTargets.add(target);
+  }
 
   if (allowedTargets === null) {
     return {
@@ -173,6 +190,7 @@ export function validateProviderReasoningEffortOverrideBatch(input: {
   for (const provider of input.providers) {
     const result = validateProviderReasoningEffortOverrideMutation({
       providerType: provider.providerType,
+      protocols: provider.protocols,
       hasRulesField,
       rules,
       hasLegacyFields,
@@ -186,6 +204,8 @@ export function validateProviderReasoningEffortOverrideBatch(input: {
 
 export type ProviderServiceTierOverrideMutationInput = {
   providerType: ProviderType;
+  // 多协议：该行服务的协议（缺省 = 仅主类型对应的协议）
+  protocols?: readonly ProviderProtocol[] | null;
   hasRulesField: boolean;
   rules: ServiceTierOverrideRule[] | null | undefined;
   hasLegacyFields: boolean;
@@ -194,6 +214,7 @@ export type ProviderServiceTierOverrideMutationInput = {
 
 export type ProviderServiceTierOverrideBatchProvider = {
   providerType: ProviderType;
+  protocols?: readonly ProviderProtocol[] | null;
   serviceTierOverrideRules: ServiceTierOverrideRule[] | null;
 };
 
@@ -239,7 +260,12 @@ export function validateProviderServiceTierOverrideMutation(
     return { ok: true };
   }
 
-  if (input.providerType !== "codex") {
+  if (
+    !providerServesProtocol(
+      { providerType: input.providerType, url: "", protocols: input.protocols ?? undefined },
+      "response"
+    )
+  ) {
     return {
       ok: false,
       error: "service_tier_override_rules is only supported for codex providers",
@@ -271,9 +297,21 @@ export function validateProviderServiceTierOverrideBatch(input: {
   for (const provider of input.providers) {
     // Codex-only fields are filtered out for other provider types when a patch is applied,
     // so only codex providers can receive (and must satisfy) these constraints.
-    if (provider.providerType !== "codex") continue;
+    if (
+      !providerServesProtocol(
+        {
+          providerType: provider.providerType,
+          url: "",
+          protocols: provider.protocols ?? undefined,
+        },
+        "response"
+      )
+    ) {
+      continue;
+    }
     const result = validateProviderServiceTierOverrideMutation({
       providerType: provider.providerType,
+      protocols: provider.protocols,
       hasRulesField,
       rules,
       hasLegacyFields,

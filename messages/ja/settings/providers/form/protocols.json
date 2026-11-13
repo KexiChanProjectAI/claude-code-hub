@@ -1,0 +1,15 @@
+{
+  "title": "プロトコル",
+  "description": "このプロバイダー行は複数の受信 API プロトコルを処理できます。主要タイプのプロトコルは常に提供されます。他のプロトコルを追加すると、同じプロバイダーでそのリクエストも受け付けます。",
+  "primaryLockedHint": "主要タイプ、常に提供",
+  "labels": {
+    "claude": "Anthropic Messages",
+    "openai": "OpenAI Chat Completions",
+    "response": "OpenAI Responses"
+  },
+  "urlOverride": {
+    "label": "このプロトコル用の URL を上書き",
+    "placeholder": "上記のメインの API エンドポイントを使用します",
+    "hint": "空欄の場合、このプロトコルにはメインの API エンドポイントが使用されます"
+  }
+}

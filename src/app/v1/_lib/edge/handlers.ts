@@ -4,9 +4,11 @@
  * 每个调用都在请求级锁内加载 EdgeRequestState、还原会话、推进状态并写回。
  * next / complete 按 (requestId, stepId, 事件) 幂等：远端因网络抖动重发时返回首次结果。
  */
+
 import { getCachedSystemSettings } from "@/lib/config";
 import { getEnvConfig } from "@/lib/config/env.schema";
 import { logger } from "@/lib/logger";
+import { findInstanceForFormat } from "@/lib/provider-protocols/expand";
 import type { Provider } from "@/types/provider";
 import { ProxyError, sanitizeUrl } from "../proxy/errors";
 import {
@@ -99,7 +101,7 @@ async function persistRuntime(rt: EdgeRuntime): Promise<void> {
 function findProvider(rt: EdgeRuntime, providerId: number): Provider {
   if (rt.session.provider?.id === providerId) return rt.session.provider;
   const snapshot = rt.state.session.providersSnapshot ?? [];
-  const provider = snapshot.find((candidate) => candidate.id === providerId);
+  const provider = findInstanceForFormat(snapshot, providerId, rt.session.originalFormat);
   if (!provider) throw new EdgeHandlerError(409, "provider_not_found");
   return provider;
 }

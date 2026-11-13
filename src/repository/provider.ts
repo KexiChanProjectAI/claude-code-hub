@@ -19,11 +19,21 @@ import { normalizeOpenRouterProviderRouting } from "@/lib/openrouter/provider-ro
 import { SENSITIVE_PROVIDER_BATCH_UNDO_KEYS } from "@/lib/provider-batch-patch-error-codes";
 import { normalizeProviderModelRedirectRules } from "@/lib/provider-model-redirects";
 import { normalizeProviderPrefix } from "@/lib/provider-prefix";
+import {
+  expandProviderBindingsForRow,
+  normalizeProviderProtocols,
+  normalizeProviderProtocolUrls,
+  type ProviderProtocolBinding,
+} from "@/lib/provider-protocols/expand";
 import { getOrComputeWithRedisLock } from "@/lib/redis/cache-aside";
 import { getRedisClient } from "@/lib/redis/client";
 import { resolveDashboardCacheTtlSeconds } from "@/lib/redis/dashboard-cache-ttl";
 import { parseProviderGroups } from "@/lib/utils/provider-group";
 import { resolveSystemTimezone } from "@/lib/utils/timezone";
+import {
+  aliasedProviderColumns,
+  providerBindsTypeUrlSql,
+} from "@/repository/_shared/provider-protocol-sql";
 import type {
   AllowedModelRuleInput,
   AnthropicAdaptiveThinkingConfig,
@@ -31,6 +41,8 @@ import type {
   OpenRouterProviderRouting,
   Provider,
   ProviderModelRedirectRule,
+  ProviderProtocol,
+  ProviderProtocolUrls,
   ReasoningEffortOverrideRule,
   ServiceTierOverrideRule,
   UpdateProviderData,
@@ -72,15 +84,130 @@ function normalizeProviderRuntimeFields<
   };
 }
 
+/** Normalized `protocols` / `protocolUrls` column values for a write. */
+function normalizeProtocolColumns(
+  providerType: Provider["providerType"],
+  protocols: unknown,
+  protocolUrls: unknown
+): { protocols: ProviderProtocol[]; protocolUrls: ProviderProtocolUrls | null } {
+  const normalized = normalizeProviderProtocols(providerType, protocols);
+  return {
+    protocols: normalized,
+    protocolUrls: normalizeProviderProtocolUrls(providerType, normalized, protocolUrls),
+  };
+}
+
+/** Endpoint-pool bindings of a provider beyond its primary (providerType, url). */
+function extraProtocolBindings(provider: Provider): ProviderProtocolBinding[] {
+  return expandProviderBindingsForRow({
+    id: provider.id,
+    providerVendorId: provider.providerVendorId,
+    providerType: provider.providerType,
+    url: provider.url,
+    isEnabled: provider.isEnabled,
+    protocols: provider.protocols,
+    protocolUrls: provider.protocolUrls,
+  }).slice(1);
+}
+
+/**
+ * Sync endpoint-pool rows for a provider's extra protocol bindings after an edit:
+ * new bindings are ensured, dropped bindings are soft-deleted unless another enabled
+ * provider (or this provider through another binding) still references them.
+ */
+async function syncExtraProtocolEndpoints(
+  tx: ProviderTransaction,
+  input: {
+    previousVendorId: number | null;
+    previous: ProviderProtocolBinding[];
+    nextVendorId: number;
+    next: ProviderProtocolBinding[];
+    ensureAll: boolean;
+  }
+): Promise<void> {
+  const keyOf = (vendorId: number | null, binding: ProviderProtocolBinding) =>
+    `${vendorId}::${binding.providerType}::${binding.url}`;
+  const previousKeys = new Set(input.previous.map((b) => keyOf(input.previousVendorId, b)));
+  const nextKeys = new Set(input.next.map((b) => keyOf(input.nextVendorId, b)));
+
+  for (const binding of input.next) {
+    if (!input.ensureAll && previousKeys.has(keyOf(input.nextVendorId, binding))) continue;
+    await ensureProviderEndpointExistsForUrl(
+      { vendorId: input.nextVendorId, providerType: binding.providerType, url: binding.url },
+      { tx }
+    );
+  }
+
+  if (input.previousVendorId == null) return;
+  const now = new Date();
+  for (const binding of input.previous) {
+    if (nextKeys.has(keyOf(input.previousVendorId, binding))) continue;
+    const [activeReference] = await tx
+      .select({ id: providers.id })
+      .from(providers)
+      .where(
+        and(
+          eq(providers.providerVendorId, input.previousVendorId),
+          providerBindsTypeUrlSql(binding.providerType, binding.url),
+          eq(providers.isEnabled, true),
+          isNull(providers.deletedAt)
+        )
+      )
+      .limit(1);
+    if (activeReference) continue;
+    await tx
+      .update(providerEndpoints)
+      .set({ deletedAt: now, isEnabled: false, updatedAt: now })
+      .where(
+        and(
+          eq(providerEndpoints.vendorId, input.previousVendorId),
+          eq(providerEndpoints.providerType, binding.providerType),
+          eq(providerEndpoints.url, binding.url),
+          isNull(providerEndpoints.deletedAt)
+        )
+      );
+  }
+}
+
 interface ProviderRestoreCandidate {
   id: number;
   providerVendorId: number | null;
   providerType: Provider["providerType"];
   url: string;
   deletedAt: Date | null;
+  protocols?: unknown;
+  protocolUrls?: unknown;
 }
 
 async function restoreSoftDeletedEndpointForProvider(
+  tx: ProviderTransaction,
+  provider: ProviderRestoreCandidate,
+  now: Date
+): Promise<void> {
+  if (provider.providerVendorId == null || !provider.url || !provider.deletedAt) {
+    return;
+  }
+
+  // 多协议：每个 (有效类型, url) 绑定各自恢复
+  const bindings = expandProviderBindingsForRow({
+    id: provider.id,
+    providerVendorId: provider.providerVendorId,
+    providerType: provider.providerType,
+    url: provider.url,
+    isEnabled: true,
+    protocols: provider.protocols,
+    protocolUrls: provider.protocolUrls,
+  });
+  for (const binding of bindings) {
+    await restoreSoftDeletedEndpointForBinding(
+      tx,
+      { ...provider, providerType: binding.providerType, url: binding.url },
+      now
+    );
+  }
+}
+
+async function restoreSoftDeletedEndpointForBinding(
   tx: ProviderTransaction,
   provider: ProviderRestoreCandidate,
   now: Date
@@ -100,8 +227,7 @@ async function restoreSoftDeletedEndpointForProvider(
     .where(
       and(
         eq(providers.providerVendorId, provider.providerVendorId),
-        eq(providers.providerType, provider.providerType),
-        eq(providers.url, trimmedUrl),
+        providerBindsTypeUrlSql(provider.providerType, trimmedUrl),
         eq(providers.isEnabled, true),
         isNull(providers.deletedAt),
         ne(providers.id, provider.id)
@@ -179,6 +305,8 @@ async function restoreProviderInTransaction(
       id: providers.id,
       providerVendorId: providers.providerVendorId,
       providerType: providers.providerType,
+      protocols: providers.protocols,
+      protocolUrls: providers.protocolUrls,
       url: providers.url,
       deletedAt: providers.deletedAt,
     })
@@ -232,6 +360,11 @@ export async function createProvider(
       providerData.cost_multiplier != null ? providerData.cost_multiplier.toString() : "1.0",
     groupTag: providerData.group_tag,
     providerType: providerData.provider_type,
+    ...normalizeProtocolColumns(
+      providerData.provider_type ?? "claude",
+      providerData.protocols,
+      providerData.protocol_urls
+    ),
     preserveClientIp: providerData.preserve_client_ip ?? false,
     disableSessionReuse: providerData.disable_session_reuse ?? false,
     overwriteResponseModel: providerData.overwrite_response_model ?? false,
@@ -337,6 +470,8 @@ export async function createProvider(
         costMultiplier: providers.costMultiplier,
         groupTag: providers.groupTag,
         providerType: providers.providerType,
+        protocols: providers.protocols,
+        protocolUrls: providers.protocolUrls,
         preserveClientIp: providers.preserveClientIp,
         disableSessionReuse: providers.disableSessionReuse,
         overwriteResponseModel: providers.overwriteResponseModel,
@@ -412,6 +547,17 @@ export async function createProvider(
         },
         { tx }
       );
+      // 多协议：额外协议的 (有效类型, url) 也进入端点池
+      for (const binding of extraProtocolBindings(created)) {
+        await ensureProviderEndpointExistsForUrl(
+          {
+            vendorId: created.providerVendorId,
+            providerType: binding.providerType,
+            url: binding.url,
+          },
+          { tx }
+        );
+      }
     }
 
     return created;
@@ -438,6 +584,8 @@ export async function findProviderList(
       costMultiplier: providers.costMultiplier,
       groupTag: providers.groupTag,
       providerType: providers.providerType,
+      protocols: providers.protocols,
+      protocolUrls: providers.protocolUrls,
       preserveClientIp: providers.preserveClientIp,
       disableSessionReuse: providers.disableSessionReuse,
       overwriteResponseModel: providers.overwriteResponseModel,
@@ -539,6 +687,8 @@ export async function findAllProvidersFresh(): Promise<ProviderWithReasoningEffo
       costMultiplier: providers.costMultiplier,
       groupTag: providers.groupTag,
       providerType: providers.providerType,
+      protocols: providers.protocols,
+      protocolUrls: providers.protocolUrls,
       preserveClientIp: providers.preserveClientIp,
       disableSessionReuse: providers.disableSessionReuse,
       overwriteResponseModel: providers.overwriteResponseModel,
@@ -646,6 +796,8 @@ export async function findProviderById(
       costMultiplier: providers.costMultiplier,
       groupTag: providers.groupTag,
       providerType: providers.providerType,
+      protocols: providers.protocols,
+      protocolUrls: providers.protocolUrls,
       preserveClientIp: providers.preserveClientIp,
       disableSessionReuse: providers.disableSessionReuse,
       overwriteResponseModel: providers.overwriteResponseModel,
@@ -872,16 +1024,19 @@ export async function updateProvider(
 
   const shouldRefreshVendor =
     providerData.url !== undefined || providerData.website_url !== undefined;
-  const shouldSyncEndpoint =
-    shouldRefreshVendor ||
+  const touchesProtocols =
     providerData.provider_type !== undefined ||
-    providerData.is_enabled === true;
+    providerData.protocols !== undefined ||
+    providerData.protocol_urls !== undefined;
+  const shouldSyncEndpoint =
+    shouldRefreshVendor || touchesProtocols || providerData.is_enabled === true;
 
   const updateResult = await db.transaction(async (tx) => {
     let previousVendorId: number | null = null;
     let previousUrl: string | null = null;
     let previousProviderType: Provider["providerType"] | null = null;
     let previousIsEnabled: boolean | null = null;
+    let previousExtraBindings: ProviderProtocolBinding[] = [];
     let endpointCircuitResetId: number | null = null;
 
     if (shouldSyncEndpoint) {
@@ -893,6 +1048,8 @@ export async function updateProvider(
           name: providers.name,
           providerVendorId: providers.providerVendorId,
           providerType: providers.providerType,
+          protocols: providers.protocols,
+          protocolUrls: providers.protocolUrls,
           isEnabled: providers.isEnabled,
         })
         .from(providers)
@@ -904,6 +1061,29 @@ export async function updateProvider(
         previousUrl = current.url;
         previousProviderType = current.providerType;
         previousIsEnabled = current.isEnabled;
+        previousExtraBindings = expandProviderBindingsForRow({
+          id,
+          providerVendorId: current.providerVendorId,
+          providerType: current.providerType,
+          url: current.url,
+          isEnabled: current.isEnabled,
+          protocols: current.protocols,
+          protocolUrls: current.protocolUrls,
+        }).slice(1);
+
+        if (touchesProtocols) {
+          // 主类型 / 协议列表 / URL 覆盖任一变化时，三者一起规范化（gemini 收敛为单协议、丢弃无效覆盖）
+          Object.assign(
+            dbData,
+            normalizeProtocolColumns(
+              providerData.provider_type ?? current.providerType,
+              providerData.protocols ?? current.protocols,
+              providerData.protocol_urls !== undefined
+                ? providerData.protocol_urls
+                : current.protocolUrls
+            )
+          );
+        }
 
         if (shouldRefreshVendor) {
           const providerVendorId = await getOrCreateProviderVendorIdFromUrls(
@@ -939,6 +1119,8 @@ export async function updateProvider(
         costMultiplier: providers.costMultiplier,
         groupTag: providers.groupTag,
         providerType: providers.providerType,
+        protocols: providers.protocols,
+        protocolUrls: providers.protocolUrls,
         preserveClientIp: providers.preserveClientIp,
         disableSessionReuse: providers.disableSessionReuse,
         overwriteResponseModel: providers.overwriteResponseModel,
@@ -1042,6 +1224,15 @@ export async function updateProvider(
           { tx }
         );
       }
+
+      // 多协议：额外协议绑定的增删同步到端点池
+      await syncExtraProtocolEndpoints(tx, {
+        previousVendorId,
+        previous: previousExtraBindings,
+        nextVendorId: transformed.providerVendorId,
+        next: extraProtocolBindings(transformed),
+        ensureAll: previousIsEnabled === false && transformed.isEnabled === true,
+      });
     }
 
     return {
@@ -1130,6 +1321,8 @@ export async function deleteProvider(id: number): Promise<boolean> {
         providerVendorId: providers.providerVendorId,
         providerType: providers.providerType,
         url: providers.url,
+        protocols: providers.protocols,
+        protocolUrls: providers.protocolUrls,
       })
       .from(providers)
       .where(and(eq(providers.id, id), isNull(providers.deletedAt)))
@@ -1150,36 +1343,48 @@ export async function deleteProvider(id: number): Promise<boolean> {
     }
 
     if (current.providerVendorId != null && current.url) {
-      const [activeReference] = await tx
-        .select({ id: providers.id })
-        .from(providers)
-        .where(
-          and(
-            eq(providers.providerVendorId, current.providerVendorId),
-            eq(providers.providerType, current.providerType),
-            eq(providers.url, current.url),
-            eq(providers.isEnabled, true),
-            isNull(providers.deletedAt)
-          )
-        )
-        .limit(1);
-
-      if (!activeReference) {
-        await tx
-          .update(providerEndpoints)
-          .set({
-            deletedAt: now,
-            isEnabled: false,
-            updatedAt: now,
-          })
+      const vendorId = current.providerVendorId;
+      // 多协议：该行的每个 (有效类型, url) 绑定各自做引用检查
+      const bindings = expandProviderBindingsForRow({
+        id,
+        providerVendorId: vendorId,
+        providerType: current.providerType,
+        url: current.url,
+        isEnabled: true,
+        protocols: current.protocols,
+        protocolUrls: current.protocolUrls,
+      });
+      for (const binding of bindings) {
+        const [activeReference] = await tx
+          .select({ id: providers.id })
+          .from(providers)
           .where(
             and(
-              eq(providerEndpoints.vendorId, current.providerVendorId),
-              eq(providerEndpoints.providerType, current.providerType),
-              eq(providerEndpoints.url, current.url),
-              isNull(providerEndpoints.deletedAt)
+              eq(providers.providerVendorId, vendorId),
+              providerBindsTypeUrlSql(binding.providerType, binding.url),
+              eq(providers.isEnabled, true),
+              isNull(providers.deletedAt)
             )
-          );
+          )
+          .limit(1);
+
+        if (!activeReference) {
+          await tx
+            .update(providerEndpoints)
+            .set({
+              deletedAt: now,
+              isEnabled: false,
+              updatedAt: now,
+            })
+            .where(
+              and(
+                eq(providerEndpoints.vendorId, vendorId),
+                eq(providerEndpoints.providerType, binding.providerType),
+                eq(providerEndpoints.url, binding.url),
+                isNull(providerEndpoints.deletedAt)
+              )
+            );
+        }
       }
     }
 
@@ -1273,6 +1478,8 @@ type ProviderBatchUpdatedRow = {
   providerVendorId: number | null;
   providerType: Provider["providerType"];
   url: string;
+  protocols?: unknown;
+  protocolUrls?: unknown;
 };
 
 async function ensureEnabledProviderEndpoints(
@@ -1307,14 +1514,27 @@ async function ensureEnabledProviderEndpoints(
       continue;
     }
 
-    const key = `${row.providerVendorId}::${row.providerType}::${trimmedUrl}`;
-    if (endpointKeys.has(key)) continue;
-
-    endpointKeys.set(key, {
-      vendorId: row.providerVendorId,
+    // 多协议：每个服务协议的 (有效类型, url) 都需要进入端点池
+    for (const binding of expandProviderBindingsForRow({
+      id: row.id,
+      providerVendorId: row.providerVendorId,
       providerType: row.providerType,
       url: trimmedUrl,
-    });
+      isEnabled: true,
+      protocols: row.protocols,
+      protocolUrls: row.protocolUrls,
+    })) {
+      const bindingUrl = binding.url.trim();
+      if (bindingUrl !== trimmedUrl && !URL.canParse(bindingUrl)) continue;
+      const key = `${row.providerVendorId}::${binding.providerType}::${bindingUrl}`;
+      if (endpointKeys.has(key)) continue;
+
+      endpointKeys.set(key, {
+        vendorId: row.providerVendorId,
+        providerType: binding.providerType,
+        url: bindingUrl,
+      });
+    }
   }
 
   if (endpointKeys.size === 0) {
@@ -1553,6 +1773,8 @@ export async function updateProvidersBatch(
       id: providers.id,
       providerVendorId: providers.providerVendorId,
       providerType: providers.providerType,
+      protocols: providers.protocols,
+      protocolUrls: providers.protocolUrls,
       url: providers.url,
     });
 
@@ -1722,6 +1944,8 @@ async function ensureEnabledProviderEndpointsForIds(providerIds: number[]): Prom
         id: providers.id,
         providerVendorId: providers.providerVendorId,
         providerType: providers.providerType,
+        protocols: providers.protocols,
+        protocolUrls: providers.protocolUrls,
         url: providers.url,
       })
       .from(providers)
@@ -2223,6 +2447,8 @@ export async function updateProviderBatchGroupsIfUnchanged(
             id: providers.id,
             providerVendorId: providers.providerVendorId,
             providerType: providers.providerType,
+            protocols: providers.protocols,
+            protocolUrls: providers.protocolUrls,
             url: providers.url,
           });
 
@@ -2276,6 +2502,8 @@ export async function deleteProvidersBatch(ids: number[]): Promise<number> {
         providerVendorId: providers.providerVendorId,
         providerType: providers.providerType,
         url: providers.url,
+        protocols: providers.protocols,
+        protocolUrls: providers.protocolUrls,
       });
 
     if (result.length === 0) {
@@ -2292,16 +2520,27 @@ export async function deleteProvidersBatch(ids: number[]): Promise<number> {
         continue;
       }
 
-      const key = `${candidate.providerVendorId}::${candidate.providerType}::${candidate.url}`;
-      if (endpointKeys.has(key)) {
-        continue;
-      }
-
-      endpointKeys.set(key, {
-        vendorId: candidate.providerVendorId,
+      const vendorId = candidate.providerVendorId;
+      for (const binding of expandProviderBindingsForRow({
+        id: candidate.id,
+        providerVendorId: vendorId,
         providerType: candidate.providerType,
         url: candidate.url,
-      });
+        isEnabled: true,
+        protocols: candidate.protocols,
+        protocolUrls: candidate.protocolUrls,
+      })) {
+        const key = `${vendorId}::${binding.providerType}::${binding.url}`;
+        if (endpointKeys.has(key)) {
+          continue;
+        }
+
+        endpointKeys.set(key, {
+          vendorId,
+          providerType: binding.providerType,
+          url: binding.url,
+        });
+      }
     }
 
     const endpoints = Array.from(endpointKeys.values());
@@ -2337,8 +2576,11 @@ export async function deleteProvidersBatch(ids: number[]): Promise<number> {
               WHERE p.is_enabled = true
                 AND p.deleted_at IS NULL
                 AND p.provider_vendor_id = ${providerEndpoints.vendorId}
-                AND p.provider_type = ${providerEndpoints.providerType}
-                AND p.url = ${providerEndpoints.url}
+                AND ${providerBindsTypeUrlSql(
+                  sql`${providerEndpoints.providerType}`,
+                  sql`${providerEndpoints.url}`,
+                  aliasedProviderColumns("p")
+                )}
             )`
           )
         );

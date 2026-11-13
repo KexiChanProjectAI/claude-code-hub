@@ -4,7 +4,7 @@ import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle, Copy, Edit2, Loader2, Plus, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { FormErrorBoundary } from "@/components/form-error-boundary";
 import {
@@ -18,6 +18,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -45,6 +46,7 @@ import {
 } from "@/lib/api-client/v1/actions/providers";
 import { PROVIDER_LIMITS } from "@/lib/constants/provider.constants";
 import { PROVIDER_BATCH_PATCH_ERROR_CODES } from "@/lib/provider-batch-patch-error-codes";
+import { getProviderProtocols } from "@/lib/provider-protocols/expand";
 import { getProviderTypeConfig, getProviderTypeTranslationKey } from "@/lib/provider-type-utils";
 import { copyToClipboard, isClipboardSupported } from "@/lib/utils/clipboard";
 import { type CurrencyCode, formatCurrency } from "@/lib/utils/currency";
@@ -227,6 +229,7 @@ function VendorKeyRow(props: {
 }) {
   const t = useTranslations("settings.providers");
   const tList = useTranslations("settings.providers.list");
+  const tForm = useTranslations("settings.providers.form");
   const tBatchEdit = useTranslations("settings.providers.batchEdit");
   const tInline = useTranslations("settings.providers.inlineEdit");
   const tTypes = useTranslations("settings.providers.types");
@@ -288,6 +291,8 @@ function VendorKeyRow(props: {
   const typeConfig = getProviderTypeConfig(props.provider.providerType);
   const TypeIcon = typeConfig.icon;
   const typeLabel = tTypes(`${getProviderTypeTranslationKey(props.provider.providerType)}.label`);
+  const providerProtocols = useMemo(() => getProviderProtocols(props.provider), [props.provider]);
+  const servesMultipleProtocols = providerProtocols.length > 1;
 
   const [keyDialogOpen, setKeyDialogOpen] = useState(false);
   const [unmaskedKey, setUnmaskedKey] = useState<string | null>(null);
@@ -413,6 +418,19 @@ function VendorKeyRow(props: {
               <TypeIcon className={`h-4 w-4 ${typeConfig.iconColor}`} />
             </div>
             <span className="text-sm font-medium">{typeLabel}</span>
+            {servesMultipleProtocols &&
+              providerProtocols.map((protocol) => (
+                <Badge
+                  key={protocol}
+                  variant="outline"
+                  className="text-[10px] px-1.5 py-0"
+                  title={tList("protocolChipTooltip", {
+                    protocol: tForm(`protocols.labels.${protocol}`),
+                  })}
+                >
+                  {tForm(`protocols.labels.${protocol}`)}
+                </Badge>
+              ))}
           </div>
         </TableCell>
         <TableCell className="py-1 min-w-0">
